@@ -121,4 +121,28 @@ describe('SignalRepository', () => {
     expect(snapshot.resolvedOutcome).toBe('Yes');
     expect(snapshot.resolvedPrice).toBe(1);
   });
+
+  it('persists community and smart_wallet entries in signals JSON', () => {
+    repo.insertSnapshot({
+      marketId: 'm2',
+      question: 'Counter-Strike: Spirit vs G2',
+      marketProb: 0.52,
+      predictedProb: 0.58,
+      behaviorProb: 0.55,
+      aiDebateProb: 0.57,
+      finalProb: 0.59,
+      edge: 0.07,
+      riskAdjustedEdge: 0.05,
+      recommendation: 'buy_yes',
+      signals: [
+        { source: 'community', probability: 0.61, confidence: 0.65, lastUpdated: '2026-06-01T00:00:00Z' },
+        { source: 'smart_wallet', probability: 0.64, confidence: 0.75, lastUpdated: '2026-06-01T00:00:00Z' },
+      ],
+    });
+
+    const [snapshot] = repo.findByMarket('m2', 1);
+    const sources = snapshot.signals.map((signal) => signal.source);
+    expect(sources).toContain('community');
+    expect(sources).toContain('smart_wallet');
+  });
 });

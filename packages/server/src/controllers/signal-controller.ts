@@ -84,6 +84,21 @@ export class SignalController {
     }
   }
 
+  async applySuggestedWeights(req: Request, res: Response): Promise<void> {
+    try {
+      const minSampleSize = req.body?.minSampleSize !== undefined ? Number(req.body.minSampleSize) : undefined;
+      const maxStepRatio = req.body?.maxStepRatio !== undefined ? Number(req.body.maxStepRatio) : undefined;
+      const result = this.service.applySuggestedWeights({
+        minSampleSize: Number.isFinite(minSampleSize) ? minSampleSize : undefined,
+        maxStepRatio: Number.isFinite(maxStepRatio) ? maxStepRatio : undefined,
+      });
+      res.json({ data: result });
+    } catch (err) {
+      logger.error('Failed to apply suggested signal weights', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      res.status(500).json({ error: 'Failed to apply suggested weights', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
+    }
+  }
+
   async getStats(req: Request, res: Response): Promise<void> {
     try {
       const stats = await this.service.getStats();

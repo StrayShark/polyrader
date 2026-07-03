@@ -8,7 +8,7 @@ export class MarketRepository {
       limit,
       offset,
     );
-    return rows.map(this.mapRow);
+    return rows.map((row) => this.mapRow(row));
   }
 
   findByConditionId(conditionId: string): Market | null {
@@ -33,7 +33,7 @@ export class MarketRepository {
       `%${tag}%`,
       limit,
     );
-    return rows.map(this.mapRow);
+    return rows.map((row) => this.mapRow(row));
   }
 
   upsert(market: Market): void {
@@ -81,7 +81,7 @@ export class MarketRepository {
     const rows = query<Record<string, unknown>>(
       `SELECT * FROM markets WHERE status = 'active' ORDER BY volume_24h DESC`,
     );
-    return rows.map(this.mapRow);
+    return rows.map((row) => this.mapRow(row));
   }
 
   findResolvedMarkets(limit = 10000): Market[] {
@@ -95,7 +95,7 @@ export class MarketRepository {
        LIMIT ?`,
       limit,
     );
-    return rows.map(this.mapRow);
+    return rows.map((row) => this.mapRow(row));
   }
 
   findByTokenId(tokenId: string): Market | null {

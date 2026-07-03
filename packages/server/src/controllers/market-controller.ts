@@ -1,9 +1,11 @@
 import type { Request, Response } from 'express';
+import { MarketRepository } from '@polyrader/infra';
 import { MarketService } from '../services/market-service';
 import { logger } from '../utils/logger';
 
 export class MarketController {
   private service = new MarketService();
+  private marketRepo = new MarketRepository();
 
   async getMarkets(req: Request, res: Response): Promise<void> {
     try {
@@ -27,6 +29,20 @@ export class MarketController {
       res.json({ data: market });
     } catch (err) {
       logger.error('Failed to fetch market', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      res.status(500).json({ error: 'Failed to fetch market', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
+    }
+  }
+
+  async getMarketBySlug(req: Request, res: Response): Promise<void> {
+    try {
+      const market = this.marketRepo.findBySlug(req.params.slug);
+      if (!market) {
+        res.status(404).json({ error: 'Market not found' });
+        return;
+      }
+      res.json({ data: market });
+    } catch (err) {
+      logger.error('Failed to fetch market by slug', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
       res.status(500).json({ error: 'Failed to fetch market', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
     }
   }

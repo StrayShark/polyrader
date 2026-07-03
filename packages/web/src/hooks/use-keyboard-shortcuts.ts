@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../components/ThemeProvider';
 
 const PAGE_KEYS: Record<string, string> = {
   '1': '/',
@@ -11,25 +12,48 @@ const PAGE_KEYS: Record<string, string> = {
   '7': '/ai/stats',
 };
 
-export function useKeyboardShortcuts() {
+interface ShortcutOptions {
+  /** Toggle the global command palette (Cmd/Ctrl+K). */
+  onCommandPalette?: () => void;
+}
+
+export function useKeyboardShortcuts({ onCommandPalette }: ShortcutOptions = {}) {
   const navigate = useNavigate();
+  const { toggleTheme } = useTheme();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+
+      const key = e.key.toLowerCase();
+
+      // Cmd/Ctrl + K = open command palette (global search)
+      if (key === 'k') {
+        e.preventDefault();
+        onCommandPalette?.();
+        return;
+      }
+
+      // Cmd/Ctrl + Shift + N = cycle theme (dark → light → matrix)
+      if (e.shiftKey && key === 'n') {
+        e.preventDefault();
+        toggleTheme();
+        return;
+      }
+
+      // Cmd/Ctrl + R = refresh data (reload reflects fresh fetches; let browser handle)
+      // We intentionally do not preventDefault so the webview reloads.
 
       // Cmd/Ctrl + number = navigate to page
-      if (isMod && PAGE_KEYS[e.key]) {
+      if (PAGE_KEYS[e.key]) {
         e.preventDefault();
         navigate(PAGE_KEYS[e.key]);
         return;
       }
 
-      // Cmd/Ctrl + R = refresh (let browser handle, but also trigger data refresh)
-      // We let the default browser refresh happen
-
       // Cmd/Ctrl + , = settings
-      if (isMod && e.key === ',') {
+      if (e.key === ',') {
         e.preventDefault();
         navigate('/ai/config');
         return;
@@ -38,5 +62,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate]);
+  }, [navigate, toggleTheme, onCommandPalette]);
 }

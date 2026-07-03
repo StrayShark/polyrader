@@ -325,135 +325,100 @@ WebSocket 连接
 
 | 主题 | 适用场景 | 设计语言 |
 |------|---------|---------|
-| **Dark** | 默认主题，日常使用 | shadcn/ui 暗色主题配色 |
-| **Light** | 日间办公、明亮环境 | shadcn/ui 亮色主题配色 |
+| **Dark** | 默认主题，日常使用 | Cursor 暖色暗调配色（Cursor Orange 主色） |
+| **Light** | 日间办公、明亮环境 | Cursor 暖色亮调配色（Cursor Orange 主色） |
 | **Matrix** | 深夜盯盘、极客风格 | 与 Codex CLI Matrix 一致的终端绿配色 |
 
-### 4.2 Dark 主题（shadcn/ui Dark 配色）
+### 4.2 Dark 主题（Cursor 暖色配色）
 
 ```
-配色基于 shadcn/ui 暗色主题设计 Token
-```
-
-#### 语义色板
-
-| Token | 色值 | 用途 |
-|-------|------|------|
-| `--background` | `#0A0A0A` | 主背景色 |
-| `--foreground` | `#FAFAFA` | 主文字色 |
-| `--sidebar-bg` | `#0A0A0A` | 侧边栏背景 |
-| `--sidebar-fg` | `#A1A1AA` | 侧边栏文字 |
-| `--panel-bg` | `#18181B` | 面板背景 |
-| `--panel-border` | `#27272A` | 面板边框 |
-| `--input-bg` | `#18181B` | 输入框背景 |
-| `--input-border` | `#27272A` | 输入框边框 |
-| `--input-focus` | `#3B82F6` | 输入框聚焦边框 |
-| `--button-bg` | `#3B82F6` | 按钮背景 |
-| `--button-hover` | `#2563EB` | 按钮悬停 |
-| `--button-fg` | `#FFFFFF` | 按钮文字 |
-| `--link` | `#3B82F6` | 链接色 |
-| `--link-active` | `#2563EB` | 链接激活 |
-| `--tab-bg` | `#18181B` | 标签背景 |
-| `--tab-active-bg` | `#0A0A0A` | 激活标签背景 |
-| `--tab-active-border` | `#3B82F6` | 激活标签上边框 |
-| `--statusbar-bg` | `#18181B` | 状态栏背景 |
-| `--statusbar-fg` | `#A1A1AA` | 状态栏文字 |
-| `--badge-bg` | `#27272A` | 徽章背景 |
-| `--scrollbar` | `#27272A` | 滚动条 |
-| `--scrollbar-hover` | `#3F3F46` | 滚动条悬停 |
-| `--dropdown-bg` | `#18181B` | 下拉菜单背景 |
-| `--dropdown-border` | `#27272A` | 下拉菜单边框 |
-| `--hover-bg` | `#27272A` | 列表项悬停 |
-| `--selection-bg` | `#1E3A5F` | 选中背景 |
-| `--line-number` | `#71717A` | 行号/次要文字 |
-| `--title-bar` | `#18181B` | 标题栏（非激活） |
-
-#### 功能色
-
-| Token | 色值 | 用途 |
-|-------|------|------|
-| `--accent` | `#3B82F6` | 主强调色（shadcn 蓝） |
-| `--green` | `#22C55E` | 价格上涨/做多/成功 |
-| `--red` | `#EF4444` | 价格下跌/做空/错误 |
-| `--yellow` | `#EAB308` | 警告/异常/待处理 |
-| `--orange` | `#F97316` | 中度告警 |
-| `--purple` | `#A855F7` | 模型预测/紫色强调 |
-| `--cyan` | `#06B6D4` | 信息/链接 |
-| `--blue` | `#3B82F6` | 关键字/数据标签 |
-
-#### 图表色板（用于价格走势、饼图、雷达图）
-
-| 序号 | 色值 | 用途 |
-|------|------|------|
-| 1 | `#3B82F6` | 系列 1 |
-| 2 | `#22C55E` | 系列 2 |
-| 3 | `#F97316` | 系列 3 |
-| 4 | `#A855F7` | 系列 4 |
-| 5 | `#EAB308` | 系列 5 |
-| 6 | `#06B6D4` | 系列 6 |
-
-### 4.3 Light 主题（shadcn/ui Light 配色）
-
-```
-配色基于 shadcn/ui 亮色主题设计 Token
+配色对齐 Cursor IDE 的暖色暗调主题
+主色为 Cursor Orange #f54e00，背景为暖棕黑 #1a1916
+权威 token 见 packages/web/e2e-browser/design/cursor-tokens.ts
 ```
 
 #### 语义色板
 
 | Token | 色值 | 用途 |
 |-------|------|------|
-| `--background` | `#FFFFFF` | 主背景色 |
-| `--foreground` | `#09090B` | 主文字色 |
-| `--sidebar-bg` | `#F4F4F5` | 侧边栏背景 |
-| `--sidebar-fg` | `#52525B` | 侧边栏文字 |
-| `--panel-bg` | `#FFFFFF` | 面板背景 |
-| `--panel-border` | `#E4E4E7` | 面板边框 |
-| `--input-bg` | `#FFFFFF` | 输入框背景 |
-| `--input-border` | `#D4D4D8` | 输入框边框 |
-| `--input-focus` | `#2563EB` | 输入框聚焦边框 |
-| `--button-bg` | `#2563EB` | 按钮背景 |
-| `--button-hover` | `#1D4ED8` | 按钮悬停 |
-| `--button-fg` | `#FFFFFF` | 按钮文字 |
-| `--link` | `#2563EB` | 链接色 |
-| `--link-active` | `#1D4ED8` | 链接激活 |
-| `--tab-bg` | `#F4F4F5` | 标签背景 |
-| `--tab-active-bg` | `#FFFFFF` | 激活标签背景 |
-| `--tab-active-border` | `#2563EB` | 激活标签上边框 |
-| `--statusbar-bg` | `#F4F4F5` | 状态栏背景 |
-| `--statusbar-fg` | `#52525B` | 状态栏文字 |
-| `--badge-bg` | `#E4E4E7` | 徽章背景 |
-| `--scrollbar` | `#D4D4D8` | 滚动条 |
-| `--scrollbar-hover` | `#A1A1AA` | 滚动条悬停 |
-| `--dropdown-bg` | `#FFFFFF` | 下拉菜单背景 |
-| `--dropdown-border` | `#E4E4E7` | 下拉菜单边框 |
-| `--hover-bg` | `#F4F4F5` | 列表项悬停 |
-| `--selection-bg` | `#DBEAFE` | 选中背景 |
-| `--line-number` | `#A1A1AA` | 行号/次要文字 |
-| `--title-bar` | `#F4F4F5` | 标题栏（非激活） |
+| `--background` | `#1a1916` | 主背景色（暖棕黑） |
+| `--foreground` | `#f7f7f4` | 主文字色 |
+| `--card` | `#242320` | 卡片/面板背景 |
+| `--popover` | `#242320` | 下拉菜单背景 |
+| `--primary` | `#f54e00` | 主色（Cursor Orange） |
+| `--primary-foreground` | `#ffffff` | 主色前景 |
+| `--secondary` | `#2e2c28` | 次要背景 |
+| `--muted` | `#2e2c28` | 弱化背景 |
+| `--muted-foreground` | `#a09c92` | 次要文字 |
+| `--accent` | `#2e2c28` | 列表项悬停 |
+| `--destructive` | `#cf2d56` | 危险/删除 |
+| `--border` | `#3d3b34` | 面板边框（hairline） |
+| `--input` | `#3d3b34` | 输入框边框 |
+| `--ring` | `#f54e00` | 聚焦环 |
+| `--sidebar` | `#1a1916` | 侧边栏背景 |
+| `--sidebar-foreground` | `#a09c92` | 侧边栏文字 |
+| `--sidebar-active` | `#2e2c28` | 侧边栏激活项 |
+| `--status-bar` | `#242320` | 状态栏背景 |
+| `--status-bar-foreground` | `#a09c92` | 状态栏文字 |
 
 #### 功能色
 
 | Token | 色值 | 用途 |
 |-------|------|------|
-| `--accent` | `#2563EB` | 主强调色（shadcn 蓝） |
-| `--green` | `#16A34A` | 价格上涨/做多/成功 |
-| `--red` | `#DC2626` | 价格下跌/做空/错误 |
-| `--yellow` | `#CA8A04` | 警告/异常/待处理 |
-| `--orange` | `#EA580C` | 中度告警 |
-| `--purple` | `#9333EA` | 模型预测/紫色强调 |
-| `--cyan` | `#0891B2` | 信息/链接 |
-| `--blue` | `#2563EB` | 关键字/数据标签 |
+| `--primary` | `#f54e00` | 主强调色（Cursor Orange） |
+| `--green` | `#1f8a65` | 价格上涨/做多/成功 |
+| `--red` | `#cf2d56` | 价格下跌/做空/错误 |
+| `--yellow` | `#c08532` | 警告/异常/待处理 |
+| `--orange` | `#f54e00` | 中度告警 |
+| `--purple` | `#c0a8dd` | 模型预测/紫色强调 |
+| `--cyan` | `#9fbbe0` | 信息/链接 |
+| `--blue` | `#9fbbe0` | 关键字/数据标签 |
 
-#### 图表色板
+> 注：圆角统一 8px（`--radius: 0.5rem`），卡片**无阴影**，仅用 hairline 边框区分层次，与 Cursor 一致。
 
-| 序号 | 色值 | 用途 |
-|------|------|------|
-| 1 | `#2563EB` | 系列 1 |
-| 2 | `#16A34A` | 系列 2 |
-| 3 | `#EA580C` | 系列 3 |
-| 4 | `#9333EA` | 系列 4 |
-| 5 | `#CA8A04` | 系列 5 |
-| 6 | `#0891B2` | 系列 6 |
+### 4.3 Light 主题（Cursor 暖色亮调配色）
+
+```
+配色对齐 Cursor IDE 的暖色亮调主题
+主色保持 Cursor Orange #f54e00，背景为暖白 #f7f7f4
+```
+
+#### 语义色板
+
+| Token | 色值 | 用途 |
+|-------|------|------|
+| `--background` | `#f7f7f4` | 主背景色（暖白） |
+| `--foreground` | `#26251e` | 主文字色 |
+| `--card` | `#ffffff` | 卡片/面板背景 |
+| `--popover` | `#ffffff` | 下拉菜单背景 |
+| `--primary` | `#f54e00` | 主色（Cursor Orange） |
+| `--primary-foreground` | `#ffffff` | 主色前景 |
+| `--secondary` | `#efeee8` | 次要背景 |
+| `--muted` | `#efeee8` | 弱化背景 |
+| `--muted-foreground` | `#807d72` | 次要文字 |
+| `--accent` | `#efeee8` | 列表项悬停 |
+| `--destructive` | `#cf2d56` | 危险/删除 |
+| `--border` | `#e6e5e0` | 面板边框（hairline） |
+| `--input` | `#e6e5e0` | 输入框边框 |
+| `--ring` | `#f54e00` | 聚焦环 |
+| `--sidebar` | `#fafaf7` | 侧边栏背景 |
+| `--sidebar-foreground` | `#5a5852` | 侧边栏文字 |
+| `--sidebar-active` | `#e6e5e0` | 侧边栏激活项 |
+| `--status-bar` | `#fafaf7` | 状态栏背景 |
+| `--status-bar-foreground` | `#5a5852` | 状态栏文字 |
+
+#### 功能色
+
+| Token | 色值 | 用途 |
+|-------|------|------|
+| `--primary` | `#f54e00` | 主强调色（Cursor Orange） |
+| `--green` | `#1f8a65` | 价格上涨/做多/成功 |
+| `--red` | `#cf2d56` | 价格下跌/做空/错误 |
+| `--yellow` | `#c08532` | 警告/异常/待处理 |
+| `--orange` | `#f54e00` | 中度告警 |
+| `--purple` | `#9333ea` | 模型预测/紫色强调 |
+| `--cyan` | `#0891b2` | 信息/链接 |
+| `--blue` | `#2563eb` | 关键字/数据标签 |
 
 ### 4.4 Matrix 主题（Codex CLI Matrix 配色）
 
@@ -973,30 +938,35 @@ AlertItem（告警条目）：
 ### 9.1 主题切换实现
 
 ```css
-/* 默认 Dark 主题 */
+/* 默认 Dark 主题（Cursor 暖色暗调） */
 :root,
-[data-theme="dark"] {
-  --background: #0A0A0A;
-  --foreground: #FAFAFA;
-  --sidebar-bg: #0A0A0A;
-  /* ... 完整 Dark 变量 */
+.theme-dark {
+  --background: #1a1916;
+  --foreground: #f7f7f4;
+  --primary: #f54e00;
+  --border: #3d3b34;
+  --sidebar: #1a1916;
+  /* ... 完整 Dark 变量见 packages/web/src/styles/themes.css */
 }
 
-/* Light 主题 */
-[data-theme="light"] {
-  --background: #FFFFFF;
-  --foreground: #09090B;
-  --sidebar-bg: #F4F4F5;
+/* Light 主题（Cursor 暖色亮调） */
+.theme-light {
+  --background: #f7f7f4;
+  --foreground: #26251e;
+  --primary: #f54e00;
+  --border: #e6e5e0;
+  --sidebar: #fafaf7;
   /* ... 完整 Light 变量 */
 }
 
-/* Matrix 主题 */
-[data-theme="matrix"] {
+/* Matrix 主题（Codex CLI 终端绿，绿主色为产品例外） */
+.theme-matrix {
   --background: #0d1117;
-  --foreground: #00ff41;
-  --sidebar-bg: #0a0e13;
+  --foreground: #c9d1d9;
+  --primary: #00ff41;
+  --border: #30363d;
+  --sidebar: #0d1117;
   /* ... 完整 Matrix 变量 */
-  --font-sans: "JetBrains Mono", "Fira Code", monospace;
 }
 ```
 
@@ -1014,7 +984,10 @@ function getTheme(): Theme {
 
 function setTheme(theme: Theme) {
   localStorage.setItem(THEME_KEY, theme);
-  document.documentElement.setAttribute("data-theme", theme);
+  // 实现使用 class 切换（非 data-theme），见 ThemeProvider.tsx
+  const root = document.documentElement;
+  root.classList.remove("theme-dark", "theme-light", "theme-matrix");
+  root.classList.add(`theme-${theme}`);
 }
 
 // 初始化时跟随系统偏好（仅 dark/light）
@@ -1042,7 +1015,7 @@ function getSystemTheme(): "dark" | "light" {
 
 ## 附录 A：配色说明
 
-本设计现已采用 **shadcn/ui** 设计 Token 体系，Dark/Light 主题颜色不再参考 Cursor IDE 配色。Matrix 主题仍参考 Codex CLI 终端美学。
+本设计采用 **Cursor 暖色** 设计 Token 体系：Dark/Light 主题主色为 Cursor Orange `#f54e00`，背景为暖棕黑 `#1a1916` / 暖白 `#f7f7f4`，卡片无阴影、仅用 hairline 边框，圆角统一 8px。权威 token 定义见 `packages/web/e2e-browser/design/cursor-tokens.ts`，并由 `e2e-browser/design-audit.spec.ts` 做视觉审计回归。Matrix 主题主色保留荧光绿 `#00ff41`（产品例外），参考 Codex CLI 终端美学。
 
 ## 附录 B：与 Codex CLI Matrix 的配色对照
 

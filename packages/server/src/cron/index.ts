@@ -5,13 +5,14 @@ import { AiConfigService } from '../services/ai-config-service';
 import { SignalService } from '../services/signal-service';
 import { HLTVCrawler, PolymarketGammaClient, MarketRepository, CsApiClient, GridClient, closeBrowser } from '@polyrader/infra';
 import { LLMRepository, EsportsRepository } from '@polyrader/infra';
-import { runMigrations, query, queryOne } from '@polyrader/infra';
+import { query, queryOne } from '@polyrader/infra';
 import { SettlementEngine, MatchStateMachine, EsportsEnricher, type EnricherSources } from '@polyrader/core';
 import type { SimulatedBet, Team, Player, HeadToHead } from '@polyrader/core';
 import { sharedWhaleIngestion } from '../services/whale-ingestion-service';
 import { WalletPerformanceService } from '../services/wallet-performance-service';
 import { WalletFollowService } from '../services/wallet-follow-service';
 import { trackTask } from '../services/task-tracker-service';
+import { autoTunePromptVariants } from '../services/prompt-ab-service';
 import { broadcast } from '../websocket';
 import { logger } from '../utils/logger';
 
@@ -122,9 +123,6 @@ function buildEnricherSources(historyMonths = 3): EnricherSources {
 }
 
 export function startCronJobs(): void {
-  // Run migrations on startup
-  runMigrations();
-
   // ============================================================
   // Polymarket: Refresh every 30 minutes
   // ============================================================
@@ -272,6 +270,12 @@ export function startCronJobs(): void {
       category: 'whale',
       trigger: 'scheduled',
     }, async (ctx) => {
+      const ingestionStatus = whaleIngestion.getStatus();
+      if (ingestionStatus.consecutiveFailures >= 5) {
+        ctx.log(`跳过扫描（连续失败 ${ingestionStatus.consecutiveFailures} 次）`);
+        return { skipped: true, consecutiveFailures: ingestionStatus.consecutiveFailures };
+      }
+
       const count = await whaleIngestion.scanRecentTrades();
       broadcast('whales', { newTrades: count });
       if (count > 0) {
@@ -337,6 +341,41 @@ export function startCronJobs(): void {
   });
 
   // ============================================================
+  // Live copy order status sync: every 2 minutes
+  // ============================================================
+  cron.schedule('*/2 * * * *', () => {
+    void trackTask('copy-trade-sync', {
+      name: '实盘跟单状态同步',
+      category: 'whale',
+      trigger: 'scheduled',
+      silent: true,
+    }, async (ctx) => {
+      const result = await walletFollow.syncLiveOrderStatuses();
+      if (result.updated > 0) {
+        ctx.log(`已同步 ${result.updated} 笔实盘跟单状态`);
+      }
+      return result as Record<string, unknown>;
+    });
+  });
+
+  // ============================================================
+  // Signal snapshots: refresh active CS2 markets every 30 min
+  // ============================================================
+  cron.schedule('*/30 * * * *', () => {
+    void trackTask('signal-snapshot-refresh', {
+      name: '信号快照刷新',
+      category: 'signal',
+      trigger: 'scheduled',
+    }, async (ctx) => {
+      const result = await signalService.refreshActiveSignalSnapshots(15);
+      if (result.refreshed > 0) {
+        ctx.log(`已刷新 ${result.refreshed} 个市场的信号快照`);
+      }
+      return result as Record<string, unknown>;
+    });
+  });
+
+  // ============================================================
   // Arbitrage scanner: Scan every 2 minutes
   // Detects Yes/No price sum < 1 and cross-market spreads,
   // broadcasts opportunities via WebSocket 'arbitrage' channel.
@@ -366,7 +405,7 @@ export function startCronJobs(): void {
       category: 'esports',
       trigger: 'scheduled',
     }, async (ctx) => {
-    logger.info('Cron: Starting esports data pipeline (CS API + HLTV)');
+    logger.info('Cron: Starting esports data pipeline (GRID + CS API + HLTV)');
       const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
       ctx.setProgress(10, '拉取 CS API 比赛');
       // --- Step 1: CS API (primary) — fetch recent matches ---
@@ -383,6 +422,31 @@ export function startCronJobs(): void {
         logger.info('Cron: CS API matches found', { count: matches.length });
       } catch (err) {
         logger.warn('Cron: CS API failed, trying HLTV', { error: (err as Error).message });
+      }
+
+      // --- Step 1a: GRID upcoming series (official schedule) ---
+      try {
+        const gridUpcoming = await gridClient.getUpcomingSeries(historyMonths);
+        const existingIds = new Set(matches.map((m) => m.matchId));
+        for (const m of gridUpcoming) {
+          if (!m.teamAId || !m.teamBId || existingIds.has(m.seriesId)) continue;
+          matches.push({
+            matchId: m.seriesId,
+            teamAId: m.teamAId,
+            teamBId: m.teamBId,
+            teamAName: m.teamAName,
+            teamBName: m.teamBName,
+            event: m.eventName,
+            eventType: 'Online' as const,
+            format: (m.format === 'BO1' || m.format === 'BO5' ? m.format : 'BO3') as 'BO1' | 'BO3' | 'BO5',
+            date: m.date,
+            maps: [],
+          });
+          existingIds.add(m.seriesId);
+        }
+        logger.info('Cron: GRID upcoming merged', { gridCount: gridUpcoming.length, total: matches.length });
+      } catch (err) {
+        logger.warn('Cron: GRID upcoming fetch failed (non-critical)', { error: (err as Error).message });
       }
 
       // --- Step 1b: HLTV fallback for upcoming matches (CS API is daily-refresh, no upcoming) ---
@@ -809,6 +873,34 @@ export function startCronJobs(): void {
   process.on('beforeExit', () => {
     closeBrowser().catch(() => { /* ignore */ });
   });
+
+  if (process.env.POLYRADER_AUTO_TUNE_SIGNALS === '1') {
+    cron.schedule('0 4 * * 0', () => {
+      void trackTask('auto-tune-signals', {
+        name: '信号权重自动调优',
+        category: 'signal',
+        trigger: 'scheduled',
+      }, async () => {
+        const result = signalService.applySuggestedWeights({ minSampleSize: 15, maxStepRatio: 0.35 });
+        logger.info('Cron: Auto-tuned signal weights', { applied: result.applied });
+        return result;
+      });
+    });
+  }
+
+  if (process.env.POLYRADER_AUTO_TUNE_PROMPTS === '1') {
+    cron.schedule('0 5 * * 0', () => {
+      void trackTask('auto-tune-prompts', {
+        name: 'Prompt A/B 自动调权',
+        category: 'ai',
+        trigger: 'scheduled',
+      }, async () => {
+        const result = autoTunePromptVariants(llmRepo);
+        logger.info('Cron: Auto-tuned prompt traffic weights', { applied: result.applied });
+        return result;
+      });
+    });
+  }
 
   logger.info('Cron: All scheduled jobs started');
 }

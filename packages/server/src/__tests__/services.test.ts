@@ -25,6 +25,9 @@ vi.mock('@polyrader/infra', () => ({
     findByConditionId: vi.fn(),
     upsert: vi.fn(),
   })),
+  WalletFollowRepository: vi.fn().mockImplementation(() => ({
+    isFollowed: vi.fn().mockReturnValue(false),
+  })),
   cacheGet: vi.fn(),
   cacheSet: vi.fn(),
   PolymarketGammaClient: vi.fn(),
@@ -62,7 +65,7 @@ describe('WhaleService', () => {
 
       // Access private repo to mock
       const repo = (service as unknown as { whaleRepo: { findAll: ReturnType<typeof vi.fn> } }).whaleRepo;
-      repo.findAll.mockResolvedValue([
+      repo.findAll.mockReturnValue([
         { address: '0xdef', totalVolume: 5000, activePositions: 2, winRate: 0.5, pnl: 100, recentTrades: [], suspiciousScore: { total: 0, volumeAnomaly: 0, timingAnomaly: 0, patternAnomaly: 0, correlationAnomaly: 0 } },
       ]);
 
@@ -70,7 +73,7 @@ describe('WhaleService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].address).toBe('0xdef');
-      expect(cacheSet).toHaveBeenCalledWith('whales:10', expect.any(Array), 120);
+      expect(cacheSet).toHaveBeenCalledWith('whales:volume:10:5:0', expect.any(Array), 120);
     });
   });
 

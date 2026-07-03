@@ -1,5 +1,6 @@
-import { checkDbConnection, getCacheStats } from '@polyrader/infra';
+import { checkDbConnection, getCacheStats, PolymarketClobClient, GridClient } from '@polyrader/infra';
 import { sharedWhaleIngestion } from './services/whale-ingestion-service';
+import { sharedPolymarketStream } from './services/polymarket-stream-service';
 
 // Lazy reference to WebSocket server (set via setWsServer)
 let wssRef: { clients: Set<unknown> } | null = null;
@@ -16,7 +17,22 @@ interface HealthStatus {
     database: { status: string; latency?: number };
     cache: { status: string; size: number; maxSize: number };
     websocket: { status: string; connections: number };
-    whaleIngestion: { status: string; consecutiveFailures: number; lastIngestedCount: number; lastError?: string };
+    whaleIngestion: {
+      status: string;
+      consecutiveFailures: number;
+      lastIngestedCount: number;
+      lastScanAt?: string;
+      lastSuccessAt?: string;
+      lastError?: string;
+    };
+    priceStream: {
+      status: string;
+      connected: boolean;
+      subscriptionCount: number;
+      lastMessageAt?: string;
+      lastError?: string;
+    };
+    grid: { status: string; configured: boolean };
     externalApis: { status: string; checks: Array<{ name: string; status: string }> };
   };
 }
@@ -28,16 +44,44 @@ export async function checkHealth(): Promise<HealthStatus> {
 
   const wsInfo = checkWebSocket();
 
-  const externalChecks = await checkExternalApis();
+  const externalChecks = process.env.POLYRADER_SKIP_EXTERNAL_HEALTH === '1'
+    ? { status: 'ok', checks: [] as Array<{ name: string; status: string }> }
+    : await checkExternalApis();
   const ingestion = sharedWhaleIngestion.getStatus();
   const ingestionStatus = ingestion.consecutiveFailures >= 3 ? 'error'
     : ingestion.consecutiveFailures > 0 ? 'degraded'
     : 'ok';
+  const stream = sharedPolymarketStream.getStatus();
+  const streamStatus = process.env.POLYRADER_SKIP_STREAM === '1'
+    ? 'skipped'
+    : stream.lastError && !stream.connected
+      ? 'degraded'
+      : stream.connected
+        ? 'ok'
+        : stream.subscriptionCount > 0
+          ? 'degraded'
+          : 'idle';
+
+  const gridConfigured = Boolean(process.env.GRID_API_KEY);
+  let gridStatus = gridConfigured ? 'unknown' : 'skipped';
+  if (gridConfigured && process.env.POLYRADER_SKIP_EXTERNAL_HEALTH !== '1') {
+    try {
+      const gridOk = await new GridClient().testConnection();
+      gridStatus = gridOk ? 'ok' : 'error';
+    } catch {
+      gridStatus = 'error';
+    }
+  } else if (gridConfigured) {
+    gridStatus = 'skipped';
+  }
 
   // Determine overall status
   const allOk = dbResult.status === 'ok' && wsInfo.status === 'ok'
-    && externalChecks.status === 'ok' && ingestionStatus === 'ok';
-  const hasError = dbResult.status === 'error' || ingestionStatus === 'error';
+    && externalChecks.status === 'ok' && ingestionStatus === 'ok'
+    && (streamStatus === 'ok' || streamStatus === 'skipped' || streamStatus === 'idle')
+    && (gridStatus === 'ok' || gridStatus === 'skipped');
+  const hasError = dbResult.status === 'error' || ingestionStatus === 'error'
+    || gridStatus === 'error';
 
   return {
     status: hasError ? 'unhealthy' : allOk ? 'healthy' : 'degraded',
@@ -51,7 +95,20 @@ export async function checkHealth(): Promise<HealthStatus> {
         status: ingestionStatus,
         consecutiveFailures: ingestion.consecutiveFailures,
         lastIngestedCount: ingestion.lastIngestedCount,
+        lastScanAt: ingestion.lastScanAt ?? undefined,
+        lastSuccessAt: ingestion.lastSuccessAt ?? undefined,
         lastError: ingestion.lastError ?? undefined,
+      },
+      priceStream: {
+        status: streamStatus,
+        connected: stream.connected,
+        subscriptionCount: stream.subscriptionCount,
+        lastMessageAt: stream.lastMessageAt ?? undefined,
+        lastError: stream.lastError ?? undefined,
+      },
+      grid: {
+        status: gridStatus,
+        configured: gridConfigured,
       },
       externalApis: externalChecks,
     },
@@ -87,6 +144,11 @@ async function checkExternalApis(): Promise<{ status: string; checks: Array<{ na
   // Check Polymarket Gamma API
   const gammaUrl = process.env.POLYMARKET_GAMMA_API_URL ?? 'https://gamma-api.polymarket.com';
   checks.push(await checkEndpoint('polymarket-gamma', `${gammaUrl}/markets?limit=1`));
+
+  // Check Polymarket CLOB API
+  const clobClient = new PolymarketClobClient();
+  const clobProbe = await clobClient.probeReachability();
+  checks.push({ name: 'polymarket-clob', status: clobProbe.ok ? 'ok' : 'error' });
 
   // Check Polygon RPC
   const polygonUrl = process.env.POLYGON_RPC_URL ?? 'https://polygon-rpc.com';

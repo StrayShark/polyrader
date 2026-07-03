@@ -1053,18 +1053,18 @@ Sidebar (260px)
 
 ### 12.1 设计风格
 
-**基于 shadcn/ui 设计规范，提供专业的数据分析界面。**
+**基于 Cursor 暖色设计规范，提供专业的数据分析界面。**
 
 - **布局**：Sidebar (240px) + Content Area + Status Bar (28px)，简洁三栏结构
 - **主题**：支持 Dark+ / Light+ / Matrix 三主题
-  - Dark+: 深黑背景 `#0A0A0A`，高对比度
-  - Light+: 纯白背景 `#FFFFFF`，清晰明亮
+  - Dark+: 暖棕黑背景 `#1a1916`，高对比度
+  - Light+: 暖白背景 `#f7f7f4`，清晰明亮
   - Matrix: 终端绿配色，极客风格
 - **字体**：Inter（正文）+ JetBrains Mono（数据/代码），等宽数字 tabular-nums
-- **按钮**：rounded-md (6px)，h-9 (36px) 默认高度，蓝色强调色 `#3B82F6`
-- **状态栏**：bg-muted 背景，muted-foreground 文字
+- **按钮**：rounded-md (6px)，h-10 (40px) 默认高度，Cursor Orange 主色 `#f54e00`
+- **状态栏**：bg-status-bar 背景，status-bar-foreground 文字
 - **间距**：8px 网格系统，内容区 padding 32px 40px
-- **卡片**：bg-card + border + rounded-lg，使用边框区分层次
+- **卡片**：bg-card + hairline border + rounded-lg，无阴影，使用边框区分层次
 - **表格**：行高 48px，表头 uppercase tracking-wider
 - **导航**：Sidebar 导航 + 页面标题
 

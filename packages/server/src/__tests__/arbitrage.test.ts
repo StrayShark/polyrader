@@ -17,6 +17,13 @@ vi.mock('@polyrader/infra', () => ({
     getTuningConfig: vi.fn(),
     updateTuningConfig: vi.fn(),
   })),
+  WalletFollowRepository: vi.fn().mockImplementation(() => ({
+    getFollowedMarketBias: vi.fn().mockReturnValue(undefined),
+  })),
+  ManifoldClient: vi.fn().mockImplementation(() => ({
+    searchMatchProbability: vi.fn().mockResolvedValue(undefined),
+  })),
+  HLTVCrawler: vi.fn(),
 }));
 
 vi.mock('../services/market-service', () => ({

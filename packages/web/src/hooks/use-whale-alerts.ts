@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useWebSocket } from './use-websocket';
 import { useToast } from '../components/ToastProvider';
+import { useNotificationStore } from '../stores/notification-store';
 
 interface WhaleTradeEvent {
   address: string;
@@ -22,6 +23,7 @@ const WHALE_THRESHOLD = 10000; // $10K+ trades are "whale" trades
 export function useWhaleAlerts() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
+  const addNotification = useNotificationStore((s) => s.add);
 
   useEffect(() => {
     const unsub = subscribe('whale-trades', (data: unknown) => {
@@ -36,12 +38,18 @@ export function useWhaleAlerts() {
         ? trade.marketQuestion.slice(0, 50) + '…'
         : trade.marketQuestion;
 
-      addToast(
-        trade.side === 'buy' ? 'success' : 'warning',
-        `🐋 ${sizeFormatted} — ${shortAddr} ${direction} ${outcome}: ${shortQuestion}`,
-      );
+      const severity = trade.side === 'buy' ? 'success' : 'warning';
+      const message = `🐋 ${sizeFormatted} — ${shortAddr} ${direction} ${outcome}: ${shortQuestion}`;
+
+      addToast(severity, message);
+      addNotification({
+        kind: 'whale',
+        severity,
+        message,
+        href: `#/whales/${trade.address}`,
+      });
     });
 
     return unsub;
-  }, [subscribe, addToast]);
+  }, [subscribe, addToast, addNotification]);
 }

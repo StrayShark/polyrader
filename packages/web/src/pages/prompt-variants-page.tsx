@@ -89,6 +89,7 @@ export function PromptVariantsPage() {
   const [variantBId, setVariantBId] = useState('');
   const [compareData, setCompareData] = useState<ABCompareData | null>(null);
   const [isComparing, setIsComparing] = useState(false);
+  const [isApplyingRecommendation, setIsApplyingRecommendation] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -179,6 +180,25 @@ export function PromptVariantsPage() {
       setCompareData(null);
     } finally {
       setIsComparing(false);
+    }
+  };
+
+  const handleApplyRecommendation = async () => {
+    if (!variantAId || !variantBId || variantAId === variantBId) return;
+    setIsApplyingRecommendation(true);
+    setCompareError(null);
+    try {
+      await api.post('/ai/prompts/ab/apply-recommendation', {
+        variantA: variantAId,
+        variantB: variantBId,
+        boostRatio: 0.15,
+      });
+      await fetchVariants();
+      await handleCompare();
+    } catch (err) {
+      setCompareError((err as Error).message);
+    } finally {
+      setIsApplyingRecommendation(false);
     }
   };
 
@@ -342,6 +362,20 @@ export function PromptVariantsPage() {
               disabled={isComparing || !variantAId || !variantBId || variantAId === variantBId}
             >
               {isComparing ? t('common.loading') : t('abCompare.compare')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleApplyRecommendation}
+              disabled={
+                isApplyingRecommendation
+                || !compareData
+                || !compareData.significance
+                || (compareData.significance.recommendation !== 'promote_variant_a'
+                  && compareData.significance.recommendation !== 'promote_variant_b')
+              }
+            >
+              {isApplyingRecommendation ? t('common.loading') : t('abCompare.applyRecommendation')}
             </Button>
           </div>
 

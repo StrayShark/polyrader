@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useWebSocket } from './use-websocket';
 import { useToast } from '../components/ToastProvider';
+import { useNotificationStore } from '../stores/notification-store';
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
 import { useI18n } from './use-i18n';
 import type { WalletCopySignal } from '@polyrader/core';
@@ -17,6 +18,7 @@ export function useCopySignalAlerts() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
   const { t } = useI18n();
+  const addNotification = useNotificationStore((s) => s.add);
   const { fetchSignals, fetchCopyTrades, fetchCopySummary } = useWalletFollowStore();
 
   useEffect(() => {
@@ -33,7 +35,14 @@ export function useCopySignalAlerts() {
         ? (signal.marketQuestion.length > 40 ? `${signal.marketQuestion.slice(0, 40)}…` : signal.marketQuestion)
         : signal.tokenId.slice(0, 10);
 
-      addToast('info', t('whales.copySignalToast', { address: shortAddr, amount, market: question }));
+      const message = t('whales.copySignalToast', { address: shortAddr, amount, market: question });
+      addToast('info', message);
+      addNotification({
+        kind: 'copy-signal',
+        severity: 'info',
+        message,
+        href: `#/whales/${signal.leaderAddress}`,
+      });
     });
-  }, [subscribe, addToast, t, fetchSignals, fetchCopyTrades, fetchCopySummary]);
+  }, [subscribe, addToast, t, addNotification, fetchSignals, fetchCopyTrades, fetchCopySummary]);
 }

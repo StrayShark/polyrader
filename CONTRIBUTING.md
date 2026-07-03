@@ -23,10 +23,16 @@ npm install
 # 3. 复制环境变量模板
 cp .env.example .env
 
-# 4. 启动 Web 开发模式（浏览器）
+# 4. 同步全局环境变量（可选）
+npm run sync:env
+
+# 5. 启动 Web 开发模式（浏览器，需后端时见 dev:all）
 npm run dev:web
 
-# 5. 启动 Tauri 桌面开发模式
+# 6. 启动 Web + API 全栈开发
+npm run dev:all
+
+# 7. 启动 Tauri 桌面开发模式
 npm run tauri:dev
 ```
 
@@ -46,13 +52,13 @@ polyrader_cs2/
 │   │   ├── src/database/   # SQLite + 迁移 + Repository
 │   │   └── src/crawlers/   # HLTV 爬虫
 │   ├── server/         # Express 服务端（Sidecar 模式）
-│   │   ├── src/controllers/ # 7 个控制器
-│   │   ├── src/services/    # 8 个业务服务
+│   │   ├── src/controllers/ # REST 控制器（市场、信号、AI、跟单等）
+│   │   ├── src/services/    # 业务服务（含实盘下单、巨鲸采集、信号回测）
 │   │   ├── src/routes.ts    # API 路由注册
-│   │   └── src/websocket/   # WebSocket 实时推送
+│   │   └── src/websocket/   # WebSocket 实时推送（价格、跟单信号）
 │   └── web/            # React + Vite 前端
 │       ├── src/components/  # UI 组件 + shadcn/ui
-│       ├── src/pages/       # 10 个页面
+│       ├── src/pages/       # 12+ 页面路由
 │       ├── src/hooks/       # WebSocket / 快捷键 / 巨鲸告警
 │       ├── src/stores/      # Zustand 状态管理
 │       └── src/styles/      # 3 主题 CSS 变量
@@ -66,7 +72,8 @@ polyrader_cs2/
 
 ```bash
 # 开发
-npm run dev:web          # 仅 Web（浏览器 localhost:5173）
+npm run dev:web          # 仅 Web（浏览器 localhost:5173，Vite 代理 /api → :3001）
+npm run dev:all          # 并行启动 server + web（推荐全栈开发）
 npm run tauri:dev        # Tauri 桌面应用
 
 # 构建
@@ -76,7 +83,10 @@ npm run tauri:build      # 构建桌面安装包（dmg/msi/AppImage）
 # 测试
 npm run test             # 运行所有包的测试
 npm run test --workspace=packages/core    # 仅 Core 测试
-npm run test:e2e         # Playwright 浏览器 E2E（含截图回归）
+npm run test:e2e         # Playwright 浏览器 E2E（Mock API，含截图回归）
+npm run test:e2e:integration  # 全栈 E2E（真实 server + SQLite）
+npm run sync:env         # 从 ~/global_env 同步 Polymarket 等配置
+npm run dev:all          # 并行启动 server + web
 
 # E2E 截图 baseline（首次或 UI 有意变更后）
 cd packages/web && npx playwright install chromium
@@ -93,11 +103,18 @@ npm run lint             # ESLint 检查
 ### Playwright E2E
 
 - 测试目录：`packages/web/e2e-browser/`
+- 配置：`packages/web/playwright.config.ts`（Vite **5174**，避免与手动 `dev:web` 的 5173 冲突）
 - 共享 fixtures：`fixtures/api-mocks.ts`、`fixtures/theme.ts`、`fixtures/routes.ts`
 - 功能审计报告：`docs/report/e2e-prd-audit.html`
 - 视觉审计报告：`docs/report/e2e-design-audit.html`
 - 截图 baseline：`packages/web/e2e-browser/__snapshots__/visual-regression.spec.ts/`（13 路由 × 3 主题 = 39 张）
-- CI 在 `test` job 中运行全量 E2E；**有意 UI 变更后须更新 baseline 并一并提交**
+- CI 在 `test` job 中运行全量 E2E 与 Integration E2E；**有意 UI 变更后须更新 baseline 并一并提交**
+
+### Integration E2E（全栈）
+
+- 配置：`packages/web/playwright.integration.config.ts`
+- 测试目录：`packages/web/e2e-integration/`
+- 自动启动 `@polyrader/server`（`POLYRADER_SKIP_CRON=1`）+ Vite，走真实 SQLite 与 REST API
 
 ## 代码规范
 
@@ -152,20 +169,21 @@ npm run lint             # ESLint 检查
 
 ```md
 验证：
-- npm --workspace @polyrader/core run typecheck
-- npm --workspace @polyrader/server run typecheck
-- npm --workspace @polyrader/web run typecheck
+- npm run typecheck
+- npm run lint
+- npm --workspace @polyrader/web test
 - npm --workspace @polyrader/server test -- polymarket-account-service.test.ts
-- curl http://localhost:5173/api/polymarket/account
+- npm --workspace @polyrader/web run test:e2e -- polymarket-account.spec.ts
+- POLYMARKET_ACCOUNT_E2E=1 npm --workspace @polyrader/web run test:e2e:account
 
 风险：
-- 当前 .env 已配置 POLYMARKET_ADDRESS，账户状态可识别为 canReadPrivate=true。
-- 本地到 data-api.polymarket.com 超时，到 gamma-api.polymarket.com / clob.polymarket.com 被连接重置，账户数据源当前返回 fetch failed。
-- CLOB 私有接口签名逻辑需要在 Polymarket 域名网络可达后做一次真实余额、挂单和成交联调确认。
+- 当前只读账户连接、公开历史交易统计、胜率统计和资产曲线已通过真实 E2E。
+- CLOB 私有余额、挂单和私有成交接口仍可能返回 401/405；页面会降级显示公开账户数据和 diagnostics。
+- 本阶段明确不启用真实成交/下单功能，账户页保持只读。
 
 后续：
-- 在可访问 Polymarket 域名的网络或代理环境中复测余额、持仓、交易历史和挂单。
-- 如目标部署环境需要代理，增加 POLYMARKET_HTTP_PROXY / HTTPS_PROXY 配置说明和运行时诊断。
+- 核对 Polymarket CLOB 私有 GET 端点签名/路径，恢复余额、挂单和私有成交读取。
+- 为资产曲线补充更精确的资金流水来源，降低基于 closed positions 回推的估算误差。
 ```
 
 ### 开发完成后的下一步

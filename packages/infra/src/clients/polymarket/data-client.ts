@@ -5,6 +5,7 @@ import type {
   PolymarketUserPosition,
   PolymarketUserTrade,
 } from '@polyrader/core';
+import { fetchJsonWithBrowser } from '../../crawlers/browser-fetch.js';
 
 const DATA_API_URL = process.env.POLYMARKET_DATA_API_URL ?? 'https://data-api.polymarket.com';
 
@@ -17,6 +18,11 @@ async function fetchJson<T>(url: string, timeoutMs = 15000): Promise<T> {
       throw new Error(`Polymarket Data API error: ${response.status} ${response.statusText}`);
     }
     return response.json() as Promise<T>;
+  } catch (err) {
+    if (process.env.POLYMARKET_DISABLE_BROWSER_FETCH === '1') {
+      throw err;
+    }
+    return fetchJsonWithBrowser<T>(url);
   } finally {
     clearTimeout(timer);
   }

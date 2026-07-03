@@ -83,6 +83,7 @@ export function SignalsPage() {
   const [configDraft, setConfigDraft] = useState<SignalTuningConfig | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [isApplyingWeights, setIsApplyingWeights] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSignal, setSelectedSignal] = useState<SignalComparison | null>(null);
 
@@ -121,9 +122,26 @@ export function SignalsPage() {
       setBacktest(backtestRes.data ?? null);
     } catch (err) {
       setError((err as Error).message);
-    } finally {
-      setIsSavingConfig(false);
     }
+    setIsSavingConfig(false);
+  };
+
+  const applySuggestedWeights = async () => {
+    setIsApplyingWeights(true);
+    setError(null);
+    try {
+      const res = await api.post<{ data: { applied: Record<string, number>; config: SignalTuningConfig } }>(
+        '/signals/config/apply-suggestions',
+        { minSampleSize: 10, maxStepRatio: 0.5 },
+      );
+      setTuningConfig(res.data.config);
+      setConfigDraft(res.data.config);
+      const backtestRes = await api.get<{ data: SignalBacktestSummary }>('/signals/backtest?limit=1000');
+      setBacktest(backtestRes.data ?? null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+    setIsApplyingWeights(false);
   };
 
   const updateSourceWeight = (key: keyof SignalTuningConfig['sourceWeights'], value: string) => {
@@ -295,10 +313,16 @@ export function SignalsPage() {
                       <span className="text-xs text-muted-foreground">{new Date(tuningConfig.updatedAt).toLocaleString()}</span>
                     )}
                   </div>
-                  <Button size="sm" onClick={saveTuningConfig} disabled={isSavingConfig}>
-                    <Save className="h-3.5 w-3.5" />
-                    {t('common.save')}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={applySuggestedWeights} disabled={isApplyingWeights}>
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      {t('signals.applySuggestedWeights')}
+                    </Button>
+                    <Button onClick={saveTuningConfig} disabled={isSavingConfig}>
+                      <Save className="h-3.5 w-3.5" />
+                      {t('common.save')}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-3">
@@ -736,6 +760,8 @@ function formatSourceLabel(source?: string): string {
     prediction_model: 'Model',
     market_behavior: 'Behavior',
     ai_debate: 'AI Debate',
+    smart_wallet: 'Smart Wallet',
+    community: 'Community',
     final: 'Final',
   };
   return labels[source] ?? source;

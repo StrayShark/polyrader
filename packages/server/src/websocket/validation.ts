@@ -35,6 +35,7 @@ export const ALLOWED_CHANNELS = new Set([
   'arbitrage',
   'simulation',
   'tasks',
+  'copy-signals',
 ]);
 
 export function isAllowedChannel(channel: string): boolean {
@@ -44,6 +45,7 @@ export function isAllowedChannel(channel: string): boolean {
   if (channel.startsWith('match:')) return true;
   if (channel.startsWith('team:')) return true;
   if (channel.startsWith('prices:')) return true;
+  if (channel.startsWith('copy-')) return true;
   return false;
 }
 

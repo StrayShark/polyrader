@@ -33,7 +33,7 @@ struct AppConfig {
     first_run_completed: bool,
 }
 
-fn default_version() -> String { "0.2.0".into() }
+fn default_version() -> String { "0.3.0".into() }
 fn default_theme() -> String { "dark".into() }
 fn default_language() -> String { "zh-CN".into() }
 
@@ -95,6 +95,44 @@ fn generate_encryption_key() -> String {
     let mut key = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut key);
     STANDARD.encode(key)
+}
+
+fn load_sidecar_env_vars() -> Vec<(String, String)> {
+    let mut vars = Vec::new();
+    let Some(home) = dirs::home_dir() else {
+        return vars;
+    };
+    let env_path = home.join("global_env").join(".env");
+    let Ok(content) = fs::read_to_string(env_path) else {
+        return vars;
+    };
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.starts_with("POLYMARKET_") || key == "GRID_API_KEY" || key.starts_with("GRID_") {
+            let cleaned = value.trim().trim_matches('"').trim_matches('\'').to_string();
+            if !cleaned.is_empty() {
+                vars.push((key.to_string(), cleaned));
+            }
+        }
+    }
+
+    vars
+}
+
+fn sidecar_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "polyrader-server.exe"
+    } else {
+        "polyrader-server"
+    }
 }
 
 // ── IPC Commands ───────────────────────────────────────────────
@@ -217,7 +255,7 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
             .path()
             .resource_dir()
             .map_err(|e| format!("Failed to get resource dir: {}", e))?
-            .join("polyrader-server");
+            .join(sidecar_binary_name());
 
         if !resource_path.exists() {
             return Err(format!(
@@ -234,8 +272,13 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
     cmd.arg(format!("--port={}", port))
         .env("POLYRADER_DATA_DIR", &data_dir)
         .env("POLYRADER_ENCRYPTION_KEY", &encryption_key)
-        .env("NODE_ENV", if cfg!(debug_assertions) { "development" } else { "production" })
-        .stdout(Stdio::piped())
+        .env("NODE_ENV", if cfg!(debug_assertions) { "development" } else { "production" });
+
+    for (key, value) in load_sidecar_env_vars() {
+        cmd.env(key, value);
+    }
+
+    cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
@@ -250,8 +293,7 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
                 match line {
                     Ok(l) => {
                         log::info!("[sidecar] {}", l);
-                        // Parse JSON log to detect server-ready
-                        if l.contains("Server running") {
+                        if l.contains("Server running") || l.contains("Server started") {
                             app_handle.emit("sidecar-ready", port).ok();
                         }
                     }

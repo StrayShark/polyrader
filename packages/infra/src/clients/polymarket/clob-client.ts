@@ -52,14 +52,24 @@ export class PolymarketClobClient {
     const credentials = this.requireCredentials();
     const bodyText = body === undefined ? '' : JSON.stringify(body);
     const headers = this.createAuthHeaders(method, path, bodyText, credentials);
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-      body: body === undefined ? undefined : bodyText,
-    });
+    const url = `${this.baseUrl}${path}`;
+    const requestHeaders = {
+      ...headers,
+      'Content-Type': 'application/json',
+    };
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: requestHeaders,
+        body: body === undefined ? undefined : bodyText,
+      });
+    } catch (err) {
+      if (method === 'GET' && process.env.POLYMARKET_DISABLE_BROWSER_FETCH !== '1') {
+        return fetchJsonWithBrowser<T>(url, { headers: requestHeaders });
+      }
+      throw err;
+    }
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       throw new Error(`CLOB authenticated API error: ${response.status} ${response.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
@@ -91,6 +101,20 @@ export class PolymarketClobClient {
           ? 'Polymarket address is not configured'
           : undefined,
     };
+  }
+
+  async probeReachability(tokenId?: string): Promise<{ ok: boolean; message?: string }> {
+    try {
+      const probeToken = tokenId ?? process.env.POLYMARKET_PROBE_TOKEN_ID;
+      if (probeToken) {
+        await this.getMidpoint(probeToken);
+      } else {
+        await this.fetch<{ server_time?: number }>('/time');
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
   }
 
   /**
@@ -155,6 +179,10 @@ export class PolymarketClobClient {
       allowance: optionalNumber(data.allowance),
       raw: data,
     };
+  }
+
+  async cancelOrder(orderId: string): Promise<void> {
+    await this.fetchAuthenticated('DELETE', '/order', { orderID: orderId });
   }
 
   private requireCredentials(): Required<PolymarketClobCredentials> {

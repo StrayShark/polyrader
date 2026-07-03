@@ -15,6 +15,7 @@ data/
 *.db
 *.db-journal
 *.db-wal
+data/e2e-integration-test.db
 
 # Tauri
 src-tauri/target/

@@ -80,7 +80,7 @@ export const followWalletBodySchema = z.object({
 
 export const walletCopyConfigBodySchema = z.object({
   enabled: z.boolean().optional(),
-  mode: z.enum(['paper']).optional(),
+  mode: z.enum(['paper', 'live']).optional(),
   copyRatio: z.coerce.number().min(0.01).max(1).optional(),
   maxOrderUsd: z.coerce.number().min(1).max(100_000).optional(),
   minLeaderTradeUsd: z.coerce.number().min(0).max(1_000_000).optional(),
@@ -185,6 +185,18 @@ export const placeBetBodySchema = z.object({
   reasoning: z.string().optional(),
 });
 
+export const placeMarketOrderBodySchema = z.object({
+  slug: z.string().min(1),
+  side: z.enum(['buy', 'sell']).default('buy'),
+  team: z.enum(['team_a', 'team_b']),
+  amountUsd: z.number().min(1).max(10000),
+  price: z.number().min(0.01).max(0.99).optional(),
+});
+
+export const cancelMarketOrderParamsSchema = z.object({
+  orderId: z.string().min(1),
+});
+
 export const settleBetSchema = z.object({
   result: z.enum(['won', 'lost']),
   profitLoss: z.number().optional(),
@@ -250,6 +262,17 @@ export const variantParamsSchema = z.object({
 export const abCompareQuerySchema = z.object({
   variantA: z.string().min(1),
   variantB: z.string().min(1),
+});
+
+export const abApplyRecommendationSchema = z.object({
+  variantA: z.string().min(1),
+  variantB: z.string().min(1),
+  boostRatio: z.number().min(0.01).max(0.5).optional(),
+});
+
+export const applySignalWeightsSchema = z.object({
+  minSampleSize: z.number().int().min(1).max(1000).optional(),
+  maxStepRatio: z.number().min(0.05).max(1).optional(),
 });
 
 // ============================================================

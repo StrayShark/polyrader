@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-25T09:49:05.285Z",
+  "generatedAt": "2026-06-26T12:20:01.216Z",
   "entries": [
     {
       "page": "global",
@@ -94,13 +94,6 @@
     },
     {
       "page": "dashboard",
-      "module": "primary-button-height",
-      "theme": "light",
-      "status": "partial",
-      "note": "26px"
-    },
-    {
-      "page": "dashboard",
       "module": "body-font-inter",
       "theme": "light",
       "status": "pass",
@@ -117,8 +110,8 @@
       "page": "signals",
       "module": "primary-button-height",
       "theme": "light",
-      "status": "partial",
-      "note": "26px"
+      "status": "pass",
+      "note": "40px"
     },
     {
       "page": "signals",
@@ -133,13 +126,6 @@
       "theme": "light",
       "status": "pass",
       "note": "none"
-    },
-    {
-      "page": "ai-config",
-      "module": "primary-button-height",
-      "theme": "light",
-      "status": "partial",
-      "note": "26px"
     },
     {
       "page": "ai-config",
@@ -157,13 +143,6 @@
     },
     {
       "page": "dashboard",
-      "module": "primary-button-height",
-      "theme": "dark",
-      "status": "partial",
-      "note": "26px"
-    },
-    {
-      "page": "dashboard",
       "module": "body-font-inter",
       "theme": "dark",
       "status": "pass",
@@ -180,8 +159,8 @@
       "page": "signals",
       "module": "primary-button-height",
       "theme": "dark",
-      "status": "partial",
-      "note": "26px"
+      "status": "pass",
+      "note": "40px"
     },
     {
       "page": "signals",
@@ -196,13 +175,6 @@
       "theme": "dark",
       "status": "pass",
       "note": "none"
-    },
-    {
-      "page": "ai-config",
-      "module": "primary-button-height",
-      "theme": "dark",
-      "status": "partial",
-      "note": "26px"
     },
     {
       "page": "ai-config",
@@ -220,13 +192,6 @@
     },
     {
       "page": "dashboard",
-      "module": "primary-button-height",
-      "theme": "matrix",
-      "status": "partial",
-      "note": "26px"
-    },
-    {
-      "page": "dashboard",
       "module": "body-font-inter",
       "theme": "matrix",
       "status": "pass",
@@ -243,8 +208,8 @@
       "page": "signals",
       "module": "primary-button-height",
       "theme": "matrix",
-      "status": "partial",
-      "note": "26px"
+      "status": "pass",
+      "note": "40px"
     },
     {
       "page": "signals",
@@ -259,13 +224,6 @@
       "theme": "matrix",
       "status": "pass",
       "note": "none"
-    },
-    {
-      "page": "ai-config",
-      "module": "primary-button-height",
-      "theme": "matrix",
-      "status": "partial",
-      "note": "26px"
     },
     {
       "page": "ai-config",

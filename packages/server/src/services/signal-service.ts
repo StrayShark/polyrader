@@ -18,10 +18,11 @@ import {
   SignalBacktestEngine,
   PredictionEngine,
   mergeSignalTuningConfig,
+  buildSignalWeightUpdates,
 } from '@polyrader/core';
 import type { PricePoint } from '@polyrader/core';
 import type { OrderBookSummary, HLTVCrawler } from '@polyrader/infra';
-import { cacheDelete, cacheGet, cacheKeys, cacheSet, HLTVCrawler as HLTVCrawlerClass, LLMRepository, SignalRepository, WalletFollowRepository } from '@polyrader/infra';
+import { cacheDelete, cacheGet, cacheKeys, cacheSet, HLTVCrawler as HLTVCrawlerClass, LLMRepository, ManifoldClient, SignalRepository, WalletFollowRepository } from '@polyrader/infra';
 import { MarketService } from './market-service';
 import { WhaleService } from './whale-service';
 import { buildMatchInfo, buildFallbackMatchInfo, loadTeamFromDb, buildFallbackTeam } from './match-helpers';
@@ -52,6 +53,7 @@ export class SignalService {
   private signalRepo = new SignalRepository();
   private walletFollowRepo = new WalletFollowRepository();
   private hltvCrawler: HLTVCrawler = new HLTVCrawlerClass();
+  private manifoldClient = new ManifoldClient();
 
   async getSignals(marketId: string): Promise<SignalComparison | null> {
     const cacheKey = `signals:${marketId}`;
@@ -116,6 +118,15 @@ export class SignalService {
       }
 
       const extraSignals = this.buildExtraSignals(marketBehavior, aiDebate);
+      const communitySignal = await this.buildCommunitySignal(
+        market.question,
+        teamAName,
+        teamBName,
+        hltvCommunityProb,
+      );
+      if (communitySignal) {
+        extraSignals.push(communitySignal);
+      }
       const smartWallet = this.buildSmartWalletSignal(market.conditionId);
       if (smartWallet) {
         extraSignals.push(smartWallet);
@@ -176,6 +187,21 @@ export class SignalService {
     return this.signalRepo.findRecent(limit);
   }
 
+  /** Refresh signals for active markets and persist snapshots (for backtest). */
+  async refreshActiveSignalSnapshots(limit = 15): Promise<{ refreshed: number }> {
+    let refreshed = 0;
+    try {
+      const markets = await this.marketService.getMarkets(limit, 0);
+      for (const market of markets) {
+        const signal = await this.getSignals(market.conditionId);
+        if (signal) refreshed += 1;
+      }
+    } catch (err) {
+      logger.warn('Failed to refresh signal snapshots', { error: (err as Error).message });
+    }
+    return { refreshed };
+  }
+
   getSignalBacktest(limit = 1000, minEdge?: number): SignalBacktestSummary {
     const tuningConfig = this.getActiveTuningConfig();
     try {
@@ -194,6 +220,22 @@ export class SignalService {
     const updated = this.signalRepo.updateTuningConfig(config);
     void this.clearSignalCaches();
     return updated;
+  }
+
+  applySuggestedWeights(options?: { minSampleSize?: number; maxStepRatio?: number }): {
+    applied: Partial<SignalTuningConfig['sourceWeights']>;
+    config: SignalTuningConfig;
+  } {
+    const backtest = this.getSignalBacktest();
+    const updates = buildSignalWeightUpdates(backtest.metrics, options);
+    if (Object.keys(updates).length === 0) {
+      return { applied: {}, config: this.getTuningConfig() };
+    }
+    const config = this.updateTuningConfig({
+      sourceWeights: updates,
+      updatedAt: new Date().toISOString(),
+    });
+    return { applied: updates, config };
   }
 
   private getActiveTuningConfig(): SignalTuningConfig {
@@ -323,6 +365,48 @@ export class SignalService {
     }
 
     return signals;
+  }
+
+  private async buildCommunitySignal(
+    marketQuestion: string,
+    teamAName: string,
+    teamBName: string,
+    hltvCommunityProb?: number,
+  ): Promise<SignalSource | null> {
+    const providers: string[] = [];
+    const values: number[] = [];
+
+    if (hltvCommunityProb !== undefined) {
+      providers.push('hltv');
+      values.push(hltvCommunityProb);
+    }
+
+    try {
+      const searchTerm = teamAName && teamBName
+        ? `${teamAName} vs ${teamBName}`
+        : marketQuestion;
+      const manifoldProb = await this.manifoldClient.searchMatchProbability(searchTerm);
+      if (manifoldProb !== undefined) {
+        providers.push('manifold');
+        values.push(manifoldProb);
+      }
+    } catch (err) {
+      logger.warn('Failed to fetch Manifold community signal', { error: (err as Error).message });
+    }
+
+    if (values.length === 0) return null;
+
+    const probability = values.reduce((sum, value) => sum + value, 0) / values.length;
+    return {
+      source: 'community',
+      probability,
+      confidence: Math.min(0.75, 0.45 + values.length * 0.12),
+      lastUpdated: new Date().toISOString(),
+      details: {
+        providers: providers.join(','),
+        sampleCount: values.length,
+      },
+    };
   }
 
   private buildSmartWalletSignal(conditionId: string): SignalSource | null {

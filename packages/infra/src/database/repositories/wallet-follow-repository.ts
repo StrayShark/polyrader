@@ -308,6 +308,28 @@ export class WalletFollowRepository {
     );
   }
 
+  updateCopyTradeStatus(id: string, status: CopyTrade['status'], errorMessage?: string): void {
+    query(
+      `UPDATE copy_trades SET status = ?, error_message = COALESCE(?, error_message) WHERE id = ?`,
+      status,
+      errorMessage ?? null,
+      id,
+    );
+  }
+
+  listPendingLiveCopyTrades(limit = 50): CopyTrade[] {
+    const rows = query<Record<string, unknown>>(
+      `SELECT * FROM copy_trades
+       WHERE mode = 'live'
+         AND status = 'pending'
+         AND clob_order_id IS NOT NULL
+       ORDER BY created_at ASC
+       LIMIT ?`,
+      limit,
+    );
+    return rows.map(this.mapCopyTradeRow);
+  }
+
   getCopyTradeSummary(): { totalPnl: number; settled: number; wins: number; losses: number } {
     const row = queryOne<{ total_pnl: number; settled: number; wins: number; losses: number }>(
       `SELECT
@@ -353,7 +375,7 @@ export class WalletFollowRepository {
   private mapConfigRow(row: Record<string, unknown>): WalletCopyConfig {
     return {
       enabled: Boolean(row.enabled),
-      mode: row.mode === 'live' ? 'paper' : (row.mode as WalletCopyConfig['mode']),
+      mode: row.mode as WalletCopyConfig['mode'],
       copyRatio: Number(row.copy_ratio),
       maxOrderUsd: Number(row.max_order_usd),
       minLeaderTradeUsd: Number(row.min_leader_trade_usd),

@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import { MarketController } from './controllers/market-controller';
+import { MarketOrderController } from './controllers/market-order-controller';
 import { DailyController } from './controllers/daily-controller';
 import { WhaleController } from './controllers/whale-controller';
 import { WalletFollowController } from './controllers/wallet-follow-controller';
@@ -40,7 +41,10 @@ import {
   signalBacktestQuerySchema,
   signalSnapshotQuerySchema,
   signalTuningConfigBodySchema,
+  applySignalWeightsSchema,
   placeBetBodySchema,
+  placeMarketOrderBodySchema,
+  cancelMarketOrderParamsSchema,
   settleBetSchema,
   updateBankrollBodySchema,
   createAllocationBodySchema,
@@ -54,6 +58,7 @@ import {
 
 export function registerRoutes(app: Express): void {
   const marketCtrl = new MarketController();
+  const marketOrderCtrl = new MarketOrderController();
   const dailyCtrl = new DailyController();
   const whaleCtrl = new WhaleController();
   const walletFollowCtrl = new WalletFollowController();
@@ -74,6 +79,10 @@ export function registerRoutes(app: Express): void {
   // Markets
   app.get('/api/markets', validate(marketQuerySchema, 'query'), (req, res) => marketCtrl.getMarkets(req, res));
   app.get('/api/markets/anomalies', (req, res) => marketCtrl.getAnomalies(req, res));
+  app.get('/api/market-orders/status', (req, res) => marketOrderCtrl.getTradingStatus(req, res));
+  app.post('/api/market-orders', validate(placeMarketOrderBodySchema), (req, res) => marketOrderCtrl.placeOrder(req, res));
+  app.delete('/api/market-orders/:orderId', validate(cancelMarketOrderParamsSchema, 'params'), (req, res) => marketOrderCtrl.cancelOrder(req, res));
+  app.get('/api/markets/by-slug/:slug', (req, res) => marketCtrl.getMarketBySlug(req, res));
   app.get('/api/markets/:conditionId', validate(marketParamsSchema, 'params'), (req, res) => marketCtrl.getMarket(req, res));
   app.get('/api/markets/:conditionId/prices', validate(marketParamsSchema, 'params'), validate(priceHistoryQuerySchema, 'query'), (req, res) => marketCtrl.getPrices(req, res));
   app.get('/api/markets/:conditionId/orderbook', validate(marketParamsSchema, 'params'), (req, res) => marketCtrl.getOrderBook(req, res));
@@ -101,6 +110,7 @@ export function registerRoutes(app: Express): void {
   app.put('/api/whale-follow/config', validate(walletCopyConfigBodySchema), (req, res) => walletFollowCtrl.updateConfig(req, res));
   app.get('/api/whale-follow/signals', validate(walletFollowQuerySchema, 'query'), (req, res) => walletFollowCtrl.listSignals(req, res));
   app.get('/api/whale-follow/trades/summary', (req, res) => walletFollowCtrl.getCopyTradeSummary(req, res));
+  app.get('/api/whale-follow/trading-status', (req, res) => walletFollowCtrl.getTradingStatus(req, res));
   app.get('/api/whale-follow/trades', validate(walletFollowQuerySchema, 'query'), (req, res) => walletFollowCtrl.listCopyTrades(req, res));
   app.post('/api/whale-follow/signals/:signalId/execute', validate(walletFollowSignalParamsSchema, 'params'), (req, res) => walletFollowCtrl.executeSignal(req, res));
 
@@ -122,6 +132,7 @@ export function registerRoutes(app: Express): void {
   app.get('/api/signals/backtest', validate(signalBacktestQuerySchema, 'query'), (req, res) => signalCtrl.getSignalBacktest(req, res));
   app.get('/api/signals/config', (req, res) => signalCtrl.getSignalTuningConfig(req, res));
   app.put('/api/signals/config', validate(signalTuningConfigBodySchema, 'body'), (req, res) => signalCtrl.updateSignalTuningConfig(req, res));
+  app.post('/api/signals/config/apply-suggestions', validate(applySignalWeightsSchema, 'body'), (req, res) => signalCtrl.applySuggestedWeights(req, res));
   app.get('/api/signals/snapshots/recent', validate(signalSnapshotQuerySchema, 'query'), (req, res) => signalCtrl.getRecentSignalSnapshots(req, res));
   app.get('/api/signals/:marketId/snapshots', validate(signalParamsSchema, 'params'), validate(signalSnapshotQuerySchema, 'query'), (req, res) => signalCtrl.getSignalSnapshots(req, res));
   app.get('/api/signals/:marketId', validate(signalParamsSchema, 'params'), (req, res) => signalCtrl.getSignals(req, res));

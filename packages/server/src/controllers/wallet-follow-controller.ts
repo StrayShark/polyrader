@@ -104,6 +104,14 @@ export class WalletFollowController {
     }
   }
 
+  getTradingStatus(_req: Request, res: Response): void {
+    try {
+      res.json({ data: this.service.getTradingStatus() });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to get copy trading status' });
+    }
+  }
+
   async executeSignal(req: Request, res: Response): Promise<void> {
     try {
       const trade = await this.service.executeSignal(req.params.signalId);

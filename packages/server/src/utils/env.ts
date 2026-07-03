@@ -3,6 +3,7 @@
  * Validates all required env vars at startup and fails fast if critical ones are missing.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +27,16 @@ const OPTIONAL_VARS = [
   'POLYMARKET_API_KEY',
   'POLYMARKET_API_SECRET',
   'POLYMARKET_API_PASSPHRASE',
+  'POLYMARKET_PRIVATE_KEY',
+  'POLYMARKET_SIGNATURE_TYPE',
+  'POLYMARKET_LIVE_TRADING_ENABLED',
+  'POLYMARKET_PROBE_TOKEN_ID',
+  'MANIFOLD_API_URL',
+  'GRID_API_KEY',
+  'GRID_GRAPHQL_URL',
+  'GRID_STATE_URL',
+  'POLYRADER_AUTO_TUNE_SIGNALS',
+  'POLYRADER_AUTO_TUNE_PROMPTS',
   'POLYGON_RPC_URL',
   'OPENAI_BASE_URL',
   'ANTHROPIC_BASE_URL',
@@ -68,29 +79,46 @@ function parseEnvLine(line: string): [string, string] | null {
   return [key, value.replace(/\\n/g, '\n')];
 }
 
+function globalEnvCandidates(): string[] {
+  const home = homedir();
+  return [
+    resolve(home, 'global_env', '.env'),
+    resolve(home, 'globel_env', '.env'),
+  ];
+}
+
+function applyEnvFile(filePath: string, override: boolean): void {
+  if (!existsSync(filePath)) return;
+
+  const contents = readFileSync(filePath, 'utf8');
+  for (const line of contents.split(/\r?\n/)) {
+    const parsed = parseEnvLine(line);
+    if (!parsed) continue;
+
+    const [key, value] = parsed;
+    if (override) process.env[key] = value;
+    else process.env[key] ??= value;
+  }
+}
+
 function loadDotenvFiles(): void {
   if (dotenvLoaded) return;
   dotenvLoaded = true;
 
   const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
+  const globalFiles = globalEnvCandidates();
+  const projectFiles = [
     resolve(moduleDir, '../../../../.env'),
     resolve(moduleDir, '../../.env'),
     resolve(process.cwd(), '.env'),
     resolve(process.cwd(), '../../.env'),
   ];
 
-  for (const filePath of [...new Set(candidates)]) {
-    if (!existsSync(filePath)) continue;
-
-    const contents = readFileSync(filePath, 'utf8');
-    for (const line of contents.split(/\r?\n/)) {
-      const parsed = parseEnvLine(line);
-      if (!parsed) continue;
-
-      const [key, value] = parsed;
-      process.env[key] ??= value;
-    }
+  for (const filePath of [...new Set(globalFiles)]) {
+    applyEnvFile(filePath, false);
+  }
+  for (const filePath of [...new Set(projectFiles)]) {
+    applyEnvFile(filePath, true);
   }
 }
 

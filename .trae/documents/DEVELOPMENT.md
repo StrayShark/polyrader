@@ -1,5 +1,7 @@
 # PolyRader CS2 — 开发路线图
 
+> **当前实现说明（2026-06）**：产品已迁移为 **Tauri 桌面 + SQLite + LRU 内存缓存** 本地运行模式（见 Phase 11）。下文 Phase 0–10 中的 PostgreSQL / Redis / Docker Compose 描述为早期 Web 部署规划，仅作历史参考；日常开发请遵循根目录 `CONTRIBUTING.md` 与 `npm run dev:all`。
+
 ## 开发原则
 
 - **渐进交付**：每个 Phase 产出可运行、可验证的功能增量

@@ -9,6 +9,7 @@ interface WalletFollowState {
   signals: WalletCopySignal[];
   copyTrades: CopyTrade[];
   copySummary: { totalPnl: number; settled: number; wins: number; losses: number } | null;
+  tradingStatus: { liveEnabled: boolean; canPlaceOrders: boolean; message?: string } | null;
   isLoading: boolean;
   error: string | null;
   fetchFollowed: () => Promise<void>;
@@ -16,6 +17,7 @@ interface WalletFollowState {
   fetchSignals: () => Promise<void>;
   fetchCopyTrades: () => Promise<void>;
   fetchCopySummary: () => Promise<void>;
+  fetchTradingStatus: () => Promise<void>;
   follow: (address: string, options?: { autoCopyEnabled?: boolean }) => Promise<void>;
   unfollow: (address: string) => Promise<void>;
   updateFollow: (address: string, partial: Partial<Pick<FollowedWallet, 'minTradeUsd' | 'alertsEnabled' | 'autoCopyEnabled' | 'label'>>) => Promise<void>;
@@ -31,6 +33,7 @@ export const useWalletFollowStore = create<WalletFollowState>((set, get) => ({
   signals: [],
   copyTrades: [],
   copySummary: null,
+  tradingStatus: null,
   isLoading: false,
   error: null,
 
@@ -78,6 +81,17 @@ export const useWalletFollowStore = create<WalletFollowState>((set, get) => ({
       set({ copySummary: data });
     } catch (err) {
       set({ error: (err as Error).message });
+    }
+  },
+
+  fetchTradingStatus: async () => {
+    try {
+      const { data } = await api.get<{ data: { liveEnabled: boolean; canPlaceOrders: boolean; message?: string } }>(
+        '/whale-follow/trading-status',
+      );
+      set({ tradingStatus: data });
+    } catch (err) {
+      set({ tradingStatus: null });
     }
   },
 

@@ -31,6 +31,10 @@ export function MatchDetailPage() {
   const [orderBookData, setOrderBookData] = useState<{ bids: Array<{ price: number; size: number; side: 'bid' }>; asks: Array<{ price: number; size: number; side: 'ask' }> }>({ bids: [], asks: [] });
   const [timelineData, setTimelineData] = useState<TimelineSnapshot[]>([]);
   const [section, setSection] = useState('overview');
+  const [conditionId, setConditionId] = useState<string | null>(null);
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [canLiveTrade, setCanLiveTrade] = useState(false);
+  const [liveOrderMessage, setLiveOrderMessage] = useState<string | null>(null);
 
   // Fetch match data
   useEffect(() => {
@@ -41,6 +45,28 @@ export function MatchDetailPage() {
       .catch(() => setMatch(null))
       .finally(() => setMatchLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    if (!slug) return;
+    api.get<{ data: { conditionId: string; outcomePrices: string[] } }>(`/markets/by-slug/${slug}`)
+      .then(({ data }) => {
+        setConditionId(data.conditionId);
+        setLivePrice(parseFloat(data.outcomePrices[0] ?? '0.5'));
+      })
+      .catch(() => setConditionId(null));
+    api.get<{ data: { canPlaceOrders: boolean } }>('/market-orders/status')
+      .then(({ data }) => setCanLiveTrade(data.canPlaceOrders))
+      .catch(() => setCanLiveTrade(false));
+  }, [slug]);
+
+  useEffect(() => {
+    if (!conditionId) return;
+    const unsub = subscribe(`prices:${conditionId}`, (data: unknown) => {
+      const payload = data as { price?: number };
+      if (payload.price !== undefined) setLivePrice(payload.price);
+    });
+    return unsub;
+  }, [conditionId, subscribe]);
 
   // Fetch price data
   useEffect(() => {
@@ -107,9 +133,19 @@ export function MatchDetailPage() {
     setIsAnalyzing(false);
   };
 
-  const confirmBet = async (team: 'team_a' | 'team_b') => {
+  const confirmBet = async (team: 'team_a' | 'team_b', live = false) => {
     setDecision(team);
     try {
+      if (live && slug && canLiveTrade) {
+        await api.post('/market-orders', {
+          slug,
+          team,
+          side: 'buy',
+          amountUsd: betAmount,
+        });
+        setLiveOrderMessage(t('match.liveBetSuccess'));
+        return;
+      }
       await api.post('/ai/stats/bet', {
         matchId: slug,
         team: team === 'team_a' ? match?.teamA.name ?? 'Team A' : match?.teamB.name ?? 'Team B',
@@ -159,7 +195,12 @@ export function MatchDetailPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('match.analysis')}</h1>
-          <p className="text-sm text-muted-foreground">{match.eventName} · {match.format}</p>
+          <p className="text-sm text-muted-foreground">
+            {match.eventName} · {match.format}
+            {livePrice !== null && (
+              <span className="ml-2 tabular-nums">· {t('match.livePrice')} {(livePrice * 100).toFixed(1)}¢</span>
+            )}
+          </p>
         </div>
         <Button
           onClick={triggerAnalysis}
@@ -629,8 +670,10 @@ export function MatchDetailPage() {
         </TabsContent>
 
         <TabsContent value="decision" className="space-y-4 mt-0">
-      {/* User Decision */}
-      <ProductModeNotice mode="simulation" className="mb-0" />
+      <ProductModeNotice mode={canLiveTrade ? 'live-order' : 'simulation'} className="mb-0" />
+      {liveOrderMessage && (
+        <div className="rounded-md border border-green/30 bg-green/5 px-4 py-2 text-sm text-green">{liveOrderMessage}</div>
+      )}
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -668,6 +711,16 @@ export function MatchDetailPage() {
               <Button variant="outline" onClick={() => confirmBet('team_b')} disabled={!aggregation || isAnalyzing}>
                 {t('match.bet', { name: match.teamB.name })}
               </Button>
+              {canLiveTrade && (
+                <>
+                  <Button variant="default" onClick={() => confirmBet('team_a', true)} disabled={!aggregation || isAnalyzing}>
+                    {t('match.liveBet', { name: match.teamA.name })}
+                  </Button>
+                  <Button variant="outline" onClick={() => confirmBet('team_b', true)} disabled={!aggregation || isAnalyzing}>
+                    {t('match.liveBet', { name: match.teamB.name })}
+                  </Button>
+                </>
+              )}
               <Button variant="ghost" onClick={() => setDecision('skip')}>
                 {t('match.skip')}
               </Button>

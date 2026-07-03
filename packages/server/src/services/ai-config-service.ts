@@ -243,9 +243,15 @@ export class AiConfigService {
       teamB: teamBData ?? buildFallbackTeam(teamBId, teamBId, 10, 0.5),
     });
 
-    // Override system prompt if an A/B variant was selected
+    // Override prompts when an A/B variant was selected
     if (variant) {
       prompt.system = variant.systemPrompt;
+      if (variant.contextTemplate?.trim()) {
+        prompt.context = variant.contextTemplate;
+      }
+      if (variant.outputSchema?.trim()) {
+        prompt.outputSchema = variant.outputSchema;
+      }
     }
 
     // Run all LLMs in parallel with circuit breaker + timeout + fallback
@@ -417,9 +423,15 @@ export class AiConfigService {
       teamB: teamBData ?? buildFallbackTeam(teamBId, teamBId, 10, 0.5),
     });
 
-    // Override system prompt if an A/B variant was selected
+    // Override prompts when an A/B variant was selected
     if (variant) {
       prompt.system = variant.systemPrompt;
+      if (variant.contextTemplate?.trim()) {
+        prompt.context = variant.contextTemplate;
+      }
+      if (variant.outputSchema?.trim()) {
+        prompt.outputSchema = variant.outputSchema;
+      }
     }
 
     // Run all LLMs in parallel — call onProgress as each one resolves

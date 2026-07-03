@@ -209,9 +209,73 @@ export async function setupCommonMocks(page: Page): Promise<void> {
     return route.fulfill({ status: 200, contentType: 'application/octet-stream', body: '' });
   });
 
-  await page.route('**/api/whale-follow**', (route) => {
+  await page.route('**/api/market-orders**', (route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Live order mock not configured for this test' }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { liveEnabled: true, canPlaceOrders: false } }),
+    });
+  });
+
+  await page.route('**/api/markets/by-slug/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          conditionId: '0xcs2_1',
+          slug: 'spirit-vs-g2-bo3',
+          question: 'Counter-Strike: Spirit vs G2 (BO3)',
+          outcomePrices: ['0.65', '0.35'],
+          clobTokenIds: ['token1', 'token2'],
+        },
+      }),
+    }),
+  );
+
+  const followedWallets: Array<{
+    address: string;
+    autoCopyEnabled: boolean;
+    alertsEnabled: boolean;
+    followedAt: string;
+  }> = [];
+  const copyTrades: Array<Record<string, unknown>> = [];
+
+  await page.route('**/api/whale-follow**', async (route) => {
     const url = route.request().url();
+    const method = route.request().method();
+
     if (url.includes('/config')) {
+      if (method === 'PUT') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              enabled: false,
+              mode: 'paper',
+              copyRatio: 0.1,
+              maxOrderUsd: 200,
+              minLeaderTradeUsd: 500,
+              maxSlippage: 0.05,
+              cs2Only: true,
+              minLeaderWinRate: 0.55,
+              minLeaderSamples: 10,
+              dailyCapUsd: 2000,
+              minMarketVolumeShare: 0.02,
+              minMarketVolumeUsd: 5000,
+              requireUserConfirm: true,
+            },
+          }),
+        });
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -234,9 +298,33 @@ export async function setupCommonMocks(page: Page): Promise<void> {
         }),
       });
     }
-    if (url.includes('/signals')) {
+
+    const executeMatch = url.match(/\/signals\/([^/]+)\/execute/);
+    if (executeMatch && method === 'POST') {
+      const trade = {
+        id: 'trade-1',
+        signalId: executeMatch[1],
+        mode: 'paper',
+        tokenId: 'token1',
+        side: 'buy',
+        amount: 50,
+        price: 0.6,
+        status: 'filled',
+        marketQuestion: 'Spirit vs G2',
+        createdAt: '2026-06-25T10:00:00Z',
+      };
+      copyTrades.unshift(trade);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: trade }),
+      });
+    }
+
+    if (url.includes('/signals') && method === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
     }
+
     if (url.includes('/trades/summary')) {
       return route.fulfill({
         status: 200,
@@ -244,9 +332,53 @@ export async function setupCommonMocks(page: Page): Promise<void> {
         body: JSON.stringify({ data: { totalPnl: 42, settled: 3, wins: 2, losses: 1 } }),
       });
     }
-    if (url.includes('/trades')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+
+    if (url.includes('/trading-status')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { liveEnabled: true, canPlaceOrders: false, message: 'Not configured' } }),
+      });
     }
+
+    if (url.includes('/trades')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: copyTrades }),
+      });
+    }
+
+    const addressMatch = url.match(/\/whale-follow\/(0x[a-fA-F0-9]+)/);
+    if (addressMatch && method === 'DELETE') {
+      const addr = addressMatch[1].toLowerCase();
+      const idx = followedWallets.findIndex((w) => w.address.toLowerCase() === addr);
+      if (idx >= 0) followedWallets.splice(idx, 1);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true } }) });
+    }
+
+    if (addressMatch && method === 'PUT') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true } }) });
+    }
+
+    if (url.endsWith('/whale-follow') || url.match(/\/whale-follow\/?(\?|$)/)) {
+      if (method === 'POST') {
+        const body = route.request().postDataJSON() as { address: string; autoCopyEnabled?: boolean; alertsEnabled?: boolean };
+        followedWallets.push({
+          address: body.address,
+          autoCopyEnabled: body.autoCopyEnabled ?? false,
+          alertsEnabled: body.alertsEnabled ?? true,
+          followedAt: '2026-06-25T10:00:00Z',
+        });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ok: true } }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: followedWallets }),
+      });
+    }
+
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
 
@@ -438,9 +570,54 @@ export async function setupCommonMocks(page: Page): Promise<void> {
               cashPnl: 3,
             },
           ],
+          closedPositions: [
+            {
+              marketId: '0xcs2_closed_1',
+              question: 'Vitality vs Falcons',
+              outcome: 'Yes',
+              shares: 50,
+              value: 72,
+              initialValue: 50,
+              cashPnl: 22,
+              endDate: '2026-06-20T00:00:00Z',
+            },
+            {
+              marketId: '0xcs2_closed_2',
+              question: 'NAVI vs FaZe',
+              outcome: 'No',
+              shares: 40,
+              value: 22,
+              initialValue: 40,
+              cashPnl: -18,
+              endDate: '2026-06-22T00:00:00Z',
+            },
+          ],
           activity: [],
-          trades: [{ id: 't1', side: 'buy', outcome: 'Yes', price: 0.62, size: 50, value: 31, timestamp: '2026-06-25T09:00:00Z' }],
+          trades: [
+            { id: 't1', side: 'buy', outcome: 'Yes', price: 0.62, size: 50, value: 31, timestamp: '2026-06-25T09:00:00Z' },
+            { id: 't2', side: 'sell', outcome: 'No', price: 0.42, size: 20, value: 8.4, timestamp: '2026-06-25T10:00:00Z' },
+          ],
           openOrders: [{ id: 'o1', outcome: 'Yes', side: 'buy', price: 0.6, originalSize: 20, sizeMatched: 0, remainingSize: 20 }],
+          stats: {
+            tradeCount: 2,
+            buyCount: 1,
+            sellCount: 1,
+            tradedVolume: 39.4,
+            settledMarkets: 2,
+            winningMarkets: 1,
+            losingMarkets: 1,
+            winRate: 0.5,
+            realizedPnl: 4,
+            unrealizedPnl: 3,
+            totalPnl: 7,
+            roi: 0.0538,
+            averageTradeSize: 19.7,
+          },
+          equityCurve: [
+            { date: '2026-06-20', realizedPnl: 22, positionValue: 0, balance: 1222, equity: 1222 },
+            { date: '2026-06-22', realizedPnl: 4, positionValue: 0, balance: 1204, equity: 1204 },
+            { date: '2026-06-25', realizedPnl: 4, positionValue: 65, balance: 500, equity: 565 },
+          ],
           diagnostics: [
             { source: 'data-api', operation: 'positions', ok: true, checkedAt: '2026-06-25T10:00:00Z' },
             { source: 'clob-api', operation: 'orders', ok: true, checkedAt: '2026-06-25T10:00:00Z' },

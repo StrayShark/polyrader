@@ -41,17 +41,22 @@ async function getBrowser(): Promise<Browser> {
  * Lightweight version for JSON APIs: no anti-detection delays, reuses a
  * single browser instance, and parses the raw JSON response directly.
  */
-export async function fetchJsonWithBrowser<T>(url: string): Promise<T> {
+export interface BrowserFetchOptions {
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+export async function fetchJsonWithBrowser<T>(url: string, options: BrowserFetchOptions = {}): Promise<T> {
   const browser = await getBrowser();
   const context = await browser.newContext({
-    extraHTTPHeaders: { Accept: 'application/json' },
+    extraHTTPHeaders: { Accept: 'application/json', ...options.headers },
   });
   const page = await context.newPage();
 
   try {
     const response = await page.goto(url, {
       waitUntil: 'domcontentloaded',
-      timeout: 20000,
+      timeout: options.timeoutMs ?? 20000,
     });
 
     if (!response || !response.ok()) {

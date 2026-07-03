@@ -69,7 +69,7 @@ export function parsePolymarketMatch(question: string): ParsedPolymarketMatch | 
   const vsIdx = matchPart.indexOf(' vs ');
   if (vsIdx < 0) return null;
 
-  let teamAName = matchPart.substring(0, vsIdx).trim();
+  const teamAName = matchPart.substring(0, vsIdx).trim();
   let teamBName = matchPart.substring(vsIdx + 4).trim();
 
   // Remove format suffix from team B name: "Bebop (BO3)" → "Bebop"

@@ -78,7 +78,7 @@ test.describe('Cursor design audit', () => {
           record(route.name, 'card-no-shadow', theme, isShadowNone(shadow) ? 'pass' : 'fail', shadow);
         }
 
-        const primaryBtn = page.locator('button.bg-primary, button[class*="bg-primary"]').first();
+        const primaryBtn = page.locator('main button.bg-primary, main button[class*="bg-primary"]').first();
         if (await primaryBtn.count()) {
           const height = await primaryBtn.evaluate((el) => el.getBoundingClientRect().height);
           const min = themeExpectations(theme).primaryButtonMinHeight;

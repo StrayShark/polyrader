@@ -41,7 +41,7 @@ test.describe('P1 UI audit fixes', () => {
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
 
     const spinbuttons = page.getByRole('spinbutton');
-    await expect(spinbuttons).toHaveCount(4);
+    await expect(spinbuttons).toHaveCount(9);
     expect(await page.locator('input:not([class*="flex"])').count()).toBe(0);
   });
 

@@ -23,16 +23,15 @@ function getDbPath(): string {
   return path.join(process.cwd(), 'data', 'polyrader.db');
 }
 
-const DB_PATH = getDbPath();
-
 export function getDb(): Database.Database {
   if (!db) {
-    const dir = path.dirname(DB_PATH);
+    const dbPath = getDbPath();
+    const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    db = new Database(DB_PATH);
+    db = new Database(dbPath);
 
     // Performance pragmas
     db.pragma('journal_mode = WAL');
@@ -40,7 +39,7 @@ export function getDb(): Database.Database {
     db.pragma('foreign_keys = ON');
     db.pragma('busy_timeout = 5000');
 
-    console.log(`SQLite connected: ${DB_PATH}`);
+    console.log(`SQLite connected: ${dbPath}`);
   }
   return db;
 }

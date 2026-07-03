@@ -3,11 +3,13 @@ import { Badge } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
 import { cn } from '../utils/cn';
 
-export type ProductMode = 'simulation' | 'paper-copy' | 'read-only' | 'analysis-only';
+export type ProductMode = 'simulation' | 'paper-copy' | 'live-copy' | 'live-order' | 'read-only' | 'analysis-only';
 
-const MODE_META: Record<ProductMode, { icon: typeof FlaskConical; badge: 'yellow' | 'green' | 'default' }> = {
+const MODE_META: Record<ProductMode, { icon: typeof FlaskConical; badge: 'yellow' | 'green' | 'red' | 'default' }> = {
   simulation: { icon: FlaskConical, badge: 'yellow' },
   'paper-copy': { icon: Copy, badge: 'yellow' },
+  'live-copy': { icon: Copy, badge: 'red' },
+  'live-order': { icon: Copy, badge: 'red' },
   'read-only': { icon: Eye, badge: 'default' },
   'analysis-only': { icon: FileText, badge: 'default' },
 };

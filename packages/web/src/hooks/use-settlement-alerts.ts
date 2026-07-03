@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useWebSocket } from './use-websocket';
 import { useToast } from '../components/ToastProvider';
+import { useNotificationStore } from '../stores/notification-store';
 import { t } from '../utils/i18n';
 
 interface SettlementEvent {
@@ -17,6 +18,7 @@ interface SettlementEvent {
 export function useSettlementAlerts() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
+  const addNotification = useNotificationStore((s) => s.add);
 
   useEffect(() => {
     const unsub = subscribe('settlement', (data: unknown) => {
@@ -30,12 +32,13 @@ export function useSettlementAlerts() {
         ? ` | PnL: ${event.pnl >= 0 ? '+' : ''}$${event.pnl.toFixed(0)}`
         : '';
 
-      addToast(
-        event.pnl !== undefined && event.pnl >= 0 ? 'success' : 'info',
-        t('settlement.completed', { question: shortQuestion, outcome: event.outcome, pnl: pnlText }),
-      );
+      const severity = event.pnl !== undefined && event.pnl >= 0 ? 'success' : 'info';
+      const message = t('settlement.completed', { question: shortQuestion, outcome: event.outcome, pnl: pnlText });
+
+      addToast(severity, message);
+      addNotification({ kind: 'settlement', severity, message });
     });
 
     return unsub;
-  }, [subscribe, addToast]);
+  }, [subscribe, addToast, addNotification]);
 }

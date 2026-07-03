@@ -1,6 +1,6 @@
 {
   "name": "@polyrader/server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Application layer - Express API + WebSocket server",
   "type": "module",

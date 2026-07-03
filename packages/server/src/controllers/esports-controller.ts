@@ -45,6 +45,29 @@ export class EsportsController {
           ctx.log(`HLTV 失败: ${(err as Error).message}`, 'warn');
         }
 
+        try {
+          const gridUpcoming = await this.grid.getUpcomingSeries();
+          const existingIds = new Set(hltvMatches.map((m) => m.matchId));
+          for (const m of gridUpcoming) {
+            if (!m.teamAId || !m.teamBId || existingIds.has(m.seriesId)) continue;
+            hltvMatches.push({
+              matchId: m.seriesId,
+              teamAId: m.teamAId,
+              teamBId: m.teamBId,
+              teamAName: m.teamAName,
+              teamBName: m.teamBName,
+              event: m.eventName,
+              eventType: 'Online',
+              format: m.format,
+              date: m.date,
+            });
+            existingIds.add(m.seriesId);
+          }
+          ctx.log(`GRID: ${gridUpcoming.length} 场`);
+        } catch (err) {
+          ctx.log(`GRID 失败: ${(err as Error).message}`, 'warn');
+        }
+
         ctx.setProgress(40, '拉取 Polymarket 市场');
         const { MarketService } = await import('../services/market-service');
         const marketService = new MarketService();

@@ -16,7 +16,7 @@ import type { Team, HeadToHead } from '@polyrader/core';
 const GRID_CENTRAL_URL =
   process.env.GRID_GRAPHQL_URL || 'https://api-op.grid.gg/central-data/graphql';
 const GRID_STATE_URL =
-  'https://api-op.grid.gg/live-data-feed/series-state/graphql';
+  process.env.GRID_STATE_URL || 'https://api-op.grid.gg/live-data-feed/series-state/graphql';
 const GRID_API_KEY = process.env.GRID_API_KEY || '';
 
 /** CS:GO/CS2 title ID on GRID */

@@ -13,6 +13,7 @@ import {
   WhaleRepository,
   MarketRepository,
   PolymarketClobClient,
+  PolymarketOrderClient,
 } from '@polyrader/infra';
 import { broadcast } from '../websocket';
 import { logger } from '../utils/logger';
@@ -24,6 +25,7 @@ export class WalletFollowService {
   private engine = new CopySignalEngine();
   private settlementEngine = new CopyTradeSettlementEngine();
   private clobClient = new PolymarketClobClient();
+  private orderClient = new PolymarketOrderClient();
 
   listFollowed(): FollowedWallet[] {
     return this.repo.listFollowed();
@@ -62,11 +64,27 @@ export class WalletFollowService {
   }
 
   getConfig(): WalletCopyConfig {
-    return this.repo.getConfig();
+    const config = this.repo.getConfig();
+    if (config.mode === 'live' && !this.orderClient.canPlaceOrders()) {
+      return { ...config, mode: 'paper' };
+    }
+    return config;
+  }
+
+  getTradingStatus(): { liveEnabled: boolean; canPlaceOrders: boolean; message?: string } {
+    return {
+      liveEnabled: process.env.POLYMARKET_LIVE_TRADING_ENABLED !== 'false',
+      canPlaceOrders: this.orderClient.canPlaceOrders(),
+      message: this.orderClient.getInitError(),
+    };
   }
 
   updateConfig(partial: Partial<WalletCopyConfig>): WalletCopyConfig {
-    return this.repo.updateConfig({ ...partial, mode: 'paper' });
+    const nextMode = partial.mode ?? this.repo.getConfig().mode;
+    if (nextMode === 'live' && !this.orderClient.canPlaceOrders()) {
+      throw new Error(this.orderClient.getInitError() ?? 'Live copy trading is not configured');
+    }
+    return this.repo.updateConfig(partial);
   }
 
   listSignals(limit = 50, status?: WalletCopySignal['status']): WalletCopySignal[] {
@@ -225,7 +243,7 @@ export class WalletFollowService {
       throw new Error(signal.skipReason ?? 'Signal was skipped');
     }
 
-    const config = this.repo.getConfig();
+    const config = this.getConfig();
     const amount = signal.suggestedAmount ?? 0;
     if (amount <= 0) {
       this.repo.updateSignalStatus(signalId, 'failed', 'No suggested copy size');
@@ -252,22 +270,129 @@ export class WalletFollowService {
       throw new Error(executeRisk.reason);
     }
 
+    const useLive = config.mode === 'live' && this.orderClient.canPlaceOrders();
+    let clobOrderId: string | undefined;
+    let executionPrice = signal.leaderPrice;
+
+    if (useLive) {
+      await this.assertLiveTradingFunds(amount);
+      try {
+        const livePrice = await this.clobClient.getMidpoint(signal.tokenId);
+        if (Number.isFinite(livePrice) && livePrice > 0 && livePrice < 1) {
+          executionPrice = livePrice;
+        }
+        const size = Math.max(1, Math.floor(amount / executionPrice));
+        const order = await this.submitLiveOrderWithRetry({
+          tokenId: signal.tokenId,
+          price: executionPrice,
+          size,
+          side: signal.side,
+        });
+        clobOrderId = order.orderId;
+      } catch (err) {
+        const message = (err as Error).message;
+        this.repo.updateSignalStatus(signalId, 'failed', message);
+        throw new Error(message);
+      }
+    }
+
     const trade = this.repo.insertCopyTrade({
       signalId,
-      mode: 'paper',
+      mode: useLive ? 'live' : 'paper',
       tokenId: signal.tokenId,
       side: signal.side,
       amount,
-      price: signal.leaderPrice,
-      status: 'filled',
+      price: executionPrice,
+      status: useLive ? 'pending' : 'filled',
       executedAt: new Date().toISOString(),
       marketQuestion: signal.marketQuestion ?? market?.question,
       outcome: signal.outcome,
+      clobOrderId,
     });
 
     this.repo.updateSignalStatus(signalId, 'executed');
     broadcast('copy-signals', { type: 'copy-trade:executed', trade, signalId });
-    logger.info('[CopyTrade] Paper fill', { signalId, amount, tokenId: signal.tokenId });
+    logger.info(`[CopyTrade] ${useLive ? 'Live' : 'Paper'} fill`, { signalId, amount, tokenId: signal.tokenId, clobOrderId });
     return trade;
+  }
+
+  /**
+   * Poll CLOB open orders and advance pending live copy trades.
+   */
+  async syncLiveOrderStatuses(): Promise<{ updated: number }> {
+    if (!this.orderClient.canPlaceOrders()) {
+      return { updated: 0 };
+    }
+
+    const pending = this.repo.listPendingLiveCopyTrades();
+    if (pending.length === 0) {
+      return { updated: 0 };
+    }
+
+    let openOrders;
+    try {
+      openOrders = await this.clobClient.getOpenOrders();
+    } catch (err) {
+      logger.warn('[CopyTrade] Failed to poll open orders', { error: (err as Error).message });
+      return { updated: 0 };
+    }
+
+    const openById = new Map(openOrders.map((order) => [order.id, order]));
+    let updated = 0;
+
+    for (const trade of pending) {
+      if (!trade.clobOrderId) continue;
+      const open = openById.get(trade.clobOrderId);
+      if (!open) {
+        this.repo.updateCopyTradeStatus(trade.id, 'filled');
+        updated += 1;
+        continue;
+      }
+      if ((open.remainingSize ?? open.originalSize) <= 0 || open.status === 'matched') {
+        this.repo.updateCopyTradeStatus(trade.id, 'filled');
+        updated += 1;
+      }
+    }
+
+    if (updated > 0) {
+      broadcast('copy-signals', { type: 'copy-trades:synced', updated });
+    }
+
+    return { updated };
+  }
+
+  private async assertLiveTradingFunds(amountUsd: number): Promise<void> {
+    const balance = await this.clobClient.getBalanceAllowance();
+    const available = balance.balance ?? 0;
+    if (available < amountUsd) {
+      throw new Error(
+        `Insufficient USDC balance ($${available.toFixed(2)} available, $${amountUsd.toFixed(2)} required)`,
+      );
+    }
+    if (balance.allowance !== undefined && balance.allowance < amountUsd) {
+      throw new Error(
+        `Insufficient USDC allowance ($${balance.allowance.toFixed(2)} approved, $${amountUsd.toFixed(2)} required)`,
+      );
+    }
+  }
+
+  private async submitLiveOrderWithRetry(input: {
+    tokenId: string;
+    price: number;
+    size: number;
+    side: 'buy' | 'sell';
+  }): Promise<{ orderId?: string }> {
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await this.orderClient.createAndPostLimitOrder(input);
+      } catch (err) {
+        lastError = err as Error;
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+    }
+    throw lastError ?? new Error('Live order submission failed');
   }
 }

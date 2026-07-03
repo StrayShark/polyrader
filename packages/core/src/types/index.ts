@@ -615,14 +615,41 @@ export interface PolymarketAccountDiagnostic {
   checkedAt: string;
 }
 
+export interface PolymarketAccountStats {
+  tradeCount: number;
+  buyCount: number;
+  sellCount: number;
+  tradedVolume: number;
+  settledMarkets: number;
+  winningMarkets: number;
+  losingMarkets: number;
+  winRate: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  totalPnl: number;
+  roi: number;
+  averageTradeSize: number;
+}
+
+export interface PolymarketEquityPoint {
+  date: string;
+  realizedPnl: number;
+  positionValue: number;
+  balance: number;
+  equity: number;
+}
+
 export interface PolymarketAccountOverview {
   status: PolymarketAccountStatus;
   totalPositionValue: number;
   balances: PolymarketBalance[];
   positions: PolymarketUserPosition[];
+  closedPositions: PolymarketUserPosition[];
   activity: PolymarketUserActivity[];
   trades: PolymarketUserTrade[];
   openOrders: PolymarketOpenOrder[];
+  stats: PolymarketAccountStats;
+  equityCurve: PolymarketEquityPoint[];
   diagnostics: PolymarketAccountDiagnostic[];
   updatedAt: string;
 }
@@ -951,6 +978,7 @@ export type SignalBacktestSourceKind =
   | 'market_behavior'
   | 'ai_debate'
   | 'smart_wallet'
+  | 'community'
   | 'final';
 
 export interface SignalCalibrationBucket {

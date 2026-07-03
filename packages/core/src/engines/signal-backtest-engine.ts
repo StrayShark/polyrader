@@ -27,6 +27,7 @@ const BACKTEST_SOURCES: Array<{ source: SignalBacktestSourceKind; label: string 
   { source: 'market_behavior', label: 'Behavior' },
   { source: 'ai_debate', label: 'AI Debate' },
   { source: 'smart_wallet', label: 'Smart Wallet' },
+  { source: 'community', label: 'Community' },
   { source: 'final', label: 'Final Blend' },
 ];
 
@@ -197,6 +198,8 @@ export class SignalBacktestEngine {
         return snapshot.aiDebateProb ?? snapshot.aiDebate?.calibratedProbability;
       case 'smart_wallet':
         return snapshot.signals?.find((signal) => signal.source === 'smart_wallet')?.probability;
+      case 'community':
+        return snapshot.signals?.find((signal) => signal.source === 'community')?.probability;
       case 'final':
         return snapshot.finalProb;
       default:
@@ -299,6 +302,8 @@ export class SignalBacktestEngine {
         return tuningConfig.sourceWeights.ai_debate;
       case 'smart_wallet':
         return tuningConfig.sourceWeights.smart_wallet;
+      case 'community':
+        return tuningConfig.sourceWeights.community;
       case 'final':
         return undefined;
       default:

@@ -31,7 +31,7 @@ describe('SignalBacktestEngine', () => {
     ]);
 
     expect(result.sampleSize).toBe(2);
-    expect(result.metrics).toHaveLength(6);
+    expect(result.metrics).toHaveLength(7);
     expect(result.metrics.find((metric) => metric.source === 'prediction_model')?.brierScore).toBeCloseTo(0.09, 2);
     expect(result.metrics.find((metric) => metric.source === 'market')?.bets).toBe(0);
   });
@@ -90,5 +90,30 @@ describe('SignalBacktestEngine', () => {
     expect(smartWallet?.sampleSize).toBe(2);
     expect(smartWallet?.currentWeight).toBe(0.75);
     expect(smartWallet?.bets).toBeGreaterThan(0);
+  });
+
+  it('includes community source when snapshot has community signal', () => {
+    const result = engine.run([
+      makeSnapshot({
+        marketProb: 0.48,
+        signals: [
+          { source: 'community', probability: 0.62, confidence: 0.65, lastUpdated: '2026-01-01T00:00:00Z' },
+        ],
+        resolvedPrice: 1,
+      }),
+      makeSnapshot({
+        marketId: 'm2',
+        marketProb: 0.52,
+        signals: [
+          { source: 'community', probability: 0.38, confidence: 0.6, lastUpdated: '2026-01-02T00:00:00Z' },
+        ],
+        resolvedPrice: 0,
+      }),
+    ], { minEdge: 0.05 });
+
+    const community = result.metrics.find((metric) => metric.source === 'community');
+    expect(community?.sampleSize).toBe(2);
+    expect(community?.currentWeight).toBe(0.6);
+    expect(community?.bets).toBeGreaterThan(0);
   });
 });

@@ -59,6 +59,7 @@ test.describe('PRD module audit', () => {
     await expect(page.getByText('LLM 共识分析')).toBeVisible({ timeout: 10000 });
     record('match-detail', 'llm-consensus', await page.locator('main svg').count() > 1 ? 'pass' : 'partial');
 
+    await page.getByRole('tab', { name: '市场数据' }).click();
     record('match-detail', 'orderbook', await page.getByText('订单簿深度').first().isVisible() ? 'pass' : 'fail');
 
     await page.getByRole('tab', { name: '模拟决策' }).click();
@@ -78,7 +79,8 @@ test.describe('PRD module audit', () => {
     await page.goto('/#/esports');
     await waitForMainHeading(page);
     record('esports', 'page-render', 'pass');
-    record('esports', 'rankings', await page.getByText('Team Spirit').count() > 0 ? 'pass' : 'partial');
+    await expect(page.getByText('Team Spirit')).toBeVisible({ timeout: 5000 });
+    record('esports', 'rankings', 'pass');
     record('esports', 'schedule', await page.getByText('Spirit').count() > 0 ? 'pass' : 'partial');
   });
 

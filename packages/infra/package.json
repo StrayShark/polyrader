@@ -15,11 +15,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@polymarket/clob-client": "^5.8.1",
     "@polyrader/core": "*",
     "better-sqlite3": "^11.0.0",
     "cheerio": "^1.0.0",
     "lru-cache": "^11.5.1",
-    "playwright": "^1.61.0"
+    "playwright": "^1.61.0",
+    "viem": "^2.46.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",

@@ -22,6 +22,8 @@ export function CopyFollowPanel() {
     fetchSignals,
     fetchCopyTrades,
     fetchCopySummary,
+    tradingStatus,
+    fetchTradingStatus,
     unfollow,
     updateFollow,
     updateConfig,
@@ -29,8 +31,15 @@ export function CopyFollowPanel() {
   } = useWalletFollowStore();
 
   useEffect(() => {
-    void Promise.all([fetchFollowed(), fetchConfig(), fetchSignals(), fetchCopyTrades(), fetchCopySummary()]);
-  }, [fetchFollowed, fetchConfig, fetchSignals, fetchCopyTrades, fetchCopySummary]);
+    void Promise.all([
+      fetchFollowed(),
+      fetchConfig(),
+      fetchSignals(),
+      fetchCopyTrades(),
+      fetchCopySummary(),
+      fetchTradingStatus(),
+    ]);
+  }, [fetchFollowed, fetchConfig, fetchSignals, fetchCopyTrades, fetchCopySummary, fetchTradingStatus]);
 
   const refresh = () => {
     void Promise.all([fetchFollowed(), fetchSignals(), fetchCopyTrades(), fetchCopySummary()]);
@@ -38,7 +47,8 @@ export function CopyFollowPanel() {
 
   return (
     <div className="space-y-4">
-      <ProductModeNotice mode="paper-copy" />
+      <ProductModeNotice mode={config?.mode === 'live' ? 'live-copy' : 'paper-copy'} />
+      <p className="text-xs text-muted-foreground" role="note">{t('whales.sameBlockDisclaimer')}</p>
 
       <Card>
         <CardHeader className="border-b px-6 py-3">
@@ -62,7 +72,20 @@ export function CopyFollowPanel() {
               >
                 {config.requireUserConfirm ? t('whales.manualConfirm') : t('whales.autoCopyMode')}
               </Button>
-              <Badge variant="yellow">{t('whales.modePaper')}</Badge>
+              <Badge variant={config.mode === 'live' ? 'red' : 'yellow'}>
+                {config.mode === 'live' ? t('whales.modeLive') : t('whales.modePaper')}
+              </Badge>
+              {tradingStatus?.canPlaceOrders ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => updateConfig({ mode: config.mode === 'live' ? 'paper' : 'live' })}
+                >
+                  {config.mode === 'live' ? t('whales.switchToPaper') : t('whales.switchToLive')}
+                </Button>
+              ) : tradingStatus?.liveEnabled ? (
+                <span className="text-xs text-muted-foreground">{t('whales.liveNotConfigured')}</span>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <label className="space-y-1">
@@ -103,6 +126,55 @@ export function CopyFollowPanel() {
                   min="0"
                   defaultValue={config.minMarketVolumeUsd}
                   onBlur={(e) => updateConfig({ minMarketVolumeUsd: Number(e.target.value) })}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">{t('whales.minLeaderWinRate')}</span>
+                <Input
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                  defaultValue={config.minLeaderWinRate}
+                  onBlur={(e) => updateConfig({ minLeaderWinRate: Number(e.target.value) })}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">{t('whales.minLeaderSamples')}</span>
+                <Input
+                  type="number"
+                  min="0"
+                  defaultValue={config.minLeaderSamples}
+                  onBlur={(e) => updateConfig({ minLeaderSamples: Number(e.target.value) })}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">{t('whales.dailyCapUsd')}</span>
+                <Input
+                  type="number"
+                  min="1"
+                  defaultValue={config.dailyCapUsd}
+                  onBlur={(e) => updateConfig({ dailyCapUsd: Number(e.target.value) })}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">{t('whales.maxSlippage')}</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  defaultValue={config.maxSlippage}
+                  onBlur={(e) => updateConfig({ maxSlippage: Number(e.target.value) })}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">{t('whales.minLeaderTradeUsd')}</span>
+                <Input
+                  type="number"
+                  min="0"
+                  defaultValue={config.minLeaderTradeUsd}
+                  onBlur={(e) => updateConfig({ minLeaderTradeUsd: Number(e.target.value) })}
                 />
               </label>
             </div>

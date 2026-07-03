@@ -6,10 +6,11 @@ import { registerRoutes } from './routes';
 import { setupWebSocket } from './websocket';
 import { requestId, requestLogger, errorHandler, notFoundHandler, BODY_LIMIT } from './middleware';
 import { startCronJobs } from './cron';
+import { runMigrations } from '@polyrader/infra';
 import { checkHealth, setWsServer } from './health';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
-import { PolymarketStreamService } from './services/polymarket-stream-service';
+import { sharedPolymarketStream } from './services/polymarket-stream-service';
 
 // Validate environment at startup
 const envResult = validateEnv();
@@ -36,7 +37,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 const isSidecar = process.argv.some((arg) => arg.startsWith('--port='));
 
 const app = express();
-const polymarketStream = new PolymarketStreamService();
+const polymarketStream = sharedPolymarketStream;
 
 // ============================================================
 // Security (simplified for local desktop app)
@@ -107,7 +108,7 @@ registerRoutes(app);
 // Health check with dependency status
 app.get('/api/health', async (_req, res) => {
   const health = await checkHealth();
-  const statusCode = health.status === 'healthy' ? 200 : 503;
+  const statusCode = health.status === 'unhealthy' ? 503 : 200;
   res.status(statusCode).json(health);
 });
 
@@ -141,9 +142,18 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   });
 });
 
-// Cron jobs
-startCronJobs();
-void polymarketStream.start(20);
+// Database migrations + background jobs
+runMigrations();
+if (process.env.POLYRADER_SKIP_CRON !== '1') {
+  startCronJobs();
+} else {
+  logger.info('Cron jobs skipped (POLYRADER_SKIP_CRON=1)');
+}
+if (process.env.POLYRADER_SKIP_STREAM !== '1') {
+  void polymarketStream.start(20);
+} else {
+  logger.info('Polymarket stream skipped (POLYRADER_SKIP_STREAM=1)');
+}
 
 // ============================================================
 // Graceful shutdown

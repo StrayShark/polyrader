@@ -14,7 +14,7 @@ import { useWebSocket } from '../hooks/use-websocket';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, CardTitle, Badge, Button, Progress, Tabs, TabsList, TabsTrigger } from '@/components/ui';
 import type { AddressGraph as AddressGraphData } from '@polyrader/core';
-import { getAddressGraph } from '../utils/api';
+import { getAddressGraph, api } from '../utils/api';
 
 type PageTab = WhaleListMode | 'follow';
 
@@ -52,6 +52,26 @@ export function WhalesPage() {
   const [graph, setGraph] = useState<AddressGraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [ingestionHint, setIngestionHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api.get<{
+      dependencies?: {
+        whaleIngestion?: { status: string; lastScanAt?: string; lastIngestedCount?: number };
+      };
+    }>('/health').then((body) => {
+      const whale = body.dependencies?.whaleIngestion;
+      if (!whale?.lastScanAt) return;
+      const when = new Date(whale.lastScanAt).toLocaleTimeString();
+      setIngestionHint(
+        t('whales.ingestionStatus', {
+          status: whale.status,
+          time: when,
+          count: whale.lastIngestedCount ?? 0,
+        }),
+      );
+    }).catch(() => setIngestionHint(null));
+  }, [t]);
 
   const fetchGraph = useCallback(async () => {
     setGraphLoading(true);
@@ -93,6 +113,9 @@ export function WhalesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('whales.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('whales.subtitle')}</p>
+          {ingestionHint && (
+            <p className="mt-1 text-xs text-muted-foreground">{ingestionHint}</p>
+          )}
         </div>
         <Button variant="outline" size="sm" onClick={() => (isFollowTab ? fetchFollowed() : loadWhales())} disabled={isLoading}>
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />

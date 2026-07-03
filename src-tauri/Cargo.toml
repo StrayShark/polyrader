@@ -1,6 +1,6 @@
 [package]
 name = "polyrader-cs2"
-version = "0.2.0"
+version = "0.3.0"
 description = "PolyRader CS2 — Polymarket CS2 Esports Prediction Analysis Tool"
 authors = ["PolyRader Team"]
 license = "MIT"

@@ -24,6 +24,7 @@ export class SimulatedBettingEngine {
     team: string,
     odds: number,
     amount = 100,
+    variantId?: string,
   ): SimulatedBet {
     const id = `bet-${randomUUID()}`;
     return {
@@ -36,6 +37,7 @@ export class SimulatedBettingEngine {
       result: 'pending',
       profitLoss: 0,
       placedAt: new Date().toISOString(),
+      variantId,
     };
   }
 
@@ -87,7 +89,7 @@ export class SimulatedBettingEngine {
       amount = Math.max(10, Math.round(config.initialCapital * config.maxBetFraction));
     }
 
-    return this.placeBet(matchId, analysis.provider, team, odds, amount);
+    return this.placeBet(matchId, analysis.provider, team, odds, amount, analysis.variantId);
   }
 
   /**

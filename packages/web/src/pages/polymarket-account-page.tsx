@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
-import { RefreshCw, Wallet, ListChecks, History, Activity, KeyRound, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Wallet, ListChecks, History, Activity, KeyRound, AlertTriangle, TrendingUp } from 'lucide-react';
+import { CartesianGrid, Line, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
@@ -46,6 +47,8 @@ export function PolymarketAccountPage() {
   }, []);
 
   const status = overview?.status;
+  const stats = overview?.stats ?? EMPTY_ACCOUNT_STATS;
+  const equityCurve = overview?.equityCurve ?? [];
 
   return (
     <div className="space-y-6">
@@ -88,6 +91,47 @@ export function PolymarketAccountPage() {
               <StatCard label={t('polymarketAccount.positionValue')} value={formatCurrency(overview.totalPositionValue)} icon={Activity} />
               <StatCard label={t('polymarketAccount.openOrders')} value={String(overview.openOrders.length)} icon={ListChecks} />
             </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <StatCard label={t('polymarketAccount.tradeCount')} value={String(stats.tradeCount)} icon={History} />
+              <StatCard label={t('polymarketAccount.tradedVolume')} value={formatCurrency(stats.tradedVolume)} icon={Activity} />
+              <StatCard label={t('polymarketAccount.winRate')} value={formatPercent(stats.winRate)} icon={TrendingUp} />
+              <StatCard label={t('polymarketAccount.totalPnl')} value={formatSignedCurrency(stats.totalPnl)} icon={TrendingUp} />
+              <StatCard label="ROI" value={formatPercent(stats.roi)} icon={Activity} />
+            </div>
+
+            <Card>
+              <CardHeader className="border-b px-6 py-3">
+                <CardTitle>{t('polymarketAccount.equityCurve')}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                {equityCurve.length === 0 ? (
+                  <EmptyState text={t('polymarketAccount.noEquityCurve')} />
+                ) : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsLineChart data={equityCurve} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis dataKey="date" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+                        <YAxis tick={{ fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} />
+                        <Tooltip
+                          formatter={(value: number | string) => formatCurrency(Number(value))}
+                          labelFormatter={(label) => String(label)}
+                          contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6 }}
+                        />
+                        <Line type="monotone" dataKey="equity" name={t('polymarketAccount.equity')} stroke="var(--primary)" strokeWidth={2} dot={false} />
+                      </RechartsLineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
+                  <Metric label={t('polymarketAccount.settledMarkets')} value={String(stats.settledMarkets)} />
+                  <Metric label={t('polymarketAccount.winningMarkets')} value={String(stats.winningMarkets)} />
+                  <Metric label={t('polymarketAccount.realizedPnl')} value={formatSignedCurrency(stats.realizedPnl)} />
+                  <Metric label={t('polymarketAccount.unrealizedPnl')} value={formatSignedCurrency(stats.unrealizedPnl)} />
+                </div>
+              </CardContent>
+            </Card>
 
             {overview.diagnostics.length > 0 && (
               <Card>
@@ -199,7 +243,10 @@ export function PolymarketAccountPage() {
 
             <div className="grid gap-4 xl:grid-cols-2">
               <ActivityTable title={t('polymarketAccount.trades')} rows={overview.trades} />
-              <OrdersTable title={t('polymarketAccount.orders')} rows={overview.openOrders} />
+              <OrdersTable
+                title={t('polymarketAccount.orders')}
+                rows={overview.openOrders}
+              />
             </div>
 
             <Card>
@@ -252,6 +299,15 @@ function StatCard({ label, value, icon: Icon }: { label: string; value: string; 
       </div>
       <div className="mt-2 truncate text-xl font-semibold tabular-nums">{value}</div>
     </Card>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 font-semibold tabular-nums">{value}</div>
+    </div>
   );
 }
 
@@ -356,6 +412,11 @@ function formatPctNumber(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 function shortAddress(address?: string): string {
   if (!address) return '--';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -365,3 +426,19 @@ function formatDate(value: string): string {
   const date = new Date(Number(value) > 10_000_000_000 ? Number(value) : value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
+
+const EMPTY_ACCOUNT_STATS = {
+  tradeCount: 0,
+  buyCount: 0,
+  sellCount: 0,
+  tradedVolume: 0,
+  settledMarkets: 0,
+  winningMarkets: 0,
+  losingMarkets: 0,
+  winRate: 0,
+  realizedPnl: 0,
+  unrealizedPnl: 0,
+  totalPnl: 0,
+  roi: 0,
+  averageTradeSize: 0,
+};

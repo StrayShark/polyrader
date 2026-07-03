@@ -1,6 +1,6 @@
 {
   "name": "polyrader-cs2",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Open-source Polymarket CS2 esports prediction analysis tool",
   "workspaces": [
@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "dev:all": "turbo run dev --parallel --filter=@polyrader/server --filter=@polyrader/web",
     "dev:web": "npm run dev --workspace=packages/web",
     "build": "turbo run build",
     "build:web": "npm run build --workspace=packages/web",
@@ -20,8 +21,12 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "npm run test:e2e --workspace=@polyrader/web",
+    "test:e2e:integration": "npm run test:e2e:integration --workspace=@polyrader/web",
+    "test:e2e:account": "npm run test:e2e:account --workspace=@polyrader/web",
+    "test:e2e:live": "npm run test:e2e:live --workspace=@polyrader/web",
     "clean": "turbo run clean",
-    "format": "prettier --write \"packages/**/*.{ts,tsx,json,css}\""
+    "format": "prettier --write \"packages/**/*.{ts,tsx,json,css}\"",
+    "sync:env": "node scripts/sync-global-env.mjs"
   },
   "devDependencies": {
     "eslint": "^9.0.0",

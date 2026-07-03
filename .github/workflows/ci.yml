@@ -58,6 +58,32 @@ jobs:
         run: cd packages/web && npx playwright install chromium
       - name: E2E tests
         run: cd packages/web && npm run test:e2e
+      - name: Integration E2E tests
+        run: cd packages/web && npm run test:e2e:integration
+
+  live-trading-smoke:
+    name: Live Trading Smoke
+    runs-on: ubuntu-latest
+    if: ${{ secrets.POLYMARKET_PRIVATE_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - name: Install Playwright browser
+        run: cd packages/web && npx playwright install chromium
+      - name: Live Polymarket smoke tests
+        env:
+          POLYMARKET_PRIVATE_KEY: ${{ secrets.POLYMARKET_PRIVATE_KEY }}
+          POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
+          POLYMARKET_API_SECRET: ${{ secrets.POLYMARKET_API_SECRET }}
+          POLYMARKET_API_PASSPHRASE: ${{ secrets.POLYMARKET_API_PASSPHRASE }}
+          POLYMARKET_ADDRESS: ${{ secrets.POLYMARKET_ADDRESS }}
+          POLYMARKET_LIVE_TRADING_ENABLED: 'true'
+        run: cd packages/web && npm run test:e2e:live
+        continue-on-error: true
 
   build:
     name: Build Web

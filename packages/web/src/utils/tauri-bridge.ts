@@ -82,7 +82,7 @@ export async function getConfig(): Promise<AppConfig> {
   }
 
   cachedConfig = {
-    version: '0.2.0',
+    version: '0.3.0',
     data_dir: null,
     encryption_key: null,
     sidecar_port: 0,
