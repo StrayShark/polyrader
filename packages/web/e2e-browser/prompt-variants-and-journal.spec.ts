@@ -53,7 +53,7 @@ test.describe('Prompt Variants page', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     // Should show variant IDs
     await expect(page.locator('text=baseline').first()).toBeVisible({ timeout: 5000 });
     await expect(page.locator('text=Aggressive V2').first()).toBeVisible({ timeout: 5000 });
@@ -75,7 +75,7 @@ test.describe('Prompt Variants page', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);
@@ -160,7 +160,7 @@ test.describe('Decision Journal form', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Decision journal form should be visible
     await expect(page.locator('text=决策记录').first()).toBeVisible({ timeout: 5000 });

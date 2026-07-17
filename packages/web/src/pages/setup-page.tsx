@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { selectFolder, setDataDir } from '../utils/tauri-bridge';
 import { isTauriEnvironment } from '../utils/tauri-bridge';
 import { useI18n } from '../hooks/use-i18n';
+import { PRODUCT_NAME } from '../utils/brand';
 
 interface SetupPageProps {
   onComplete: () => void;
@@ -57,7 +58,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">PolyRader CS2</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{PRODUCT_NAME}</h1>
           <p className="text-sm text-muted-foreground">
             {t('setup.appTitle')}
           </p>
@@ -77,7 +78,7 @@ export function SetupPage({ onComplete }: SetupPageProps) {
               <input
                 type="text"
                 readOnly
-                value={selectedDir || (isTauri ? t('setup.selectFolderPlaceholder') : '~/Documents/PolyRader')}
+                value={selectedDir || (isTauri ? t('setup.selectFolderPlaceholder') : '~/Documents/PolyRaderCS2')}
                 className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground"
                 placeholder={t('setup.selectFolderButton')}
               />

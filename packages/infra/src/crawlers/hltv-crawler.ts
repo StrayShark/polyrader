@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { fetchWithBrowser } from './anti-detect';
-import type { Team, Player, RecentForm, MatchResult, MapPool, MapStat, HeadToHead, Lineup, LineupPlayer, PlayerRole } from '@polyrader/core';
+import type { Team, Player, RecentForm, MatchResult, MapStat, HeadToHead, Lineup, LineupPlayer } from '@polyrader/core';
 
 const HLTV_BASE = 'https://www.hltv.org';
 
@@ -15,6 +15,7 @@ export interface HltvMatchSummary {
   format: 'BO1' | 'BO3' | 'BO5';
   date: string;
   stars: number; // HLTV star rating (match importance)
+  url: string;
 }
 
 export interface HltvMatchDetail {
@@ -27,6 +28,10 @@ export interface HltvMatchDetail {
   date: string;
   teamAId: string;
   teamBId: string;
+  teamARank: number;
+  teamBRank: number;
+  url: string;
+  lineups: { teamA: Lineup; teamB: Lineup } | null;
 }
 
 export interface HltvCommunityPrediction {
@@ -37,7 +42,22 @@ export interface HltvCommunityPrediction {
   teamBName: string;
 }
 
-export type HltvMatchLiveStatus = 'upcoming' | 'live' | 'finished' | 'postponed';
+export type HltvMatchLiveStatus = 'upcoming' | 'live' | 'finished' | 'postponed' | 'cancelled';
+
+export interface HltvMatchOutcome {
+  matchId: string;
+  available: boolean;
+  status: HltvMatchLiveStatus;
+  teamAId: string;
+  teamBId: string;
+  teamAName: string;
+  teamBName: string;
+  teamAScore?: number;
+  teamBScore?: number;
+  winnerTeamId?: string;
+  winnerTeamName?: string;
+  url: string;
+}
 
 /**
  * Parse a team ID from an HLTV team URL.
@@ -55,6 +75,345 @@ function parseTeamId(href: string): string {
 function parseMatchId(href: string): string {
   const match = href.match(/\/matches\/(\d+)/);
   return match ? match[1] : '';
+}
+
+function toIsoDate(raw: string | undefined): string {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const milliseconds = value >= 1_000_000_000_000 ? value : value * 1000;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function absoluteHltvUrl(href: string): string {
+  if (!href) return '';
+  return href.startsWith('http') ? href : `${HLTV_BASE}${href.startsWith('/') ? href : `/${href}`}`;
+}
+
+function absoluteHltvAssetUrl(src: string): string {
+  if (!src) return '';
+  if (src.startsWith('//')) return `https:${src}`;
+  if (src.startsWith('http')) return src;
+  return `${HLTV_BASE}${src.startsWith('/') ? src : `/${src}`}`;
+}
+
+function parseFormat(text: string): HltvMatchSummary['format'] {
+  const bestOf = text.match(/best\s+of\s+([135])/i)?.[1];
+  const bo = text.match(/\bbo([135])\b/i)?.[1];
+  return `BO${bestOf ?? bo ?? '3'}` as HltvMatchSummary['format'];
+}
+
+function parseRank(text: string): number {
+  const value = Number(text.match(/#\s*(\d+)/)?.[1]);
+  return Number.isFinite(value) && value > 0 ? value : 999;
+}
+
+function emptyRecentForm(): RecentForm {
+  return { last10Matches: [], winRate: 0.5, streak: 0, averageRating: 0 };
+}
+
+/** Parse the current HLTV matches markup without performing network I/O. */
+export function parseHltvMatchesHtml(html: string): HltvMatchSummary[] {
+  const $ = cheerio.load(html);
+  const matches: HltvMatchSummary[] = [];
+  const seen = new Set<string>();
+
+  $('[data-match-wrapper]').each((_index, element) => {
+    const wrapper = $(element);
+    const href = wrapper.find('a[href*="/matches/"]').first().attr('href') ?? '';
+    const matchId = wrapper.attr('data-match-id') ?? parseMatchId(href);
+    if (!matchId || seen.has(matchId)) return;
+
+    const names = wrapper.find('.match-teamname').map((_i, team) => $(team).text().trim()).get();
+    if (!names[0] || !names[1]) return;
+
+    const grouping = wrapper.closest('[data-zonedgrouping-entry-unix]');
+    const rawDate = wrapper.find('[data-unix]').first().attr('data-unix')
+      ?? grouping.attr('data-zonedgrouping-entry-unix');
+    const meta = wrapper.find('.match-meta').first().text().trim();
+    const event = wrapper.find('.match-event').first().text().trim() || 'Unknown Event';
+    const lan = wrapper.attr('lan') === 'true';
+
+    seen.add(matchId);
+    matches.push({
+      matchId,
+      teamAId: wrapper.attr('team1') ?? '',
+      teamBId: wrapper.attr('team2') ?? '',
+      teamAName: names[0],
+      teamBName: names[1],
+      event,
+      eventType: lan ? 'LAN' : 'Online',
+      format: parseFormat(meta),
+      date: toIsoDate(rawDate),
+      stars: Number(wrapper.attr('data-stars')) || wrapper.find('.match-stars i.fa-star').length,
+      url: absoluteHltvUrl(href),
+    });
+  });
+
+  return matches.sort((a, b) => b.stars - a.stars || a.date.localeCompare(b.date));
+}
+
+function parseLineupPlayers(
+  $: cheerio.CheerioAPI,
+  lineup: ReturnType<cheerio.CheerioAPI>,
+  stats: Record<string, Record<string, unknown>>,
+): LineupPlayer[] {
+  const players: LineupPlayer[] = [];
+  const seen = new Set<string>();
+  lineup.find('.player-compare.flagAlign[data-player-id]').each((_index, element) => {
+    const playerId = $(element).attr('data-player-id') ?? '';
+    if (!playerId || seen.has(playerId)) return;
+    const nickname = $(element).find('.text-ellipsis').first().text().trim()
+      || String(stats[playerId]?.nickname ?? '');
+    if (!nickname) return;
+    const rating = Number(stats[playerId]?.numericRating ?? stats[playerId]?.rating) || 0;
+    seen.add(playerId);
+    players.push({
+      playerId,
+      nickname,
+      rating,
+      role: 'Rifler',
+      isStandin: $(element).text().toLowerCase().includes('stand-in'),
+      impactScore: rating > 0 ? Math.min(100, Math.round(rating * 80)) : 0,
+      mapsOnRecord: 0,
+    });
+  });
+  return players.slice(0, 5);
+}
+
+function parsePlayerStatsJson(raw: string | undefined): Record<string, Record<string, unknown>> {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, Record<string, unknown>>;
+  } catch {
+    return {};
+  }
+}
+
+/** Parse a current HLTV match page, including both confirmed five-player lineups. */
+export function parseHltvMatchDetailHtml(html: string, matchId: string, url = ''): HltvMatchDetail {
+  const $ = cheerio.load(html);
+  const teamAAnchor = $('.teamsBox .team1-gradient a[href*="/team/"]').first();
+  const teamBAnchor = $('.teamsBox .team2-gradient a[href*="/team/"]').first();
+  const teamA = teamAAnchor.find('.teamName').text().trim() || teamAAnchor.text().trim();
+  const teamB = teamBAnchor.find('.teamName').text().trim() || teamBAnchor.text().trim();
+  const event = $('.timeAndEvent .event a, .timeAndEvent .event').first().text().trim()
+    || $('.event-name').first().text().trim();
+  const date = toIsoDate($('.timeAndEvent [data-unix]').first().attr('data-unix'));
+  const bodyText = $('body').text();
+  const maps: string[] = [];
+  $('.mapholder .mapname, .mapholder .map-name, .map-name').each((_index, element) => {
+    const map = $(element).text().trim();
+    if (map && map.toLowerCase() !== 'tba' && !maps.includes(map)) maps.push(map);
+  });
+
+  const compare = $('.lineups-compare-container').first();
+  const teamAStats = parsePlayerStatsJson(compare.attr('data-team1-players-data'));
+  const teamBStats = parsePlayerStatsJson(compare.attr('data-team2-players-data'));
+  const lineupElements = $('.lineups .lineup.standard-box');
+  const teamAPlayers = parseLineupPlayers($, lineupElements.eq(0), teamAStats);
+  const teamBPlayers = parseLineupPlayers($, lineupElements.eq(1), teamBStats);
+  const lineups = teamAPlayers.length || teamBPlayers.length ? {
+    teamA: buildLineup(teamAPlayers),
+    teamB: buildLineup(teamBPlayers),
+  } : null;
+
+  return {
+    matchId,
+    teamA,
+    teamB,
+    maps,
+    format: parseFormat(bodyText),
+    event,
+    date,
+    teamAId: parseTeamId(teamAAnchor.attr('href') ?? ''),
+    teamBId: parseTeamId(teamBAnchor.attr('href') ?? ''),
+    teamARank: parseRank(lineupElements.eq(0).find('.teamRanking').text()),
+    teamBRank: parseRank(lineupElements.eq(1).find('.teamRanking').text()),
+    url,
+    lineups,
+  };
+}
+
+/** Parse authoritative series status and result from the match page header. */
+export function parseHltvMatchOutcomeHtml(html: string, matchId: string, url = ''): HltvMatchOutcome {
+  const $ = cheerio.load(html);
+  const pageText = $('body').text().replace(/\s+/g, ' ').trim().toLowerCase();
+  const statusText = $('.countdown, .timeAndEvent, .teamsBox').text().replace(/\s+/g, ' ').trim().toLowerCase();
+  const teamABox = $('.team1-gradient').first();
+  const teamBBox = $('.team2-gradient').first();
+  const teamAAnchor = teamABox.find('a[href*="/team/"]').first();
+  const teamBAnchor = teamBBox.find('a[href*="/team/"]').first();
+  const teamAName = teamABox.find('.teamName, .team-name').first().text().trim()
+    || teamAAnchor.text().trim();
+  const teamBName = teamBBox.find('.teamName, .team-name').first().text().trim()
+    || teamBAnchor.text().trim();
+  const teamAScoreNode = teamABox.find('.won, .lost').first();
+  const teamBScoreNode = teamBBox.find('.won, .lost').first();
+  const teamAScore = parseSeriesScore(teamAScoreNode.text());
+  const teamBScore = parseSeriesScore(teamBScoreNode.text());
+
+  let status: HltvMatchLiveStatus = 'upcoming';
+  if (/\b(cancelled|canceled)\b/.test(statusText)) status = 'cancelled';
+  else if (/\b(postponed|delayed|rescheduled)\b/.test(statusText)) status = 'postponed';
+  else if (
+    /\bmatch over\b/.test(statusText || pageText)
+    || (teamAScore !== undefined && teamBScore !== undefined
+      && (teamAScoreNode.hasClass('won') || teamBScoreNode.hasClass('won')))
+  ) status = 'finished';
+  else if (
+    $('.live-indicator, .match-page-live, .standard-box .live').length > 0
+    || $('.countdown').first().text().toLowerCase().includes('live')
+  ) status = 'live';
+
+  const winnerSide = status === 'finished'
+    ? teamAScoreNode.hasClass('won') || (teamAScore !== undefined && teamBScore !== undefined && teamAScore > teamBScore)
+      ? 'a'
+      : teamBScoreNode.hasClass('won') || (teamAScore !== undefined && teamBScore !== undefined && teamBScore > teamAScore)
+        ? 'b'
+        : undefined
+    : undefined;
+
+  return {
+    matchId,
+    available: true,
+    status,
+    teamAId: parseTeamId(teamAAnchor.attr('href') ?? ''),
+    teamBId: parseTeamId(teamBAnchor.attr('href') ?? ''),
+    teamAName,
+    teamBName,
+    teamAScore,
+    teamBScore,
+    winnerTeamId: winnerSide === 'a'
+      ? parseTeamId(teamAAnchor.attr('href') ?? '')
+      : winnerSide === 'b' ? parseTeamId(teamBAnchor.attr('href') ?? '') : undefined,
+    winnerTeamName: winnerSide === 'a' ? teamAName : winnerSide === 'b' ? teamBName : undefined,
+    url,
+  };
+}
+
+function parseSeriesScore(value: string): number | undefined {
+  const score = Number(value.trim());
+  return Number.isInteger(score) && score >= 0 ? score : undefined;
+}
+
+function buildLineup(players: LineupPlayer[]): Lineup {
+  const standinCount = players.filter((player) => player.isStandin).length;
+  return {
+    players,
+    isConfirmed: players.length >= 5,
+    hasStandin: standinCount > 0,
+    standinCount,
+    missingKeyPlayers: [],
+  };
+}
+
+function parseRealName(title: string, nickname: string): string {
+  if (!title) return '';
+  const escapedNickname = nickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return title.replace(new RegExp(`['\"]${escapedNickname}['\"]`, 'i'), '').replace(/\s+/g, ' ').trim();
+}
+
+/** Parse team identity, world rank, active roster and the three-month map pool. */
+export function parseHltvTeamHtml(html: string, teamId: string): Team {
+  const $ = cheerio.load(html);
+  const logo = $('.profile-team-logo-container img, img.teamlogo').first();
+  const name = $('.profile-team-name, .team-name, h1').first().text().trim();
+  let rank = 999;
+  $('.profile-team-stat').each((_index, element) => {
+    const text = $(element).text().replace(/\s+/g, ' ').trim();
+    if (text.toLowerCase().includes('world ranking')) rank = parseRank(text);
+  });
+
+  const players: Player[] = [];
+  const seen = new Set<string>();
+  $('.bodyshot-team a[href*="/player/"]').each((_index, element) => {
+    const href = $(element).attr('href') ?? '';
+    const playerId = href.match(/\/player\/(\d+)/)?.[1] ?? '';
+    const nickname = $(element).text().replace(/\s+/g, ' ').trim();
+    if (!playerId || !nickname || seen.has(playerId)) return;
+    const title = $(element).find('img[title]').attr('title') ?? '';
+    seen.add(playerId);
+    players.push({
+      playerId,
+      name: parseRealName(title, nickname),
+      nickname,
+      rating: 0,
+      kdRatio: 0,
+      headshotPercent: 0,
+      mapsPlayed: 0,
+      role: '',
+    });
+  });
+
+  const maps: MapStat[] = [];
+  $('.map-statistics-container').each((_index, element) => {
+    const container = $(element);
+    const map = container.find('.map-statistics-row-map-mapname').first().text().trim();
+    const winRate = Number(container.find('.map-statistics-row-win-percentage').first().text().replace('%', '').trim()) / 100;
+    const counts = container.find('.map-statistics-extended-wdl .stat').map((_i, stat) => Number($(stat).text().trim()) || 0).get();
+    if (!map) return;
+    maps.push({
+      map,
+      winRate: Number.isFinite(winRate) ? winRate : 0,
+      matchesPlayed: (counts[0] ?? 0) + (counts[1] ?? 0) + (counts[2] ?? 0),
+      roundsWon: 0,
+      roundsLost: 0,
+    });
+  });
+
+  return {
+    teamId,
+    name,
+    logo: absoluteHltvAssetUrl(logo.attr('src') ?? logo.attr('data-cookieblock-src') ?? ''),
+    rank,
+    region: $('.profile-team-country .flag, .team-country .flag').first().attr('title') ?? '',
+    players,
+    recentForm: emptyRecentForm(),
+    mapPool: { maps },
+    headToHead: [],
+  };
+}
+
+/** Parse the most recent results page for one team. */
+export function parseHltvResultsHtml(html: string, teamName: string): RecentForm {
+  const $ = cheerio.load(html);
+  const normalizedTeam = teamName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const results: MatchResult[] = [];
+
+  $('.result-con').each((_index, element) => {
+    if (results.length >= 10) return;
+    const result = $(element);
+    const teams = result.find('.team').map((_i, team) => $(team).text().trim()).get();
+    if (teams.length < 2) return;
+    let ownIndex = teams.findIndex((team) => team.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedTeam);
+    if (ownIndex < 0) ownIndex = 0;
+    const opponentIndex = ownIndex === 0 ? 1 : 0;
+    const teamElements = result.find('.team');
+    const ownWon = teamElements.eq(ownIndex).hasClass('team-won');
+    const opponentWon = teamElements.eq(opponentIndex).hasClass('team-won');
+    const scores = result.find('.result-score span').map((_i, score) => $(score).text().trim()).get();
+    results.push({
+      opponent: teams[opponentIndex],
+      result: ownWon ? 'win' : opponentWon ? 'loss' : 'draw',
+      score: scores.length >= 2 ? `${scores[ownIndex]}-${scores[opponentIndex]}` : result.find('.result-score').text().replace(/\s+/g, ' ').trim(),
+      date: toIsoDate(result.attr('data-zonedgrouping-entry-unix')),
+      event: result.find('.event-name').first().text().trim(),
+    });
+  });
+
+  const wins = results.filter((result) => result.result === 'win').length;
+  let streak = 0;
+  for (const result of results) {
+    if (result.result !== 'win') break;
+    streak++;
+  }
+  return {
+    last10Matches: results,
+    winRate: results.length ? wins / results.length : 0.5,
+    streak,
+    averageRating: 0,
+  };
 }
 
 export class HLTVCrawler {
@@ -92,145 +451,7 @@ export class HLTVCrawler {
    */
   async getMatches(): Promise<HltvMatchSummary[]> {
     const html = await fetchWithBrowser(`${HLTV_BASE}/matches`);
-    const $ = cheerio.load(html);
-
-    const matches: HltvMatchSummary[] = [];
-    const seenMatchIds = new Set<string>();
-
-    // New HLTV structure: matches are in .match-day containers with .match links
-    // Each match has team names in .team, format in .boX, event in match link text
-    $('.match-day, .matches-day, [class*="match-day"]').each((_dayIdx, dayEl) => {
-      // Date from the day header
-      const dateAttr = $(dayEl).find('.match-time, [data-unix]').attr('data-unix');
-      const dateUnix = dateAttr ? parseInt(dateAttr, 10) : 0;
-
-      $(dayEl).find('a[href*="/matches/"]').each((_i, el) => {
-        const href = $(el).attr('href') ?? '';
-        const matchId = parseMatchId(href);
-        if (!matchId || seenMatchIds.has(matchId)) return;
-
-        const $el = $(el);
-        const text = $el.text();
-
-        // Extract team names: look for team divs/spans
-        let teamA = '';
-        let teamB = '';
-        const teamEls = $el.find('.team, .team-name, [class*="team"]');
-        if (teamEls.length >= 2) {
-          teamA = $(teamEls[0]).text().trim();
-          teamB = $(teamEls[1]).text().trim();
-        }
-
-        // Fallback: parse from URL slug (e.g. /matches/123/team-a-vs-team-b-event)
-        if (!teamA || !teamB) {
-          const slug = href.split('/').pop() ?? '';
-          const parts = slug.split('-vs-');
-          if (parts.length >= 2) {
-            teamA = teamA || parts[0].replace(/-/g, ' ').trim();
-            // team B is everything after "vs" up to the event name
-            const afterVs = parts[1].split('-');
-            // Take first 2-3 words as team name (heuristic)
-            teamB = teamB || afterVs.slice(0, 2).join(' ').trim();
-          }
-        }
-
-        // Extract format
-        const formatMatch = text.match(/\b(bo1|bo3|bo5)\b/i);
-        const format = (formatMatch ? formatMatch[1].toUpperCase() : 'BO3') as HltvMatchSummary['format'];
-
-        // Extract event name (usually the text without team names and format)
-        let event = '';
-        const eventEl = $el.find('.event-name, .event, [class*="event"]');
-        if (eventEl.length) {
-          event = eventEl.first().text().trim();
-        }
-        if (!event) {
-          // Try to extract from the match URL slug after team names
-          const slug = href.split('/').pop() ?? '';
-          const parts = slug.split('-vs-');
-          if (parts.length >= 2) {
-            const eventParts = parts[1].split('-').slice(2);
-            event = eventParts.join(' ').trim() || 'Unknown Event';
-          }
-        }
-
-        // Extract date
-        const matchTimeEl = $el.find('[data-unix], .match-time');
-        const matchDateAttr = matchTimeEl.attr('data-unix');
-        const date = matchDateAttr
-          ? new Date(parseInt(matchDateAttr, 10) * 1000).toISOString()
-          : dateUnix
-            ? new Date(dateUnix * 1000).toISOString()
-            : '';
-
-        // Extract star rating
-        const starsEl = $el.find('.match-stars i.fa-star, .stars i, [class*="star"]');
-        const stars = starsEl.length || 0;
-
-        // Extract team IDs from team links within this match
-        const teamAHref = $el.find('a[href*="/team/"]').first().attr('href') ?? '';
-        const teamBHrefs = $el.find('a[href*="/team/"]');
-        const teamBHref = teamBHrefs.length > 1 ? $(teamBHrefs[1]).attr('href') ?? '' : '';
-        const teamAId = parseTeamId(teamAHref);
-        const teamBId = parseTeamId(teamBHref);
-
-        // Determine event type
-        const eventType: 'LAN' | 'Online' =
-          event.toLowerCase().includes('online') ? 'Online' : 'LAN';
-
-        if (teamA && teamB) {
-          seenMatchIds.add(matchId);
-          matches.push({
-            matchId,
-            teamAId,
-            teamBId,
-            teamAName: teamA,
-            teamBName: teamB,
-            event,
-            eventType,
-            format,
-            date,
-            stars,
-          });
-        }
-      });
-    });
-
-    // Fallback: if match-day containers not found, try direct match links
-    if (matches.length === 0) {
-      $('a[href*="/matches/"]').each((_i, el) => {
-        const href = $(el).attr('href') ?? '';
-        const matchId = parseMatchId(href);
-        if (!matchId || seenMatchIds.has(matchId)) return;
-
-        // This is a less detailed fallback — skip if we can't get team names
-        const slug = href.split('/').pop() ?? '';
-        const parts = slug.split('-vs-');
-        if (parts.length < 2) return;
-
-        const teamA = parts[0].replace(/-/g, ' ').trim();
-        const afterVs = parts[1].split('-');
-        const teamB = afterVs.slice(0, 2).join(' ').trim();
-        const event = afterVs.slice(2).join(' ').trim() || 'Unknown Event';
-
-        seenMatchIds.add(matchId);
-        matches.push({
-          matchId,
-          teamAId: '',
-          teamBId: '',
-          teamAName: teamA,
-          teamBName: teamB,
-          event,
-          eventType: 'LAN',
-          format: 'BO3',
-          date: '',
-          stars: 0,
-        });
-      });
-    }
-
-    // Sort by stars descending (most important first), then by date
-    return matches.sort((a, b) => b.stars - a.stars || a.date.localeCompare(b.date));
+    return parseHltvMatchesHtml(html);
   }
 
   /**
@@ -252,27 +473,10 @@ export class HLTVCrawler {
   /**
    * Get match details including map picks and team IDs.
    */
-  async getMatchDetail(matchId: string): Promise<HltvMatchDetail> {
-    const html = await fetchWithBrowser(`${HLTV_BASE}/matches/${matchId}`);
-    const $ = cheerio.load(html);
-
-    const teamA = $('.team1 .team-name, .team-1 .team-name').text().trim();
-    const teamB = $('.team2 .team-name, .team-2 .team-name').text().trim();
-    const event = $('.event-name, .event').text().trim();
-    const format = $('.match-format, .format').text().trim() || 'BO3';
-
-    const teamAHref = $('.team1 a[href*="/team/"], .team-1 a[href*="/team/"]').attr('href') ?? '';
-    const teamBHref = $('.team2 a[href*="/team/"], .team-2 a[href*="/team/"]').attr('href') ?? '';
-    const teamAId = parseTeamId(teamAHref);
-    const teamBId = parseTeamId(teamBHref);
-
-    const maps: string[] = [];
-    $('.map-name, .map, [class*="map-name"]').each((_i, el) => {
-      const map = $(el).text().trim();
-      if (map && !maps.includes(map)) maps.push(map);
-    });
-
-    return { matchId, teamA, teamB, maps, format, event, date: '', teamAId, teamBId };
+  async getMatchDetail(matchId: string, matchUrl?: string): Promise<HltvMatchDetail> {
+    const url = await this.resolveMatchUrl(matchId, matchUrl);
+    const html = await fetchWithBrowser(url);
+    return parseHltvMatchDetailHtml(html, matchId, url);
   }
 
   /**
@@ -281,7 +485,7 @@ export class HLTVCrawler {
    */
   async getCommunityPrediction(matchId: string): Promise<HltvCommunityPrediction | null> {
     try {
-      const html = await fetchWithBrowser(`${HLTV_BASE}/matches/${matchId}/pick`);
+      const html = await fetchWithBrowser(await this.resolveMatchUrl(matchId));
       const $ = cheerio.load(html);
       if (!$('.pick-a-winner').length) return null;
 
@@ -351,23 +555,28 @@ export class HLTVCrawler {
     return pred.teamAProb;
   }
 
-  /** Read match page status (upcoming / live / finished / postponed). */
-  async getMatchLiveStatus(matchId: string): Promise<HltvMatchLiveStatus> {
+  async getMatchOutcome(matchId: string, matchUrl?: string): Promise<HltvMatchOutcome> {
     try {
-      const html = await fetchWithBrowser(`${HLTV_BASE}/matches/${matchId}`);
-      const $ = cheerio.load(html);
-      const pageText = $('body').text().toLowerCase();
-      if (/postponed|delayed|rescheduled/.test(pageText)) return 'postponed';
-      if ($('.team1-gradient .won, .team2-gradient .won').length) return 'finished';
-      if ($('.countdown[data-time-countdown], .live-indicator, .match-page-live').length) {
-        const countdown = $('.countdown').text().toLowerCase();
-        if (countdown.includes('live')) return 'live';
-      }
-      if ($('.standard-box .live').length) return 'live';
-      return 'upcoming';
-    } catch {
-      return 'upcoming';
+      const url = matchUrl || await this.resolveMatchUrl(matchId);
+      const html = await fetchWithBrowser(url);
+      return parseHltvMatchOutcomeHtml(html, matchId, url);
+    } catch (err) {
+      return {
+        matchId,
+        available: false,
+        status: 'upcoming',
+        teamAId: '',
+        teamBId: '',
+        teamAName: '',
+        teamBName: '',
+        url: matchUrl ?? '',
+      };
     }
+  }
+
+  /** Read match page status while preserving the legacy status-only API. */
+  async getMatchLiveStatus(matchId: string, matchUrl?: string): Promise<HltvMatchLiveStatus> {
+    return (await this.getMatchOutcome(matchId, matchUrl)).status;
   }
 
   private teamsMatch(a: string, b: string): boolean {
@@ -381,97 +590,16 @@ export class HLTVCrawler {
    * Extract lineup data from a match page.
    * Parses the starting five for each team, detecting standins and key absences.
    */
-  async getMatchLineups(matchId: string): Promise<{
+  async getMatchLineups(matchId: string, matchUrl?: string): Promise<{
     teamA: Lineup;
     teamB: Lineup;
   } | null> {
     try {
-      const html = await fetchWithBrowser(`${HLTV_BASE}/matches/${matchId}`);
-      const $ = cheerio.load(html);
-
-      const parseLineup = (teamSelector: string): Lineup => {
-        const players: LineupPlayer[] = [];
-        const playerEls = $(teamSelector).find('.lineup-player, .player');
-
-        // If no lineup-specific class, try the standard player table
-        if (playerEls.length === 0) {
-          $(teamSelector).find('.players-table tbody tr, .lineup-table tr').each((_i, el) => {
-            const nickname = $(el).find('.player-nickname, .nickname').text().trim();
-            const ratingText = $(el).find('.rating, .player-rating').text().trim();
-            const rating = parseFloat(ratingText) || 1.0;
-            const isStandin = $(el).find('.standin, .substitute').length > 0 ||
-              $(el).text().toLowerCase().includes('stand-in');
-
-            if (nickname) {
-              players.push({
-                playerId: nickname.toLowerCase(),
-                nickname,
-                rating,
-                role: this.inferRole($(el).text()),
-                isStandin,
-                impactScore: Math.round(rating * 80),
-                mapsOnRecord: 50,
-              });
-            }
-          });
-        } else {
-          playerEls.each((_i, el) => {
-            const nickname = $(el).find('.player-nickname, .nickname').text().trim();
-            const ratingText = $(el).find('.rating').text().trim();
-            const rating = parseFloat(ratingText) || 1.0;
-            const isStandin = $(el).hasClass('standin') || $(el).hasClass('substitute');
-
-            if (nickname) {
-              players.push({
-                playerId: nickname.toLowerCase(),
-                nickname,
-                rating,
-                role: this.inferRole($(el).text()),
-                isStandin,
-                impactScore: Math.round(rating * 80),
-                mapsOnRecord: isStandin ? 5 : 50,
-              });
-            }
-          });
-        }
-
-        const standins = players.filter((p) => p.isStandin);
-        const isConfirmed = players.length >= 5;
-
-        return {
-          players: players.slice(0, 5),
-          isConfirmed,
-          hasStandin: standins.length > 0,
-          standinCount: standins.length,
-          missingKeyPlayers: [],
-        };
-      };
-
-      const teamA = parseLineup('.team1, .team-left, .team-a');
-      const teamB = parseLineup('.team2, .team-right, .team-b');
-
-      if (teamA.players.length === 0 && teamB.players.length === 0) {
-        return null;
-      }
-
-      return { teamA, teamB };
+      const detail = await this.getMatchDetail(matchId, matchUrl);
+      return detail.lineups;
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Infer player role from context text.
-   */
-  private inferRole(text: string): PlayerRole {
-    const lower = text.toLowerCase();
-    if (lower.includes('awp') || lower.includes('sniper')) return 'AWPer';
-    if (lower.includes('igl') || lower.includes('captain') || lower.includes('leader')) return 'IGL';
-    if (lower.includes('entry')) return 'Entry';
-    if (lower.includes('support')) return 'Support';
-    if (lower.includes('lurk')) return 'Lurker';
-    if (lower.includes('coach')) return 'Coach';
-    return 'Rifler';
   }
 
   /**
@@ -479,48 +607,21 @@ export class HLTVCrawler {
    */
   async getTeam(teamId: string): Promise<Team> {
     const html = await fetchWithBrowser(`${HLTV_BASE}/team/${teamId}/_`);
-    const $ = cheerio.load(html);
+    const team = parseHltvTeamHtml(html, teamId);
+    try {
+      const resultsHtml = await fetchWithBrowser(`${HLTV_BASE}/results?team=${teamId}`);
+      team.recentForm = parseHltvResultsHtml(resultsHtml, team.name);
+    } catch {
+      // Team identity, roster and map pool remain usable when results are temporarily unavailable.
+    }
+    return team;
+  }
 
-    const name = $('.profile-team-name, .team-name, h1').first().text().trim();
-    const rankText = $('.team-world-ranking, .rank, [class*="ranking"]').text().trim().replace('#', '');
-    const rank = parseInt(rankText, 10) || 999;
-
-    // Players
-    const players: Player[] = [];
-    $('.players-table tbody tr, .player, [class*="player-card"]').each((_i, el) => {
-      const nickname = $(el).find('.player-nickname, .nickname').text().trim();
-      const nameText = $(el).find('.player-name').text().trim();
-      const ratingText = $(el).find('.rating').text().trim();
-      const mapsText = $(el).find('.maps').text().trim();
-
-      if (nickname) {
-        players.push({
-          playerId: nickname.toLowerCase(),
-          name: nameText,
-          nickname,
-          rating: parseFloat(ratingText) || 1.0,
-          kdRatio: 1.0,
-          headshotPercent: 0,
-          mapsPlayed: parseInt(mapsText, 10) || 0,
-          role: '',
-        });
-      }
-    });
-
-    const recentForm = this.parseRecentForm($);
-    const mapPool = this.parseMapPool($);
-
-    return {
-      teamId,
-      name,
-      logo: '',
-      rank,
-      region: '',
-      players,
-      recentForm,
-      mapPool,
-      headToHead: [],
-    };
+  private async resolveMatchUrl(matchId: string, matchUrl?: string): Promise<string> {
+    if (matchUrl) return absoluteHltvUrl(matchUrl);
+    const summary = (await this.getMatches()).find((match) => match.matchId === matchId);
+    if (!summary?.url) throw new Error(`HLTV match ${matchId} was not found on the current matches page`);
+    return summary.url;
   }
 
   /**
@@ -639,62 +740,4 @@ export class HLTVCrawler {
     }
   }
 
-  private parseRecentForm($: cheerio.CheerioAPI): RecentForm {
-    const results: MatchResult[] = [];
-    let wins = 0;
-
-    $('.results-table tbody tr').each((_i, el) => {
-      const opponent = $(el).find('.opponent').text().trim();
-      const resultText = $(el).find('.result').text().trim();
-      const score = $(el).find('.score').text().trim();
-      const event = $(el).find('.event-name').text().trim();
-      const dateAttr = $(el).find('.date').attr('data-unix');
-      const date = dateAttr ? new Date(parseInt(dateAttr, 10) * 1000).toISOString() : '';
-
-      const result: 'win' | 'loss' | 'draw' =
-        resultText === 'W' ? 'win' : resultText === 'L' ? 'loss' : 'draw';
-
-      if (result === 'win') wins++;
-      results.push({ opponent, result, score, date, event });
-    });
-
-    const last10 = results.slice(0, 10);
-    const winRate = last10.length > 0 ? wins / last10.length : 0.5;
-
-    // Calculate streak
-    let streak = 0;
-    for (const r of last10) {
-      if (r.result === 'win') streak++;
-      else break;
-    }
-
-    return {
-      last10Matches: last10,
-      winRate,
-      streak,
-      averageRating: 1.0,
-    };
-  }
-
-  private parseMapPool($: cheerio.CheerioAPI): MapPool {
-    const maps: MapStat[] = [];
-
-    $('.map-stats-row').each((_i, el) => {
-      const mapName = $(el).find('.map-name').text().trim();
-      const winRateText = $(el).find('.win-rate').text().trim().replace('%', '');
-      const matchesText = $(el).find('.matches-played').text().trim();
-
-      if (mapName) {
-        maps.push({
-          map: mapName,
-          winRate: parseFloat(winRateText) / 100 || 0.5,
-          matchesPlayed: parseInt(matchesText, 10) || 0,
-          roundsWon: 0,
-          roundsLost: 0,
-        });
-      }
-    });
-
-    return { maps };
-  }
 }

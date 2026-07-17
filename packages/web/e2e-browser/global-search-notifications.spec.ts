@@ -10,7 +10,7 @@ test.describe('Global search + notification center', () => {
       localStorage.setItem('polyrader-locale', 'zh');
     });
     await page.goto('/#/');
-    await page.locator('aside').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByTestId('app-sidebar').waitFor({ state: 'visible', timeout: 10000 });
   });
 
   test('Cmd+K opens the command palette and lists pages', async ({ page }) => {

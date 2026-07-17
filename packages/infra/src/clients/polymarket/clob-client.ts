@@ -7,6 +7,8 @@ import type {
 import { fetchJsonWithBrowser } from '../../crawlers/browser-fetch.js';
 
 const CLOB_API_URL = process.env.POLYMARKET_CLOB_API_URL ?? 'https://clob.polymarket.com';
+const INITIAL_CURSOR = 'MA==';
+const END_CURSOR = 'LTE=';
 
 export interface OrderBookSummary {
   market: string;
@@ -25,10 +27,23 @@ export interface PriceHistory {
 }
 
 export interface PolymarketClobCredentials {
+  /**
+   * Public account/profile/funder address used for dashboard data.
+   */
   address?: string;
+  /**
+   * Polygon signer address used in CLOB L2 auth headers.
+   */
+  signerAddress?: string;
   apiKey?: string;
   apiSecret?: string;
   apiPassphrase?: string;
+}
+
+interface AuthenticatedRequestOptions {
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined> | URLSearchParams;
+  signPath?: string;
 }
 
 export class PolymarketClobClient {
@@ -41,34 +56,43 @@ export class PolymarketClobClient {
   }
 
   async fetch<T>(path: string): Promise<T> {
-    return fetchJsonWithBrowser<T>(`${this.baseUrl}${path}`);
+    return fetchJsonWithBrowser<T>(`${this.baseUrl}${path}`, { timeoutMs: envNumber('POLYMARKET_CLOB_API_TIMEOUT_MS', 8000) });
   }
 
   async fetchAuthenticated<T>(
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
-    body?: unknown,
+    options: AuthenticatedRequestOptions = {},
   ): Promise<T> {
     const credentials = this.requireCredentials();
-    const bodyText = body === undefined ? '' : JSON.stringify(body);
-    const headers = this.createAuthHeaders(method, path, bodyText, credentials);
-    const url = `${this.baseUrl}${path}`;
+    const bodyText = options.body === undefined ? undefined : JSON.stringify(options.body);
+    const signPath = options.signPath ?? path;
+    const headers = this.createAuthHeaders(method, signPath, bodyText, credentials);
+    const queryText = buildQueryString(options.query);
+    const url = `${this.baseUrl}${path}${queryText ? `?${queryText}` : ''}`;
     const requestHeaders = {
       ...headers,
       'Content-Type': 'application/json',
     };
     let response: Response;
+    const timeoutMs = envNumber('POLYMARKET_CLOB_API_TIMEOUT_MS', 8000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       response = await fetch(url, {
         method,
         headers: requestHeaders,
-        body: body === undefined ? undefined : bodyText,
+        body: bodyText,
+        signal: controller.signal,
       });
     } catch (err) {
+      clearTimeout(timer);
       if (method === 'GET' && process.env.POLYMARKET_DISABLE_BROWSER_FETCH !== '1') {
-        return fetchJsonWithBrowser<T>(url, { headers: requestHeaders });
+        return fetchJsonWithBrowser<T>(url, { headers: requestHeaders, timeoutMs });
       }
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -81,6 +105,8 @@ export class PolymarketClobClient {
     hasApiCredentials: boolean;
     hasAddress: boolean;
     address?: string;
+    hasSignerAddress: boolean;
+    signerAddress?: string;
     canReadPrivate: boolean;
     message?: string;
   } {
@@ -90,15 +116,21 @@ export class PolymarketClobClient {
       this.credentials.apiPassphrase,
     );
     const hasAddress = Boolean(this.credentials.address);
+    const signerAddress = this.credentials.signerAddress ?? this.credentials.address;
+    const hasSignerAddress = Boolean(signerAddress);
     return {
       hasApiCredentials,
       hasAddress,
       address: this.credentials.address,
-      canReadPrivate: hasApiCredentials && hasAddress,
+      hasSignerAddress,
+      signerAddress,
+      canReadPrivate: hasApiCredentials && hasAddress && hasSignerAddress,
       message: !hasApiCredentials
         ? 'Polymarket L2 credentials are not configured'
         : !hasAddress
           ? 'Polymarket address is not configured'
+          : !hasSignerAddress
+            ? 'Polymarket signer address is not configured'
           : undefined,
     };
   }
@@ -159,19 +191,24 @@ export class PolymarketClobClient {
   }
 
   async getOpenOrders(): Promise<PolymarketOpenOrder[]> {
-    const data = await this.fetchAuthenticated<unknown[]>('GET', '/orders');
-    return data.map((item) => this.mapOrder(item as Record<string, unknown>));
+    const orders = await this.fetchPaginated('/data/orders');
+    return orders.map((item) => this.mapOrder(item as Record<string, unknown>));
   }
 
   async getAuthenticatedTrades(limit = 100): Promise<PolymarketUserTrade[]> {
-    const data = await this.fetchAuthenticated<unknown[]>('GET', `/trades?limit=${limit}`);
-    return data.map((item) => this.mapTrade(item as Record<string, unknown>));
+    const trades = await this.fetchPaginated('/data/trades', limit);
+    return trades.slice(0, limit).map((item) => this.mapTrade(item as Record<string, unknown>));
   }
 
   async getBalanceAllowance(assetType = 'COLLATERAL', tokenId?: string): Promise<PolymarketBalance> {
-    const params = new URLSearchParams({ asset_type: assetType });
+    const params = new URLSearchParams({
+      asset_type: assetType,
+      signature_type: envValue(process.env.POLYMARKET_SIGNATURE_TYPE) ?? '1',
+    });
     if (tokenId) params.set('token_id', tokenId);
-    const data = await this.fetchAuthenticated<Record<string, unknown>>('GET', `/balance-allowance?${params.toString()}`);
+    const data = await this.fetchAuthenticated<Record<string, unknown>>('GET', '/balance-allowance', {
+      query: params,
+    });
     return {
       assetType,
       tokenId,
@@ -182,25 +219,44 @@ export class PolymarketClobClient {
   }
 
   async cancelOrder(orderId: string): Promise<void> {
-    await this.fetchAuthenticated('DELETE', '/order', { orderID: orderId });
+    await this.fetchAuthenticated('DELETE', '/order', { body: { orderID: orderId } });
   }
 
-  private requireCredentials(): Required<PolymarketClobCredentials> {
-    const { address, apiKey, apiSecret, apiPassphrase } = this.credentials;
-    if (!address || !apiKey || !apiSecret || !apiPassphrase) {
-      throw new Error('Polymarket L2 credentials require POLYMARKET_ADDRESS, POLYMARKET_API_KEY, POLYMARKET_API_SECRET, and POLYMARKET_API_PASSPHRASE');
+  private async fetchPaginated(path: string, limit = Number.POSITIVE_INFINITY): Promise<unknown[]> {
+    let nextCursor = INITIAL_CURSOR;
+    const rows: unknown[] = [];
+
+    while (nextCursor !== END_CURSOR && rows.length < limit) {
+      const response = await this.fetchAuthenticated<unknown>('GET', path, {
+        query: { next_cursor: nextCursor },
+      });
+      rows.push(...extractRows(response));
+
+      const next = nextCursorFrom(response);
+      if (!next || next === nextCursor) break;
+      nextCursor = next;
     }
-    return { address, apiKey, apiSecret, apiPassphrase };
+
+    return rows;
+  }
+
+  private requireCredentials(): Required<Pick<PolymarketClobCredentials, 'address' | 'signerAddress' | 'apiKey' | 'apiSecret' | 'apiPassphrase'>> {
+    const { address, apiKey, apiSecret, apiPassphrase } = this.credentials;
+    const signerAddress = this.credentials.signerAddress ?? address;
+    if (!address || !signerAddress || !apiKey || !apiSecret || !apiPassphrase) {
+      throw new Error('Polymarket L2 credentials require POLYMARKET_ADDRESS, POLYMARKET_SIGNER_ADDRESS, POLYMARKET_API_KEY, POLYMARKET_API_SECRET, and POLYMARKET_API_PASSPHRASE');
+    }
+    return { address, signerAddress, apiKey, apiSecret, apiPassphrase };
   }
 
   private createAuthHeaders(
     method: string,
     path: string,
-    bodyText: string,
-    credentials: Required<PolymarketClobCredentials>,
+    bodyText: string | undefined,
+    credentials: Required<Pick<PolymarketClobCredentials, 'address' | 'signerAddress' | 'apiKey' | 'apiSecret' | 'apiPassphrase'>>,
   ): Record<string, string> {
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const message = `${timestamp}${method.toUpperCase()}${path}${bodyText}`;
+    const message = `${timestamp}${method.toUpperCase()}${path}${bodyText ?? ''}`;
     const signature = crypto
       .createHmac('sha256', decodeBase64Url(credentials.apiSecret))
       .update(message)
@@ -209,7 +265,7 @@ export class PolymarketClobClient {
       .replace(/\//g, '_');
 
     return {
-      POLY_ADDRESS: credentials.address,
+      POLY_ADDRESS: credentials.signerAddress,
       POLY_SIGNATURE: signature,
       POLY_TIMESTAMP: timestamp,
       POLY_API_KEY: credentials.apiKey,
@@ -250,19 +306,62 @@ export class PolymarketClobClient {
       value: numberFrom(row.value ?? row.usdcValue) || price * size,
       fee: optionalNumber(row.fee),
       status: optionalString(row.status),
-      timestamp: stringFrom(row.timestamp ?? row.created_at ?? row.createdAt),
-      txHash: optionalString(row.transactionHash ?? row.txHash),
+      timestamp: stringFrom(row.timestamp ?? row.match_time ?? row.created_at ?? row.createdAt),
+      txHash: optionalString(row.transaction_hash ?? row.transactionHash ?? row.txHash),
     };
   }
 }
 
 function readCredentialsFromEnv(): PolymarketClobCredentials {
+  const address = envValue(process.env.POLYMARKET_ADDRESS)
+    ?? envValue(process.env.POLYMARKET_FUNDER)
+    ?? envValue(process.env.POLY_ADDRESS);
+
   return {
-    address: process.env.POLYMARKET_ADDRESS ?? process.env.POLYMARKET_FUNDER ?? process.env.POLY_ADDRESS,
-    apiKey: process.env.POLYMARKET_API_KEY ?? process.env.POLY_API_KEY,
-    apiSecret: process.env.POLYMARKET_API_SECRET ?? process.env.POLY_API_SECRET,
-    apiPassphrase: process.env.POLYMARKET_API_PASSPHRASE ?? process.env.POLY_API_PASSPHRASE,
+    address,
+    signerAddress: envValue(process.env.POLYMARKET_SIGNER_ADDRESS) ?? address,
+    apiKey: envValue(process.env.POLYMARKET_API_KEY) ?? envValue(process.env.POLY_API_KEY),
+    apiSecret: envValue(process.env.POLYMARKET_API_SECRET) ?? envValue(process.env.POLY_API_SECRET),
+    apiPassphrase: envValue(process.env.POLYMARKET_API_PASSPHRASE) ?? envValue(process.env.POLY_API_PASSPHRASE),
   };
+}
+
+function envValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function envNumber(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? process.env.POLYRADER_EXTERNAL_TIMEOUT_MS);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(30000, Math.max(250, value));
+}
+
+function buildQueryString(query: AuthenticatedRequestOptions['query']): string {
+  if (!query) return '';
+  if (query instanceof URLSearchParams) return query.toString();
+
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    params.set(key, String(value));
+  }
+  return params.toString();
+}
+
+function extractRows(response: unknown): unknown[] {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === 'object') {
+    const data = (response as Record<string, unknown>).data;
+    if (Array.isArray(data)) return data;
+  }
+  return [];
+}
+
+function nextCursorFrom(response: unknown): string | undefined {
+  if (!response || typeof response !== 'object') return undefined;
+  const row = response as Record<string, unknown>;
+  return optionalString(row.next_cursor ?? row.nextCursor);
 }
 
 function decodeBase64Url(value: string): Buffer {

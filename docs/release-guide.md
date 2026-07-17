@@ -1,4 +1,6 @@
-# Release & Auto-Update Guide
+# PolyRader Release & Auto-Update Guide
+
+产品正式名称为 PolyRader。`Simbook` 仅作为模拟盘功能概念使用；bundle identifier 和本地配置目录可为数据兼容保留历史值，但不得作为对外产品名。
 
 ## CI/CD Overview
 
@@ -63,8 +65,8 @@ Go to **Settings → Secrets and variables → Actions** and add:
 
 ```bash
 # Tag and push
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 
 # CI will automatically:
 # 1. Run tests
@@ -76,14 +78,24 @@ git push origin v0.2.0
 
 ### 5. Verify release
 
-Check the release page: `https://github.com/dutongxue/polyrader_cs2/releases`
+Check the release page: `https://github.com/StrayShark/polyrader/releases`
 
-Assets should include:
-- `PolyRader-CS2_0.2.0_aarch64.dmg` (macOS Apple Silicon)
-- `PolyRader-CS2_0.2.0_x64.dmg` (macOS Intel)
-- `PolyRader-CS2_0.2.0_x64-setup.msi` (Windows)
-- `PolyRader-CS2_0.2.0_amd64.AppImage` (Linux)
+Assets should use the current PolyRader naming:
+- `PolyRader_0.3.0_aarch64.dmg`
+- `PolyRader_0.3.0_x64.dmg`
+- `PolyRader_0.3.0_x64-setup.msi`
+- `PolyRader_0.3.0_amd64.AppImage`
 - `latest.json` (auto-updater manifest)
+
+## Product Release Checklist
+
+Before publishing a simulation-first release:
+
+- Main UI says PolyRader and clearly states the simulation-first positioning.
+- Main UI contains no deposit, withdraw, bonus, VIP, cashback, or real-money wagering language.
+- Simulated bet submission does not call Polymarket order APIs.
+- Local database backup/export works.
+- Visual E2E covers event lobby, bet slip, bankroll, review, and database pages.
 
 ## Build Targets
 

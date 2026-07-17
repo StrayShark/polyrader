@@ -6,6 +6,8 @@
 
 export interface Market {
   conditionId: string;
+  /** Stable identity shared by Polymarket, HLTV and local simulation records. */
+  canonicalMatchId?: string;
   slug: string;
   question: string;
   description: string;
@@ -26,6 +28,8 @@ export interface Market {
 
 export interface MatchInfo {
   matchId: string;
+  /** Stable cross-source match identity, independent from a market condition ID. */
+  canonicalMatchId?: string;
   teamA: TeamBrief;
   teamB: TeamBrief;
   eventName: string;
@@ -36,6 +40,15 @@ export interface MatchInfo {
   maps?: string[];
   currentScore?: MatchScore;
   lineups?: MatchLineups;
+  teamDetails?: MatchTeamDetails;
+}
+
+export interface MatchTeamDetails {
+  teamA: Team;
+  teamB: Team;
+  source: 'database' | 'hltv';
+  isComplete: boolean;
+  updatedAt?: string;
 }
 
 export interface MatchLineups {
@@ -603,6 +616,8 @@ export interface PolymarketAccountStatus {
   hasApiCredentials: boolean;
   hasAddress: boolean;
   address?: string;
+  hasSignerAddress?: boolean;
+  signerAddress?: string;
   canReadPrivate: boolean;
   message?: string;
 }
@@ -1200,4 +1215,234 @@ export interface TaskMonitorSnapshot {
     failedToday: number;
   };
   updatedAt: string;
+}
+
+// ============================================================
+// Simulation Betting (User Practice Account)
+// ============================================================
+
+export interface SimAccount {
+  id: string;
+  name: string;
+  initialBankroll: number;
+  currentBankroll: number;
+  availableBankroll: number;
+  openExposure: number;
+  maxSingleRiskPct: number;
+  maxDailyRiskPct: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SimBetStatus = 'open' | 'settled' | 'voided';
+export type SimBetResult = 'won' | 'lost' | 'push' | null;
+
+export interface SimBet {
+  id: string;
+  accountId: string;
+  matchId?: string;
+  marketId?: string;
+  betType: 'single' | 'parlay';
+  stake: number;
+  totalOdds: number;
+  impliedProbability?: number;
+  userProbability?: number;
+  modelProbability?: number;
+  marketProbability?: number;
+  edge?: number;
+  ev?: number;
+  status: SimBetStatus;
+  result: SimBetResult;
+  pnl: number;
+  reasoning?: string;
+  matchFormat?: 'BO1' | 'BO3' | 'BO5' | null;
+  matchTier?: string | null;
+  placedAt: string;
+  settledAt?: string;
+}
+
+export interface SimBetLeg {
+  id: string;
+  betId: string;
+  matchId?: string;
+  marketId?: string;
+  selection: string;
+  odds: number;
+  impliedProbability?: number;
+  source?: string;
+  createdAt: string;
+  result?: SimBetResult;
+}
+
+export interface OddsSnapshot {
+  id: string;
+  matchId?: string;
+  marketId?: string;
+  selection: string;
+  odds: number;
+  impliedProbability?: number;
+  liquidity?: number;
+  volume24h?: number;
+  source: string;
+  capturedAt: string;
+}
+
+export interface BetReview {
+  id: string;
+  betId: string;
+  errorTags: string[];
+  note?: string;
+  brierScore?: number;
+  closingLineValue?: number;
+  roi?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewDetail {
+  bet: SimBet;
+  review?: BetReview;
+  snapshots: OddsSnapshot[];
+  matchName?: string;
+  closingOdds?: number;
+  brierScore?: number;
+  closingLineValue?: number;
+  roi?: number;
+}
+
+export interface RiskMetrics {
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  consecutiveLosses: number;
+  averageStake: number;
+  totalBets: number;
+  winRate: number;
+  roi: number;
+}
+
+export type EquityCurveGranularity = 'day' | 'week' | 'month' | 'all';
+
+export interface BankrollSummary {
+  account: SimAccount;
+  todayPnl: number;
+  openExposure: number;
+  equityCurve: EquityCurvePoint[];
+  openBets: SimBet[];
+  settledBets: SimBet[];
+  riskMetrics: RiskMetrics;
+}
+
+export interface PlaceSimBetInput {
+  accountId?: string;
+  matchId?: string;
+  marketId?: string;
+  betType: 'single' | 'parlay';
+  stake: number;
+  legs: PlaceSimBetLegInput[];
+  userProbability?: number;
+  modelProbability?: number;
+  marketProbability?: number;
+  matchFormat?: 'BO1' | 'BO3' | 'BO5' | null;
+  matchTier?: string | null;
+  reasoning?: string;
+}
+
+export interface PlaceSimBetLegInput {
+  matchId?: string;
+  marketId?: string;
+  selection: string;
+  odds: number;
+  source?: string;
+}
+
+
+// ============================================================
+// Phase C — Training & Strategy Profiles
+// ============================================================
+
+export type TrainingGoalType =
+  | 'consecutive_reasoning'
+  | 'single_risk_limit'
+  | 'high_confidence_bets';
+
+export type TrainingSessionStatus = 'active' | 'completed' | 'abandoned';
+
+export interface TrainingGoalTarget {
+  count?: number;
+  maxRiskPct?: number;
+  minEdge?: number;
+  minConfidence?: number;
+  consecutive?: boolean;
+}
+
+export interface TrainingSession {
+  id: string;
+  accountId: string;
+  title: string;
+  type: TrainingGoalType;
+  target: TrainingGoalTarget;
+  status: TrainingSessionStatus;
+  progress: number;
+  startAt: string;
+  endAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTrainingSessionInput {
+  title: string;
+  type: TrainingGoalType;
+  target: TrainingGoalTarget;
+  startAt?: string;
+  endAt?: string;
+}
+
+export interface UpdateTrainingSessionInput {
+  title?: string;
+  target?: TrainingGoalTarget;
+  status?: TrainingSessionStatus;
+  progress?: number;
+  endAt?: string | null;
+}
+
+export interface StrategyProfileCapitalParams {
+  initialBankroll?: number;
+  maxSingleRiskPct?: number;
+  maxDailyRiskPct?: number;
+  betStrategy?: 'fixed' | 'kelly' | 'proportional';
+}
+
+export interface StrategyProfile {
+  id: string;
+  accountId: string;
+  name: string;
+  description?: string;
+  sourceWeights: SignalSourceWeights;
+  behaviorWeights: SignalBehaviorWeights;
+  recommendation: SignalRecommendationConfig;
+  capitalParams?: StrategyProfileCapitalParams;
+  lastBacktest?: SignalBacktestSummary;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStrategyProfileInput {
+  name: string;
+  description?: string;
+  sourceWeights: SignalSourceWeights;
+  behaviorWeights: SignalBehaviorWeights;
+  recommendation: SignalRecommendationConfig;
+  capitalParams?: StrategyProfileCapitalParams;
+  lastBacktest?: SignalBacktestSummary;
+}
+
+export interface UpdateStrategyProfileInput {
+  name?: string;
+  description?: string;
+  sourceWeights?: SignalSourceWeights;
+  behaviorWeights?: SignalBehaviorWeights;
+  recommendation?: SignalRecommendationConfig;
+  capitalParams?: StrategyProfileCapitalParams | null;
+  lastBacktest?: SignalBacktestSummary | null;
 }

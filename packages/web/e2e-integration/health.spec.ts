@@ -4,7 +4,9 @@ const API = 'http://127.0.0.1:3001';
 
 test.describe('Integration — real server health', () => {
   test('GET /api/health returns database and websocket status', async ({ request }) => {
-    const response = await request.get(`${API}/api/health`);
+    const startedAt = Date.now();
+    const response = await request.get(`${API}/api/health`, { timeout: 10_000 });
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
     expect(response.ok()).toBeTruthy();
 
     const body = await response.json() as {

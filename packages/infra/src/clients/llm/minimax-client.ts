@@ -8,7 +8,7 @@ export class MinimaxClient implements LLMClient {
   private model: string;
   private baseUrl = process.env.MINIMAX_BASE_URL || 'https://api.minimax.chat/v1';
 
-  constructor(apiKey: string, model = 'abab6.5s-chat') {
+  constructor(apiKey: string, model = 'MiniMax-M3') {
     this.apiKey = apiKey;
     this.model = model;
   }
@@ -28,7 +28,8 @@ export class MinimaxClient implements LLMClient {
           { role: 'user', content: prompt.context },
         ],
         temperature: 0.3,
-        max_tokens: 1000,
+        max_tokens: 2500,
+        reasoning_split: true,
       }),
     });
 
@@ -44,11 +45,17 @@ export class MinimaxClient implements LLMClient {
     const content = String(message?.content ?? '');
 
     const engine = new PromptEngine();
-    return engine.parseResponse('minimax', this.model, content, latency, {
+    const result = engine.parseResponse('minimax', this.model, content, latency, {
       promptTokens: Number((data.usage as Record<string, unknown>)?.prompt_tokens ?? 0),
       completionTokens: Number((data.usage as Record<string, unknown>)?.completion_tokens ?? 0),
       totalTokens: Number((data.usage as Record<string, unknown>)?.total_tokens ?? 0),
     });
+    const reasoningDetails = message?.reasoning_details as Array<Record<string, unknown>> | undefined;
+    const thinkingProcess = reasoningDetails
+      ?.map((item) => String(item.content ?? ''))
+      .filter(Boolean)
+      .join('');
+    return thinkingProcess ? { ...result, thinkingProcess } : result;
   }
 
   async testConnection(): Promise<boolean> {
@@ -77,6 +84,7 @@ export class MinimaxClient implements LLMClient {
         ],
         temperature: 0.3,
         max_tokens: 2000,
+        reasoning_split: true,
       }),
     });
 

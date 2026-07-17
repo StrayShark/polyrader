@@ -12,6 +12,7 @@ import type {
 import { PolymarketClobClient, PolymarketDataClient } from '@polyrader/infra';
 import { cacheGet, cacheSet } from '@polyrader/infra';
 import { logger } from '../utils/logger';
+import { envNumber, withTimeout } from '../utils/timeout';
 
 export class PolymarketAccountService {
   private dataClient = new PolymarketDataClient();
@@ -33,51 +34,44 @@ export class PolymarketAccountService {
     let openOrders: PolymarketOpenOrder[] = [];
     const diagnostics: PolymarketAccountDiagnostic[] = [];
 
-    if (address) {
-      const publicResults = await Promise.allSettled([
-        this.dataClient.getTotalValue(address),
-        this.dataClient.getCurrentPositions(address, 100),
-        this.dataClient.getClosedPositions(address, 250),
-        this.dataClient.getActivity(address, 100),
-        this.dataClient.getTrades(address, 100),
-      ]);
-      const publicOperations = ['total-value', 'positions', 'closed-positions', 'activity', 'trades'];
+    const [publicResults, privateResults] = await Promise.all([
+      address ? fetchPublicAccountData(address, this.dataClient) : Promise.resolve([]),
+      status.canReadPrivate ? fetchPrivateAccountData(this.clobClient) : Promise.resolve([]),
+    ]);
+    const publicOperations = ['total-value', 'positions', 'closed-positions', 'activity', 'trades'];
+    const privateOperations = ['balance-allowance', 'open-orders', 'private-trades'];
 
-      totalPositionValue = publicResults[0].status === 'fulfilled' ? publicResults[0].value : 0;
-      positions = publicResults[1].status === 'fulfilled' ? publicResults[1].value : [];
-      closedPositions = publicResults[2].status === 'fulfilled' ? publicResults[2].value : [];
-      activity = publicResults[3].status === 'fulfilled' ? publicResults[3].value : [];
-      trades = publicResults[4].status === 'fulfilled' ? publicResults[4].value : [];
+    if (publicResults.length > 0) {
+      totalPositionValue = publicResults[0]?.status === 'fulfilled' ? publicResults[0].value : 0;
+      positions = publicResults[1]?.status === 'fulfilled' ? publicResults[1].value : [];
+      closedPositions = publicResults[2]?.status === 'fulfilled' ? publicResults[2].value : [];
+      activity = publicResults[3]?.status === 'fulfilled' ? publicResults[3].value : [];
+      trades = publicResults[4]?.status === 'fulfilled' ? publicResults[4].value : [];
 
       for (const [index, result] of publicResults.entries()) {
         diagnostics.push(toDiagnostic('data-api', publicOperations[index] ?? 'unknown', result));
         if (result.status === 'rejected') {
-          logger.warn('Polymarket public account data fetch failed', { error: (result.reason as Error).message });
+          logger.warn('Polymarket public account data fetch failed', { operation: publicOperations[index], error: (result.reason as Error).message });
         }
       }
     }
 
-    if (status.canReadPrivate) {
-      const privateResults = await Promise.allSettled([
-        this.clobClient.getBalanceAllowance(),
-        this.clobClient.getOpenOrders(),
-        this.clobClient.getAuthenticatedTrades(100),
-      ]);
-      const privateOperations = ['balance-allowance', 'open-orders', 'private-trades'];
-
-      balances = privateResults[0].status === 'fulfilled' ? [privateResults[0].value] : [];
-      openOrders = privateResults[1].status === 'fulfilled' ? privateResults[1].value : [];
-      if (privateResults[2].status === 'fulfilled' && privateResults[2].value.length > 0) {
+    if (privateResults.length > 0) {
+      balances = privateResults[0]?.status === 'fulfilled' ? [privateResults[0].value] : [];
+      openOrders = privateResults[1]?.status === 'fulfilled' ? privateResults[1].value : [];
+      if (privateResults[2]?.status === 'fulfilled' && privateResults[2].value.length > 0) {
         trades = privateResults[2].value;
       }
       if (privateResults.every((result) => result.status === 'rejected')) {
-        status.message = 'Polymarket private data unavailable; showing public account data';
+        status.message = publicResults.every((result) => result.status === 'rejected')
+          ? 'Polymarket account data unavailable; showing degraded local account shell'
+          : 'Polymarket private data unavailable; showing public account data';
       }
 
       for (const [index, result] of privateResults.entries()) {
         diagnostics.push(toDiagnostic('clob-api', privateOperations[index] ?? 'unknown', result));
         if (result.status === 'rejected') {
-          logger.warn('Polymarket private account data fetch failed', { error: (result.reason as Error).message });
+          logger.warn('Polymarket private account data fetch failed', { operation: privateOperations[index], error: (result.reason as Error).message });
         }
       }
     }
@@ -100,6 +94,55 @@ export class PolymarketAccountService {
     await cacheSet(cacheKey, overview, 30);
     return overview;
   }
+}
+
+async function fetchPublicAccountData(
+  address: string,
+  dataClient: PolymarketDataClient,
+): Promise<[
+  PromiseSettledResult<number>,
+  PromiseSettledResult<PolymarketUserPosition[]>,
+  PromiseSettledResult<PolymarketUserPosition[]>,
+  PromiseSettledResult<PolymarketUserActivity[]>,
+  PromiseSettledResult<PolymarketUserTrade[]>,
+]> {
+  const timeoutMs = accountOperationTimeoutMs();
+  return Promise.allSettled([
+    withTimeout(dataClient.getTotalValue(address), timeoutMs, 'polymarket account total-value'),
+    withTimeout(dataClient.getCurrentPositions(address, 100), timeoutMs, 'polymarket account positions'),
+    withTimeout(dataClient.getClosedPositions(address, 250), timeoutMs, 'polymarket account closed-positions'),
+    withTimeout(dataClient.getActivity(address, 100), timeoutMs, 'polymarket account activity'),
+    withTimeout(dataClient.getTrades(address, 100), timeoutMs, 'polymarket account trades'),
+  ]) as Promise<[
+    PromiseSettledResult<number>,
+    PromiseSettledResult<PolymarketUserPosition[]>,
+    PromiseSettledResult<PolymarketUserPosition[]>,
+    PromiseSettledResult<PolymarketUserActivity[]>,
+    PromiseSettledResult<PolymarketUserTrade[]>,
+  ]>;
+}
+
+async function fetchPrivateAccountData(
+  clobClient: PolymarketClobClient,
+): Promise<[
+  PromiseSettledResult<PolymarketBalance>,
+  PromiseSettledResult<PolymarketOpenOrder[]>,
+  PromiseSettledResult<PolymarketUserTrade[]>,
+]> {
+  const timeoutMs = accountOperationTimeoutMs();
+  return Promise.allSettled([
+    withTimeout(clobClient.getBalanceAllowance(), timeoutMs, 'polymarket account balance-allowance'),
+    withTimeout(clobClient.getOpenOrders(), timeoutMs, 'polymarket account open-orders'),
+    withTimeout(clobClient.getAuthenticatedTrades(100), timeoutMs, 'polymarket account private-trades'),
+  ]) as Promise<[
+    PromiseSettledResult<PolymarketBalance>,
+    PromiseSettledResult<PolymarketOpenOrder[]>,
+    PromiseSettledResult<PolymarketUserTrade[]>,
+  ]>;
+}
+
+function accountOperationTimeoutMs(): number {
+  return envNumber('POLYMARKET_ACCOUNT_OPERATION_TIMEOUT_MS', envNumber('POLYRADER_EXTERNAL_TIMEOUT_MS', 5000, 250, 30000), 250, 30000);
 }
 
 function toDiagnostic(

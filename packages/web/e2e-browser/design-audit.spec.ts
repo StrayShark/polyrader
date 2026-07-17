@@ -9,6 +9,36 @@ import { writeAuditReport, type AuditEntry } from './design/report-writer';
 const auditResults: AuditEntry[] = [];
 const THEMES: AppTheme[] = ['light', 'dark', 'matrix'];
 
+const FORBIDDEN_REAL_MONEY_KEYWORDS = [
+  'Deposit',
+  'Withdraw',
+  'Bonus',
+  'VIP',
+  'Cashback',
+  'Cashout',
+  'Real balance',
+  'Real bet',
+  'Bet real',
+  'Win money',
+  '实盘下单',
+  '实盘买入',
+  '真实限价单',
+  '真实下注',
+  '真钱',
+  '充值',
+  '提现',
+  '奖金',
+  '返现',
+];
+
+async function scanForbiddenText(page: import('@playwright/test').Page): Promise<string[]> {
+  const bodyText = await page.evaluate(() => document.body.innerText);
+  const lower = bodyText.toLowerCase();
+  return FORBIDDEN_REAL_MONEY_KEYWORDS.filter((keyword) =>
+    lower.includes(keyword.toLowerCase()),
+  );
+}
+
 function record(page: string, module: string, theme: string, status: AuditEntry['status'], note?: string) {
   auditResults.push({ page, module, theme, status, note });
 }
@@ -42,7 +72,7 @@ test.describe('Cursor design audit', () => {
   for (const theme of THEMES) {
     test(`theme tokens — ${theme}`, async ({ page }) => {
       await page.goto('/#/');
-      await page.locator('aside').waitFor({ state: 'visible', timeout: 10000 });
+      await page.getByTestId('app-sidebar').first().waitFor({ state: 'visible', timeout: 10000 });
       await setTheme(page, theme);
 
       const expected = themeExpectations(theme);
@@ -68,7 +98,7 @@ test.describe('Cursor design audit', () => {
     for (const route of DESIGN_AUDIT_PAGES) {
       test(`components — ${route.name} @ ${theme}`, async ({ page }) => {
         await page.goto(route.hash);
-        await page.locator('aside').waitFor({ state: 'visible', timeout: 10000 });
+        await page.getByTestId('app-sidebar').first().waitFor({ state: 'visible', timeout: 10000 });
         await setTheme(page, theme);
         await page.waitForTimeout(500);
 
@@ -89,5 +119,17 @@ test.describe('Cursor design audit', () => {
         record(route.name, 'body-font-inter', theme, /Inter/i.test(mono) ? 'pass' : 'partial', mono);
       });
     }
+  }
+
+  for (const route of DESIGN_AUDIT_PAGES) {
+    test(`forbidden real-money text — ${route.name}`, async ({ page }) => {
+      await page.goto(route.hash);
+      await page.getByTestId('app-sidebar').first().waitFor({ state: 'visible', timeout: 10000 });
+      await page.waitForTimeout(500);
+
+      const found = await scanForbiddenText(page);
+      record(route.name, 'no-real-money-text', 'all', found.length === 0 ? 'pass' : 'fail', found.join(', '));
+      expect(found, `Found forbidden real-money keywords on ${route.name}: ${found.join(', ')}`).toHaveLength(0);
+    });
   }
 });

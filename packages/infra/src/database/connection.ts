@@ -4,7 +4,7 @@ import fs from 'fs';
 
 let db: Database.Database | null = null;
 
-function getDbPath(): string {
+export function getDbPath(): string {
   // Tauri sidecar mode: POLYRADER_DATA_DIR env set by Rust backend
   const dataDir = process.env.POLYRADER_DATA_DIR;
   if (dataDir) {

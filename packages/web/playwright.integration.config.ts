@@ -36,6 +36,7 @@ export default defineConfig({
         POLYRADER_SKIP_CRON: '1',
         POLYRADER_SKIP_STREAM: '1',
         POLYRADER_SKIP_EXTERNAL_HEALTH: '1',
+        CS2_SIMBOOK_ENABLE_MARKET_ORDERS: 'true',
         DATABASE_URL: integrationDb,
         ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? 'e2e-integration-test-key',
       },

@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import type {
   SimulatedBet,
   LLMProvider,
@@ -26,7 +25,7 @@ export class SimulatedBettingEngine {
     amount = 100,
     variantId?: string,
   ): SimulatedBet {
-    const id = `bet-${randomUUID()}`;
+    const id = `bet-${globalThis.crypto.randomUUID()}`;
     return {
       id,
       matchId,

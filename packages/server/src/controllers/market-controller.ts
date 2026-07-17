@@ -72,6 +72,20 @@ export class MarketController {
     }
   }
 
+  getLocalOdds(req: Request, res: Response): void {
+    try {
+      const odds = this.service.getLocalOdds(req.params.conditionId);
+      if (!odds) {
+        res.status(404).json({ error: 'Local odds not available' });
+        return;
+      }
+      res.json({ data: odds });
+    } catch (err) {
+      logger.error('Failed to fetch local odds', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      res.status(500).json({ error: 'Failed to fetch local odds' });
+    }
+  }
+
   async getHolders(req: Request, res: Response): Promise<void> {
     try {
       const limit = parseInt(String(req.query.limit ?? '50'), 10);

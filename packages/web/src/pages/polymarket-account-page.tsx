@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
 import { RefreshCw, Wallet, ListChecks, History, Activity, KeyRound, AlertTriangle, TrendingUp } from 'lucide-react';
 import { CartesianGrid, Line, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Link } from 'react-router-dom';
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
 import {
   Badge,
   Button,
+  buttonVariants,
   Card,
   CardContent,
   CardHeader,
@@ -21,15 +23,19 @@ import {
 } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
 import { ProductModeNotice } from '../components/ProductModeNotice';
+import { useFeatureFlagStore } from '../stores/feature-flag-store';
 import type { PolymarketAccountOverview } from '@polyrader/core';
 
 export function PolymarketAccountPage() {
   const { t } = useI18n();
+  const { polymarketAccountEnabled } = useFeatureFlagStore();
   const [overview, setOverview] = useState<PolymarketAccountOverview | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    if (!polymarketAccountEnabled) return;
+
     setIsLoading(true);
     setError(null);
     try {
@@ -40,11 +46,41 @@ export function PolymarketAccountPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [polymarketAccountEnabled]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!polymarketAccountEnabled) {
+      setOverview(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    void fetchData();
+  }, [fetchData, polymarketAccountEnabled]);
+
+  if (!polymarketAccountEnabled) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('polymarketAccount.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('polymarketAccount.subtitle')}</p>
+        </div>
+
+        <ProductModeNotice mode="read-only" />
+
+        <div className="flex min-h-[42vh] flex-col items-center justify-center gap-3 rounded-lg border border-border bg-background p-8 text-center">
+          <AlertTriangle className="h-10 w-10 text-muted-foreground" />
+          <h2 className="text-lg font-medium">{t('polymarketAccount.disabledTitle')}</h2>
+          <p className="max-w-md text-sm text-muted-foreground">{t('polymarketAccount.disabledHint')}</p>
+          <Link to="/settings" className={buttonVariants({ size: 'sm', className: 'mt-2' })}>
+            <KeyRound className="h-3.5 w-3.5" />
+            {t('polymarketAccount.openSettings')}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const status = overview?.status;
   const stats = overview?.stats ?? EMPTY_ACCOUNT_STATS;

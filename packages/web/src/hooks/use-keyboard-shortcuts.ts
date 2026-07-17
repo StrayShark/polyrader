@@ -55,7 +55,7 @@ export function useKeyboardShortcuts({ onCommandPalette }: ShortcutOptions = {})
       // Cmd/Ctrl + , = settings
       if (e.key === ',') {
         e.preventDefault();
-        navigate('/ai/config');
+        navigate('/settings');
         return;
       }
     }

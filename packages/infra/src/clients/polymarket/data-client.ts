@@ -9,7 +9,7 @@ import { fetchJsonWithBrowser } from '../../crawlers/browser-fetch.js';
 
 const DATA_API_URL = process.env.POLYMARKET_DATA_API_URL ?? 'https://data-api.polymarket.com';
 
-async function fetchJson<T>(url: string, timeoutMs = 15000): Promise<T> {
+async function fetchJson<T>(url: string, timeoutMs = envNumber('POLYMARKET_DATA_API_TIMEOUT_MS', 8000)): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -22,7 +22,7 @@ async function fetchJson<T>(url: string, timeoutMs = 15000): Promise<T> {
     if (process.env.POLYMARKET_DISABLE_BROWSER_FETCH === '1') {
       throw err;
     }
-    return fetchJsonWithBrowser<T>(url);
+    return fetchJsonWithBrowser<T>(url, { timeoutMs });
   } finally {
     clearTimeout(timer);
   }
@@ -207,4 +207,10 @@ function numberFrom(value: unknown): number {
 function optionalNumber(value: unknown): number | undefined {
   const num = Number(value);
   return Number.isFinite(num) ? num : undefined;
+}
+
+function envNumber(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? process.env.POLYRADER_EXTERNAL_TIMEOUT_MS);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(30000, Math.max(250, value));
 }

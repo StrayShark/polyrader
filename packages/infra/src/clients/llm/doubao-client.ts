@@ -31,7 +31,7 @@ export class DoubaoClient implements LLMClient {
         temperature: 0.3,
         max_tokens: 1000,
       }),
-      signal: AbortSignal.timeout(55000),
+      signal: AbortSignal.timeout(Number(process.env.DOUBAO_TIMEOUT_MS) || 90000),
     });
 
     if (!response.ok) {

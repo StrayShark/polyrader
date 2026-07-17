@@ -132,9 +132,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'PolyRader CS2 ${{ github.ref_name }}'
+          releaseName: 'PolyRader ${{ github.ref_name }}'
           releaseBody: |
-            ## PolyRader CS2 ${{ github.ref_name }}
+            ## PolyRader ${{ github.ref_name }}
 
             ### Downloads
             - **macOS (Apple Silicon)**: `.dmg` (aarch64)
@@ -176,4 +176,4 @@ jobs:
       - name: Verify release
         run: |
           echo "Release ${{ github.ref_name }} published successfully"
-          echo "Auto-updater will check: https://github.com/StrayShark/polyrader_cs2/releases/latest/download/latest.json"
+          echo "Auto-updater will check: https://github.com/StrayShark/polyrader/releases/latest/download/latest.json"

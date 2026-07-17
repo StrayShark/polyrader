@@ -71,7 +71,7 @@ test.describe('A/B Compare interaction', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Find and click the compare button (may be "对比" or "Compare")
     const compareBtn = page.locator('button').filter({ hasText: /对比|Compare/ }).first();
@@ -144,7 +144,7 @@ test.describe('AI Stats settle & delete buttons', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Should show the bet's match ID
     await expect(page.locator('text=m1').first()).toBeVisible({ timeout: 5000 });
@@ -260,7 +260,7 @@ test.describe('AI Stats settle & delete buttons', () => {
     await page.waitForTimeout(2000);
 
     // Should not crash
-    await expect(page.locator('aside')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 5000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);

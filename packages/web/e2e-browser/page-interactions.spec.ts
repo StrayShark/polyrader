@@ -11,8 +11,23 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function mockMatchDetail(page: Page) {
   // Match info
-  await page.route('**/api/esports/matches/**', (route) =>
-    route.fulfill({
+  await page.route('**/api/esports/matches/**', (route) => {
+    const url = route.request().url();
+    if (url.includes('/sources')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+    }
+    if (url.includes('/refresh-lineup')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { updated: true } }),
+      });
+    }
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
@@ -28,6 +43,14 @@ async function mockMatchDetail(page: Page) {
           maps: ['de_dust2', 'de_mirage', 'de_nuke'],
         },
       }),
+    });
+  });
+
+  await page.route('**/api/esports/teams/**/sources**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { links: [], rosterSnapshots: [] } }),
     }),
   );
 
@@ -135,7 +158,7 @@ test.describe('Match Detail page', () => {
     await page.waitForTimeout(3000);
 
     // Sidebar visible = app didn't crash
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Page should show team names
     await expect(page.locator('text=Team Spirit').first()).toBeVisible({ timeout: 5000 });
@@ -148,7 +171,7 @@ test.describe('Match Detail page', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=IEM Cologne').first()).toBeVisible({ timeout: 5000 });
     await expect(page.locator('text=BO3').first()).toBeVisible({ timeout: 5000 });
   });
@@ -159,7 +182,7 @@ test.describe('Match Detail page', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Order book should show prices from mock (0.64, 0.66 etc.)
     // The orderbook table or list should be visible
@@ -185,7 +208,7 @@ test.describe('Match Detail page', () => {
     await page.waitForTimeout(2000);
 
     // Should not crash — sidebar still visible
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // No error boundary
     const errorCount = await page.locator('text=Something went wrong').count();
@@ -204,7 +227,7 @@ test.describe('Allocation page', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Should show capital amount ($10000.00 format)
     await expect(page.locator('text=$10000.00').first()).toBeVisible({ timeout: 5000 });
@@ -216,7 +239,7 @@ test.describe('Allocation page', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Page title visible
     const h1 = page.locator('h1').first();
@@ -236,7 +259,7 @@ test.describe('Allocation page', () => {
     await page.waitForTimeout(2000);
 
     // Should not crash
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);

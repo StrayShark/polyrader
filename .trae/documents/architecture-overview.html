@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PolyRader CS2 — 技术架构与产品设计</title>
+<title>CS2 Simbook — 历史架构与产品设计参考</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 
@@ -758,6 +758,22 @@
 
   .footer .footer-brand { font-weight: 600; color: var(--neon-cyan); }
 
+  .reposition-notice {
+    position: relative;
+    z-index: 3;
+    max-width: 1400px;
+    margin: 24px auto 0;
+    padding: 14px 20px;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(10, 14, 23, 0.92);
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  .reposition-notice strong { color: var(--neon-cyan); }
+  .reposition-notice a { color: var(--neon-green); }
+
   /* ===== RESPONSIVE ===== */
   @media (max-width: 1024px) {
     .feature-grid { grid-template-columns: repeat(2, 1fr); }
@@ -781,18 +797,22 @@
 </head>
 <body>
 
+<div class="reposition-notice">
+  <strong>历史参考：</strong>本文档保留 PolyRader CS2 时期的架构展示。当前产品名为 PolyRader，定位为 CS2 博彩模拟盘练习工具 + 本地数据库。当前规范以 <a href="./PRD.md">PRD.md</a>、<a href="./technical-architecture.md">technical-architecture.md</a> 和 <a href="./design-spec.md">design-spec.md</a> 为准。
+</div>
+
 <!-- ==================== HERO ==================== -->
 <section class="hero">
   <div class="container">
     <div class="hero-badge">
       <span class="dot"></span>
-      <span>Prediction Market Intelligence</span>
+      <span>Historical Architecture Reference</span>
     </div>
     <h1 class="hero-title">
-      Poly<span class="highlight">Rader</span> CS2
+      CS2 <span class="highlight">Simbook</span>
     </h1>
     <p class="hero-subtitle">
-      融合 <strong>Polymarket 实时数据流</strong>、<strong>巨鲸与内幕追踪</strong>、<strong>CS2 赛事分析</strong>、<strong>多 LLM 并行预测</strong>与<strong>多源信号对比</strong>的开源预测市场工具
+      本页保留 PolyRader CS2 时期的架构展示，用于追溯旧方案。当前主产品是 <strong>CS2 模拟盘练习工具</strong> 与 <strong>本地复盘数据库</strong>。
     </p>
     <div class="hero-stats">
       <div class="hero-stat">
@@ -2395,7 +2415,7 @@
 <!-- ==================== FOOTER ==================== -->
 <footer class="footer">
   <div class="container">
-    <span class="footer-brand">PolyRader CS2</span> &mdash; 开源 Polymarket CS2 预测市场分析工具 &middot; 技术架构与产品设计文档
+    <span class="footer-brand">CS2 Simbook</span> &mdash; 历史架构与产品设计参考
   </div>
 </footer>
 

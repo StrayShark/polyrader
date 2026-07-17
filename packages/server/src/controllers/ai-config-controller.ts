@@ -66,15 +66,15 @@ export class AiConfigController {
 
   async analyze(req: Request, res: Response): Promise<void> {
     try {
-      const { matchId, teamAId, teamBId } = req.body;
+      const { matchId, teamAId, teamBId, locale } = req.body;
       let result: LLMAggregation | undefined;
       await trackTask(`llm-analyze-${matchId}`, {
         name: 'LLM 手动分析',
         category: 'ai',
         trigger: 'manual',
-        metadata: { matchId, teamAId, teamBId },
+        metadata: { matchId, teamAId, teamBId, locale },
       }, async (ctx) => {
-        result = await this.service.analyze(matchId, teamAId, teamBId);
+        result = await this.service.analyze(matchId, teamAId, teamBId, locale);
         ctx.log(`${result.results.length} 个 provider 返回结果`);
         ctx.setProgress(100);
       });
@@ -91,7 +91,7 @@ export class AiConfigController {
    */
   async analyzeStream(req: Request, res: Response): Promise<void> {
     const stream = createSSEStream(res);
-    const { matchId, teamAId, teamBId } = req.body;
+    const { matchId, teamAId, teamBId, locale } = req.body;
     // Stop streaming once the client disconnects so we don't write to a dead socket
     let aborted = false;
     req.on('close', () => { aborted = true; });
@@ -112,6 +112,7 @@ export class AiConfigController {
             error: llmResult.error,
           });
         },
+        locale,
       );
 
       // Send final aggregation — the full LLMAggregation object

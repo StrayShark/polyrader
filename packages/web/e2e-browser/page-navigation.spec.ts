@@ -35,7 +35,7 @@ test.describe('P3-1: Page navigation', () => {
 
       // Sidebar should be visible (app didn't crash).
       // App shows a loading spinner for ~3-5s during init, so allow extra time.
-      await expect(p.locator('aside')).toBeVisible({ timeout: 10000 });
+      await expect(p.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
       // Wait for lazy-loaded page content to settle
       await p.waitForTimeout(1000);
@@ -55,10 +55,10 @@ test.describe('P3-1: Page navigation', () => {
   test('navigation between pages works', async ({ page }) => {
     await page.goto('/#/');
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Click on Daily nav link (href selector — language-independent)
-    const dailyLink = page.locator('aside nav a[href*="daily"]').first();
+    const dailyLink = page.getByTestId('app-sidebar').locator('nav a[href*="daily"]').first();
     await expect(dailyLink).toBeVisible({ timeout: 5000 });
     await dailyLink.click();
     await page.waitForLoadState('domcontentloaded');

@@ -207,6 +207,7 @@ export class LLMRepository {
     hasTeamData: boolean;
     lineups?: string | null;
     hltvMatchId?: string | null;
+    canonicalMatchId?: string | null;
   }): void {
     // Ensure team rows exist to satisfy FOREIGN KEY constraint on matches table
     if (match.teamAId) {
@@ -225,9 +226,12 @@ export class LLMRepository {
     }
 
     query(
-      `INSERT INTO matches (match_id, team_a_id, team_b_id, team_a_name, team_b_name, event_name, event_type, format, scheduled_at, status, maps, has_team_data, lineups, hltv_match_id, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO matches (match_id, canonical_match_id, team_a_id, team_b_id, team_a_name, team_b_name, event_name, event_type, format, scheduled_at, status, maps, has_team_data, lineups, hltv_match_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(match_id) DO UPDATE SET
+         canonical_match_id = COALESCE(excluded.canonical_match_id, matches.canonical_match_id),
+         team_a_id = excluded.team_a_id,
+         team_b_id = excluded.team_b_id,
          team_a_name = excluded.team_a_name,
          team_b_name = excluded.team_b_name,
          event_name = excluded.event_name,
@@ -241,6 +245,7 @@ export class LLMRepository {
          hltv_match_id = COALESCE(excluded.hltv_match_id, matches.hltv_match_id),
          updated_at = datetime('now')`,
       match.matchId,
+      match.canonicalMatchId ?? (match.hltvMatchId ? `hltv:${match.hltvMatchId}` : null),
       match.teamAId,
       match.teamBId,
       match.teamAName,
@@ -260,6 +265,7 @@ export class LLMRepository {
   upsertTeam(team: {
     teamId: string;
     name: string;
+    logo?: string;
     rank: number;
     region: string;
     players: string;
@@ -267,10 +273,11 @@ export class LLMRepository {
     mapPool: string;
   }): void {
     query(
-      `INSERT INTO teams (team_id, name, rank, region, players, recent_form, map_pool, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO teams (team_id, name, logo, rank, region, players, recent_form, map_pool, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(team_id) DO UPDATE SET
          name = excluded.name,
+         logo = CASE WHEN excluded.logo != '' THEN excluded.logo ELSE teams.logo END,
          rank = excluded.rank,
          region = excluded.region,
          players = excluded.players,
@@ -279,6 +286,7 @@ export class LLMRepository {
          updated_at = datetime('now')`,
       team.teamId,
       team.name,
+      team.logo ?? '',
       team.rank,
       team.region,
       team.players,
@@ -302,6 +310,36 @@ export class LLMRepository {
     query(
       `UPDATE matches SET status = ?, updated_at = datetime('now') WHERE match_id = ?`,
       status,
+      matchId,
+    );
+  }
+
+  updateMatchOutcome(
+    matchId: string,
+    status: 'finished' | 'cancelled',
+    score?: { teamA: number; teamB: number },
+    winnerId?: string,
+  ): void {
+    query(
+      `UPDATE matches
+       SET status = ?, score = ?, winner_id = ?, updated_at = datetime('now')
+       WHERE match_id = ?`,
+      status,
+      score ? JSON.stringify(score) : null,
+      winnerId ?? null,
+      matchId,
+    );
+  }
+
+  updateMatchLineups(matchId: string, lineups: string, hasTeamData = true): void {
+    query(
+      `UPDATE matches
+       SET lineups = ?,
+           has_team_data = CASE WHEN ? = 1 THEN 1 ELSE has_team_data END,
+           updated_at = datetime('now')
+       WHERE match_id = ?`,
+      lineups,
+      hasTeamData ? 1 : 0,
       matchId,
     );
   }

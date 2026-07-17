@@ -330,6 +330,38 @@ describe('PromptEngine', () => {
 
       expect(prompt.outputSchema).toBe('{"custom": "schema"}');
     });
+
+    it('should include English instruction by default', () => {
+      const teamA = makeTeam();
+      const teamB = makeTeam({ teamId: 'team-2', name: 'FaZe Clan' });
+      const match = makeMatch();
+
+      const prompt = engine.buildPrompt({ match, teamA, teamB });
+
+      expect(prompt.system).toContain('Respond in English');
+    });
+
+    it('should include Chinese instruction when locale is zh', () => {
+      const zhEngine = new PromptEngine(undefined, undefined, { locale: 'zh' });
+      const teamA = makeTeam();
+      const teamB = makeTeam({ teamId: 'team-2', name: 'FaZe Clan' });
+      const match = makeMatch();
+
+      const prompt = zhEngine.buildPrompt({ match, teamA, teamB });
+
+      expect(prompt.system).toContain('请用中文回答');
+    });
+
+    it('should include Chinese instruction when locale is zh-CN', () => {
+      const zhEngine = new PromptEngine(undefined, undefined, { locale: 'zh-CN' });
+      const teamA = makeTeam();
+      const teamB = makeTeam({ teamId: 'team-2', name: 'FaZe Clan' });
+      const match = makeMatch();
+
+      const prompt = zhEngine.buildPrompt({ match, teamA, teamB });
+
+      expect(prompt.system).toContain('请用中文回答');
+    });
   });
 
   describe('selectWeightedVariant', () => {

@@ -43,7 +43,7 @@ test.describe('Daily page interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible({ timeout: 5000 });
 
@@ -97,7 +97,7 @@ test.describe('Whales page interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible({ timeout: 5000 });
 
@@ -148,7 +148,7 @@ test.describe('Signals page interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible({ timeout: 5000 });
 
@@ -196,7 +196,7 @@ test.describe('Esports page interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible({ timeout: 5000 });
 
@@ -229,7 +229,7 @@ test.describe('AI Config page interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible({ timeout: 5000 });
 
@@ -284,7 +284,7 @@ test.describe('AI Stats page interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible({ timeout: 5000 });
 

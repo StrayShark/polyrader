@@ -1,563 +1,186 @@
-# PolyRader CS2 — 项目总览 (Overview)
+# PolyRader — 项目总览
 
-## 1. 架构分层总览
+## 1. 项目定位
 
-PolyRader CS2 采用 **Tauri 桌面应用架构**，React 前端运行在 Tauri WebView 中，Express 后端作为 Tauri sidecar 进程运行。
+PolyRader 是本地优先的 CS2 模拟盘练习工具。它使用 Tauri 桌面应用承载 React 前端和 Express sidecar，使用 SQLite 保存本地练习账户、模拟下注、盘口快照、赛事数据、AI/行为金融/市场信号和复盘笔记。
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     Tauri Desktop Shell                          │
-│               Rust Core (窗口管理 / IPC / Sidecar)                │
-├──────────────────────────────────────────────────────────────────┤
-│                     Presentation Layer                           │
-│                     前端展示层 (web/)                              │
-│  React 18 + TypeScript + Vite + Tailwind CSS + Zustand          │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┐      │
-│  │ Layouts  │  Pages   │Features  │Components│  Router  │      │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┘      │
-├──────────────────────────────────────────────────────────────────┤
-│                     Application Layer                            │
-│                     应用服务层 (server/)                          │
-│  Express.js 4 + TypeScript + WebSocket (ws)                     │
-│  Tauri Sidecar 进程，监听 localhost 随机端口                       │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┐      │
-│  │Controllers│Services │Middleware│WebSocket │  Routes  │      │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┘      │
-├──────────────────────────────────────────────────────────────────┤
-│                       Domain Layer                               │
-│                     领域逻辑层 (core/)                            │
-│  Pure TypeScript — 无框架依赖，可独立测试                         │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┐      │
-│  │ Engines  │  Models  │ Prompts  │ Scoring  │  Types   │      │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┘      │
-├──────────────────────────────────────────────────────────────────┤
-│                    Infrastructure Layer                          │
-│                     基础设施层 (infra/)                           │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┐      │
-│  │ Database │  Cache   │ Clients  │ Crawlers │  Config  │      │
-│  │ SQLite   │ LRU Cache│Polymarket│  HLTV    │config.json│     │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┘      │
-├──────────────────────────────────────────────────────────────────┤
-│                   External Services                              │
-│                     外部服务层                                    │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┐      │
-│  │Polymarket│  HLTV    │ OpenAI   │Anthropic │  Google  │      │
-│  │CLOB+Gamma│ (Scraper)│  GPT-4o  │ Claude   │ Gemini   │      │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┘      │
-└──────────────────────────────────────────────────────────────────┘
+项目曾使用 PolyRader CS2 和 CS2 Simbook 等阶段性名称，现统一为 PolyRader。现有代码仍包含 Polymarket、LLM、巨鲸、信号对比等模块；这些能力作为数据源和策略实验室能力，主路径保持赛事大厅、模拟投注单、我的账本和复盘中心。
+
+## 2. 产品模块总览
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                           PolyRader                          │
+├──────────────────────┬─────────────────────┬─────────────────┤
+│ CS2 Event Rail       │ Main Workspace        │ Practice Slip   │
+│ - Live / Today       │ - Event Lobby         │ - Virtual Bank  │
+│ - BO1 / BO3 / BO5    │ - Odds Matrix         │ - Selected Legs │
+│ - Tournament / Tier  │ - Review Center       │ - Risk Meter    │
+│ - Strategy / DB      │ - Local Database      │ - Submit Sim    │
+└──────────────────────┴─────────────────────┴─────────────────┘
 ```
 
-### 层级依赖规则
+| 模块 | 目标 | 当前来源 |
+| --- | --- | --- |
+| 赛事大厅 | 浏览 CS2 Live/Upcoming 比赛和盘口 | Dashboard + Daily + Esports |
+| 模拟盘 | 单场盘口矩阵和加入模拟单 | Match Detail |
+| 投注单 | 常驻 PracticeBetSlip，提交虚拟下注 | 新增 |
+| 我的账本 | 虚拟余额、open/settled bets、资产曲线 | Simulation + Allocation |
+| 复盘中心 | Brier、CLV、ROI、错误标签、复盘笔记 | Signals + AI Stats |
+| 数据库 | 本地表、记录数、导出、备份 | SQLite + Account views |
+| 策略实验室 | AI/行为/市场/聪明钱信号调参 | AI Config + Prompt Variants + Whales |
+| 设置 | 数据源、LLM key、只读账户、桌面配置 | Setup + config |
 
-```
-Tauri Shell ──▶ Presentation ──▶ Application ──▶ Domain ──▶ Infrastructure ──▶ External
-     │                │              │              │              │
-     │                │              │              │              │
-     └── 不可越级 ────┴──────────────┴──────────────┴──────────────┘
-     
-     上层可依赖下层，下层不可依赖上层
-     Domain 层零框架依赖，纯 TypeScript
-     Infrastructure 层是唯一与外部通信的层
-     Tauri Shell 通过 IPC 与 Presentation 层通信，通过 Sidecar 管理 Application 层
-```
+## 3. 架构分层
 
----
-
-## 2. 各层核心模块
-
-### 2.1 Presentation Layer — 前端展示层 (`packages/web`)
-
-| 模块 | 路径 | 职责 |
-|------|------|------|
-| **Layouts** | `src/layouts/` | AppLayout（Sidebar + Content + StatusBar 三栏布局）、AuthLayout |
-| **Pages** | `src/pages/` | 8 个页面组件，每个对应一条路由 |
-| **Features** | `src/features/` | 按业务领域拆分的功能模块（markets/whales/esports/signals/ai） |
-| **Components** | `src/components/` | 通用 UI 组件（DataTable/StatBox/Panel/Chart/Ticker/Badge） |
-| **Router** | `src/router/` | React Router v6 hash-based 路由配置 |
-| **Stores** | `src/stores/` | Zustand 全局状态（market/whale/llm/theme） |
-| **Hooks** | `src/hooks/` | 自定义 Hooks（useMarket/useWhale/useLLM/useWebSocket） |
-| **Types** | `src/types/` | 前端专用类型定义 |
-
-**Features 子模块**：
-
-| Feature | 包含的 Pages | 包含的 Components |
-|---------|-------------|-------------------|
-| `features/markets/` | DashboardPage, DailyPage, MarketDetailPage | MarketTable, TickerBar, FactorCard, OrderBook |
-| `features/whales/` | WhalesPage, WhaleDetailPage | WhaleTable, AlertList, ScoreRing, AddressGraph |
-| `features/esports/` | EsportsPage, MatchDetailPage | TeamCompare, MapPoolBar, RankingTable |
-| `features/signals/` | SignalsPage | SignalRow, DeviationChart, ArbitrageCard |
-| `features/ai/` | AiConfigPage, AiStatsPage | KeyTable, QuotaCard, CalibrationChart, LeaderboardTable, PerformancePanel, HistoryTable |
-
-### 2.2 Application Layer — 应用服务层 (`packages/server`)
-
-| 模块 | 路径 | 职责 |
-|------|------|------|
-| **Controllers** | `src/controllers/` | 请求处理、参数校验、响应格式化 |
-| **Services** | `src/services/` | 业务编排，调用 Domain 层引擎 + Infra 层客户端 |
-| **Middleware** | `src/middleware/` | 错误处理、请求日志、CORS、速率限制 |
-| **WebSocket** | `src/websocket/` | WS 连接管理、房间广播、心跳检测 |
-| **Routes** | `src/routes/` | REST API 路由注册 |
-
-**Controllers 清单**：
-
-| Controller | 路由前缀 | 职责 |
-|-----------|---------|------|
-| `MarketController` | `/api/markets` | 市场列表、详情、价格历史 |
-| `DailyController` | `/api/daily` | 每日看板数据、刷新触发 |
-| `WhaleController` | `/api/whales` | 巨鲸列表、详情、告警 |
-| `EsportsController` | `/api/esports` | 赛事列表、战队数据、排名 |
-| `SignalController` | `/api/signals` | 信号对比、偏差分析 |
-| `AiConfigController` | `/api/ai/config` | Key管理、连通性测试、配额 |
-| `AiStatsController` | `/api/ai/stats` | LLM统计、投注统计、校准 |
-
-**Services 清单**：
-
-| Service | 依赖的 Domain 引擎 | 依赖的 Infra 客户端 |
-|---------|-------------------|-------------------|
-| `MarketService` | `PredictionEngine` | `PolymarketClient`, `RedisCache` |
-| `DailyService` | `DailyDashboardEngine`, `PredictionEngine` | `HLTVCrawler`, `LLMClient` |
-| `WhaleService` | `WhaleScoringEngine` | `PolygonClient`, `PolymarketClient` |
-| `EsportsService` | `MatchAnalysisEngine` | `HLTVCrawler` |
-| `SignalService` | `SignalComparisonEngine` | `PolymarketClient` |
-| `AiConfigService` | `KeyManager`, `ConnectivityTester`, `QuotaMonitor` | `LLMClient` |
-| `AiStatsService` | `StatsEngine`, `BettingStatsEngine`, `SimulatedBettingEngine` | `Database` |
-
-### 2.3 Domain Layer — 领域逻辑层 (`packages/core`)
-
-**零框架依赖，纯 TypeScript，可独立单元测试。**
-
-| 模块 | 路径 | 职责 |
-|------|------|------|
-| **Engines** | `src/engines/` | 核心分析引擎 |
-| **Models** | `src/models/` | 领域实体与值对象 |
-| **Prompts** | `src/prompts/` | LLM 提示词模板（YAML） |
-| **Scoring** | `src/scoring/` | 评分算法与权重配置 |
-| **Types** | `src/types/` | 跨层共享类型定义 |
-
-**Engines 清单**：
-
-| Engine | 核心算法 | 输入 | 输出 |
-|--------|---------|------|------|
-| `PredictionEngine` | 5 维加权融合 | Team A/B 数据 | 胜率预测 + 因子分解 |
-| `WhaleScoringEngine` | 4 维可疑度评分 | 地址交易数据 | 可疑度分数 + 标签 |
-| `DailyDashboardEngine` | 关注度评分算法 | 当日比赛列表 | TOP N 推荐 |
-| `MatchAnalysisEngine` | 地图池 BO3 模拟 | 两队地图胜率 | 系列赛胜率 |
-| `SignalComparisonEngine` | 多源偏差计算 | 市场价 + 模型预测 | 偏差信号 |
-| `PromptEngine` | 模板渲染 + 数据注入 | 比赛数据 + 模板 | 完整 Prompt |
-| `ResultAggregator` | 投票 + 加权 + 共识度 | 多个 LLM 结果 | 聚合预测 |
-| `StatsEngine` | 准确率/ROI/夏普/回撤 | 预测历史 | 统计指标 |
-| `BettingStatsEngine` | 投注盈亏结算 | 模拟投注记录 | 盈亏统计 |
-| `SimulatedBettingEngine` | 自动生成模拟投注 | LLM 预测结果 | 模拟投注记录 |
-| `KeyManager` | AES-256-GCM 加解密 | API Key 明文 | 加密 Key + 掩码 |
-| `ConnectivityTester` | 最小化 ping 请求 | Provider 配置 | 延迟 + 状态 |
-| `QuotaMonitor` | Token 用量统计 | API 调用记录 | 费用估算 |
-
-**Models 清单**：
-
-| Model | 核心字段 |
-|-------|---------|
-| `Market` | conditionId, slug, question, outcomes, volume, liquidity |
-| `Match` | matchId, teamA, teamB, tournament, tier, status, startTime |
-| `Team` | teamId, name, hltvRank, recentForm, mapPool |
-| `Player` | playerId, name, teamId, rating, adr, kast |
-| `Whale` | address, label, volume, pnl, score, patterns |
-| `LLMPrediction` | id, matchId, providerId, prediction, confidence, timestamp |
-| `SimulatedBet` | id, predictionId, direction, amount, outcome, pnl |
-| `LLMStats` | providerId, totalPredictions, accuracy, roi, sharpe, maxDrawdown |
-| `UserStats` | totalPredictions, accuracy, totalPnl, sharpe, maxDrawdown |
-| `DailyDashboard` | date, matches, topPicks, highDeviation, whaleActivity |
-
-### 2.4 Infrastructure Layer — 基础设施层 (`packages/infra`)
-
-| 模块 | 路径 | 职责 |
-|------|------|------|
-| **Database** | `src/database/` | PostgreSQL 连接池、迁移脚本、Repository |
-| **Cache** | `src/cache/` | Redis 连接、缓存策略、Pub/Sub |
-| **Clients** | `src/clients/` | 外部 API 客户端封装 |
-| **Crawlers** | `src/crawlers/` | HLTV 爬虫、反爬策略 |
-| **Config** | `src/config/` | 环境变量加载、配置校验 |
-
-**Clients 清单**：
-
-| Client | 封装的服务 | 主要方法 |
-|--------|----------|---------|
-| `PolymarketGammaClient` | Gamma API | `getEvents()`, `getMarkets()`, `getPrices()` |
-| `PolymarketClobClient` | CLOB REST API | `getOrderBook()`, `getPrices()`, `getTrades()` |
-| `PolymarketWsClient` | CLOB WebSocket | `subscribe()`, `onMessage()`, `reconnect()` |
-| `PolygonClient` | Polygon RPC | `getEvents()`, `getTransactions()`, `getBalance()` |
-| `LLMClient` | OpenAI / Anthropic / Google / DeepSeek | `chat()`, `ping()`, `getUsage()` |
-| `FaceitClient` | FACEIT API v4 | `getPlayerStats()`, `getMatchHistory()` |
-| `PandascoreClient` | Pandascore API | `getMatches()`, `getTeams()`, `getPlayers()` |
-
-**Crawlers 清单**：
-
-| Crawler | 目标站点 | 爬取内容 | 频率 |
-|---------|---------|---------|------|
-| `HLTVRankingCrawler` | hltv.org/ranking | 战队排名、积分 | 每 6h |
-| `HLTVTeamCrawler` | hltv.org/team/:id | 近期战绩、地图胜率 | 每 1h |
-| `HLTVMatchCrawler` | hltv.org/results | 历史交锋记录 | 按需 |
-| `HLTVMapCrawler` | hltv.org/stats/teams/maps | 地图池统计 | 每 6h |
-
----
-
-## 3. 目录结构
-
-```
-polyrader-cs2/
-│
-├── packages/
-│   │
-│   ├── web/                          # ── Presentation Layer ──
-│   │   ├── src/
-│   │   │   ├── components/           # 通用 UI 组件
-│   │   │   │   ├── ui/               #   shadcn/ui 基础组件
-│   │   │   │   │   ├── button.tsx
-│   │   │   │   │   ├── card.tsx
-│   │   │   │   │   ├── table.tsx
-│   │   │   │   │   ├── badge.tsx
-│   │   │   │   │   ├── input.tsx
-│   │   │   │   │   ├── tabs.tsx
-│   │   │   │   │   ├── dialog.tsx
-│   │   │   │   │   ├── tooltip.tsx
-│   │   │   │   │   ├── dropdown.tsx
-│   │   │   │   │   ├── scrollbar.tsx
-│   │   │   │   │   ├── skeleton.tsx
-│   │   │   │   │   └── progress.tsx
-│   │   │   │   ├── data-table.tsx     #   数据表格
-│   │   │   │   ├── stat-box.tsx       #   统计卡片
-│   │   │   │   ├── panel.tsx          #   面板容器
-│   │   │   │   ├── chart-area.tsx     #   图表区域
-│   │   │   │   ├── ticker-bar.tsx     #   实时行情条
-│   │   │   │   ├── filter-pills.tsx   #   筛选药丸
-│   │   │   │   ├── factor-card.tsx    #   因子卡片
-│   │   │   │   ├── map-bar.tsx        #   地图胜率条
-│   │   │   │   ├── score-ring.tsx     #   评分环形图
-│   │   │   │   ├── signal-row.tsx     #   信号行
-│   │   │   │   └── alert-item.tsx     #   告警条目
-│   │   │   │
-│   │   │   ├── features/             # 按业务领域拆分
-│   │   │   │   ├── markets/          #   市场模块
-│   │   │   │   │   ├── components/
-│   │   │   │   │   │   ├── market-table.tsx
-│   │   │   │   │   │   ├── order-book.tsx
-│   │   │   │   │   │   ├── price-chart.tsx
-│   │   │   │   │   │   └── prediction-panel.tsx
-│   │   │   │   │   └── index.ts
-│   │   │   │   │
-│   │   │   │   ├── whales/           #   巨鲸模块
-│   │   │   │   │   ├── components/
-│   │   │   │   │   │   ├── whale-table.tsx
-│   │   │   │   │   │   ├── alert-list.tsx
-│   │   │   │   │   │   ├── score-panel.tsx
-│   │   │   │   │   │   └── address-graph.tsx
-│   │   │   │   │   └── index.ts
-│   │   │   │   │
-│   │   │   │   ├── esports/          #   赛事模块
-│   │   │   │   │   ├── components/
-│   │   │   │   │   │   ├── team-compare.tsx
-│   │   │   │   │   │   ├── map-pool-panel.tsx
-│   │   │   │   │   │   └── ranking-table.tsx
-│   │   │   │   │   └── index.ts
-│   │   │   │   │
-│   │   │   │   ├── signals/          #   信号模块
-│   │   │   │   │   ├── components/
-│   │   │   │   │   │   ├── signal-table.tsx
-│   │   │   │   │   │   └── deviation-chart.tsx
-│   │   │   │   │   └── index.ts
-│   │   │   │   │
-│   │   │   │   └── ai/                #   AI 模块
-│   │   │   │       ├── components/
-│   │   │   │       │   ├── key-table.tsx
-│   │   │   │       │   ├── quota-card.tsx
-│   │   │   │       │   ├── calibration-chart.tsx
-│   │   │   │       │   ├── leaderboard-table.tsx
-│   │   │   │       │   ├── performance-panel.tsx
-│   │   │   │       │   └── history-table.tsx
-│   │   │   │       └── index.ts
-│   │   │   │
-│   │   │   ├── layouts/              # 布局组件
-│   │   │   │   ├── app-layout.tsx     #   Sidebar + Content + StatusBar 三栏布局
-│   │   │   │   ├── sidebar.tsx
-│   │   │   │   └── status-bar.tsx
-│   │   │   │
-│   │   │   ├── pages/                # 页面组件（路由入口）
-│   │   │   │   ├── dashboard-page.tsx
-│   │   │   │   ├── daily-page.tsx
-│   │   │   │   ├── match-detail-page.tsx
-│   │   │   │   ├── whales-page.tsx
-│   │   │   │   ├── esports-page.tsx
-│   │   │   │   ├── signals-page.tsx
-│   │   │   │   ├── ai-config-page.tsx
-│   │   │   │   └── ai-stats-page.tsx
-│   │   │   │
-│   │   │   ├── router/
-│   │   │   │   └── index.tsx          #   createHashRouter 配置
-│   │   │   │
-│   │   │   ├── stores/               # Zustand 全局状态
-│   │   │   │   ├── market-store.ts
-│   │   │   │   ├── whale-store.ts
-│   │   │   │   ├── llm-store.ts
-│   │   │   │   └── theme-store.ts
-│   │   │   │
-│   │   │   ├── hooks/                # 自定义 Hooks
-│   │   │   │   ├── use-market.ts
-│   │   │   │   ├── use-whale.ts
-│   │   │   │   ├── use-llm.ts
-│   │   │   │   ├── use-websocket.ts
-│   │   │   │   └── use-theme.ts
-│   │   │   │
-│   │   │   ├── types/                # 前端类型
-│   │   │   │   └── index.ts
-│   │   │   │
-│   │   │   └── utils/                # 工具函数
-│   │   │       ├── format.ts
-│   │   │       └── cn.ts
-│   │   │
-│   │   ├── index.html
-│   │   ├── vite.config.ts
-│   │   ├── tailwind.config.ts
-│   │   ├── tsconfig.json
-│   │   └── package.json
-│   │
-│   ├── server/                       # ── Application Layer ──
-│   │   ├── src/
-│   │   │   ├── controllers/
-│   │   │   │   ├── market-controller.ts
-│   │   │   │   ├── daily-controller.ts
-│   │   │   │   ├── whale-controller.ts
-│   │   │   │   ├── esports-controller.ts
-│   │   │   │   ├── signal-controller.ts
-│   │   │   │   ├── ai-config-controller.ts
-│   │   │   │   └── ai-stats-controller.ts
-│   │   │   │
-│   │   │   ├── services/
-│   │   │   │   ├── market-service.ts
-│   │   │   │   ├── daily-service.ts
-│   │   │   │   ├── whale-service.ts
-│   │   │   │   ├── esports-service.ts
-│   │   │   │   ├── signal-service.ts
-│   │   │   │   ├── ai-config-service.ts
-│   │   │   │   └── ai-stats-service.ts
-│   │   │   │
-│   │   │   ├── middleware/
-│   │   │   │   ├── error-handler.ts
-│   │   │   │   ├── request-logger.ts
-│   │   │   │   └── rate-limiter.ts
-│   │   │   │
-│   │   │   ├── websocket/
-│   │   │   │   ├── ws-server.ts       #   WS 服务端
-│   │   │   │   ├── connection-manager.ts
-│   │   │   │   └── room-manager.ts
-│   │   │   │
-│   │   │   └── routes/
-│   │   │       └── index.ts           #   路由注册
-│   │   │
-│   │   ├── tsconfig.json
-│   │   └── package.json
-│   │
-│   ├── core/                         # ── Domain Layer ──
-│   │   ├── src/
-│   │   │   ├── engines/
-│   │   │   │   ├── prediction-engine.ts
-│   │   │   │   ├── whale-scoring-engine.ts
-│   │   │   │   ├── daily-dashboard-engine.ts
-│   │   │   │   ├── match-analysis-engine.ts
-│   │   │   │   ├── signal-comparison-engine.ts
-│   │   │   │   ├── prompt-engine.ts
-│   │   │   │   ├── result-aggregator.ts
-│   │   │   │   ├── stats-engine.ts
-│   │   │   │   ├── betting-stats-engine.ts
-│   │   │   │   ├── simulated-betting-engine.ts
-│   │   │   │   ├── key-manager.ts
-│   │   │   │   ├── connectivity-tester.ts
-│   │   │   │   └── quota-monitor.ts
-│   │   │   │
-│   │   │   ├── models/
-│   │   │   │   ├── market.ts
-│   │   │   │   ├── match.ts
-│   │   │   │   ├── team.ts
-│   │   │   │   ├── player.ts
-│   │   │   │   ├── whale.ts
-│   │   │   │   ├── llm-prediction.ts
-│   │   │   │   ├── simulated-bet.ts
-│   │   │   │   ├── llm-stats.ts
-│   │   │   │   ├── user-stats.ts
-│   │   │   │   └── daily-dashboard.ts
-│   │   │   │
-│   │   │   ├── prompts/              # LLM 提示词模板
-│   │   │   │   ├── system.yaml        #   角色定义
-│   │   │   │   ├── context.yaml       #   上下文模板
-│   │   │   │   ├── data-injection.yaml #  数据注入规则
-│   │   │   │   └── output-constraint.yaml # 输出约束
-│   │   │   │
-│   │   │   ├── scoring/              # 评分算法
-│   │   │   │   ├── whale-scoring.ts   #   巨鲸可疑度评分
-│   │   │   │   ├── attention-scoring.ts # 关注度评分
-│   │   │   │   └── weights.ts         #   权重配置
-│   │   │   │
-│   │   │   └── types/                # 跨层共享类型
-│   │   │       ├── api.ts
-│   │   │       ├── events.ts
-│   │   │       └── index.ts
-│   │   │
-│   │   ├── tsconfig.json
-│   │   └── package.json
-│   │
-│   └── infra/                        # ── Infrastructure Layer ──
-│       ├── src/
-│       │   ├── database/
-│       │   │   ├── connection.ts      #   PostgreSQL 连接池
-│       │   │   ├── migrations/        #   数据库迁移
-│       │   │   │   ├── 001_create_markets.sql
-│       │   │   │   ├── 002_create_matches.sql
-│       │   │   │   ├── 003_create_whales.sql
-│       │   │   │   ├── 004_create_llm_predictions.sql
-│       │   │   │   ├── 005_create_simulated_bets.sql
-│       │   │   │   ├── 006_create_llm_stats.sql
-│       │   │   │   ├── 007_create_llm_api_keys.sql
-│       │   │   │   └── 008_create_usage_records.sql
-│       │   │   └── repositories/      #   数据访问层
-│       │   │       ├── market-repository.ts
-│       │   │       ├── match-repository.ts
-│       │   │       ├── whale-repository.ts
-│       │   │       ├── llm-repository.ts
-│       │   │       └── stats-repository.ts
-│       │   │
-│       │   ├── cache/
-│       │   │   ├── redis.ts           #   Redis 连接
-│       │   │   ├── cache-strategy.ts  #   缓存策略
-│       │   │   └── pubsub.ts          #   Pub/Sub 消息
-│       │   │
-│       │   ├── clients/
-│       │   │   ├── polymarket/
-│       │   │   │   ├── gamma-client.ts
-│       │   │   │   ├── clob-client.ts
-│       │   │   │   └── ws-client.ts
-│       │   │   ├── polygon-client.ts
-│       │   │   ├── llm/
-│       │   │   │   ├── openai-client.ts
-│       │   │   │   ├── anthropic-client.ts
-│       │   │   │   ├── google-client.ts
-│       │   │   │   ├── deepseek-client.ts
-│       │   │   │   └── llm-client-factory.ts
-│       │   │   ├── faceit-client.ts
-│       │   │   └── pandascore-client.ts
-│       │   │
-│       │   ├── crawlers/
-│       │   │   ├── hltv-ranking-crawler.ts
-│       │   │   ├── hltv-team-crawler.ts
-│       │   │   ├── hltv-match-crawler.ts
-│       │   │   ├── hltv-map-crawler.ts
-│       │   │   └── anti-detect.ts     #   反爬策略
-│       │   │
-│       │   └── config/
-│       │       ├── env.ts             #   环境变量加载
-│       │       └── constants.ts       #   常量定义
-│       │
-│       ├── tsconfig.json
-│       └── package.json
-│
-├── docker-compose.yml
-├── Dockerfile
-├── package.json                       # monorepo root
-├── turbo.json                         # Turborepo 配置
-├── .env.example
-├── .gitignore
-└── README.md
+```text
+Tauri Shell
+  └─ Presentation: React + Vite + Tailwind
+       └─ Application: Express sidecar + WebSocket
+            └─ Domain: pure TypeScript engines
+                 └─ Infrastructure: SQLite, cache, API clients, crawlers
+                      └─ External data sources
 ```
 
----
+### 3.1 Presentation Layer (`packages/web`)
 
-## 4. 数据流
+职责：
 
+- 提供 sportsbook/workbench 风格 UI。
+- 管理全局 PracticeBetSlip、VirtualBankrollBar 和页面路由。
+- 通过 REST/WS 读取本地 sidecar 数据。
+- 不直接调用外部 API。
+- 不在主路径暴露真钱交易操作。
+
+目标页面：
+
+| 页面 | 职责 |
+| --- | --- |
+| `EventLobbyPage` | CS2 赛事大厅 |
+| `MatchSimbookPage` | 单场模拟盘详情 |
+| `BankrollPage` | 虚拟账本 |
+| `ReviewCenterPage` | 复盘中心 |
+| `DatabasePage` | 本地数据库 |
+| `StrategyLabPage` | 策略实验室 |
+| `SettingsPage` | 设置 |
+
+当前页面会分阶段迁移，不要求一次性改名。
+
+### 3.2 Application Layer (`packages/server`)
+
+职责：
+
+- 编排赛事、盘口、模拟下注、结算、复盘和策略实验 API。
+- 将外部数据源结果规范化后写入本地数据库。
+- 通过 WebSocket 推送价格、同步状态和复盘/结算事件。
+- 保证模拟下注接口不调用真钱交易 API。
+
+目标服务：
+
+| Service | 职责 |
+| --- | --- |
+| `SimAccountService` | 虚拟账户、余额、风险参数 |
+| `SimBetService` | 创建模拟下注、下注 leg、open/settled 状态 |
+| `OddsSnapshotService` | 记录盘口快照 |
+| `ReviewService` | 复盘笔记、错误标签、统计 |
+| `StrategyLabService` | 权重配置、回测、概率校准 |
+| `MarketService` | 市场/赔率数据读取 |
+| `EsportsService` | CS2 比赛、队伍、地图池 |
+
+### 3.3 Domain Layer (`packages/core`)
+
+职责：
+
+- 保持纯 TypeScript、无 IO。
+- 提供概率、风险、下注、复盘和校准计算。
+
+核心引擎：
+
+| Engine | 用途 |
+| --- | --- |
+| `PredictionEngine` | CS2 基本面概率 |
+| `MarketBehaviorEngine` | 行为金融/盘口偏移 |
+| `SignalComparisonEngine` | 市场/AI/行为概率对比 |
+| `BetSizingEngine` | 固定注、Kelly、风险限制 |
+| `SimSettlementEngine` | 模拟下注结算 |
+| `ReviewScoringEngine` | Brier、CLV、ROI、错误归因 |
+| `PromptEngine` | LLM 提示词渲染 |
+| `ResultAggregator` | 多 LLM 聚合 |
+
+### 3.4 Infrastructure Layer (`packages/infra`)
+
+职责：
+
+- SQLite migration 和 repository。
+- 外部数据客户端和本地缓存。
+- 不包含 UI 逻辑。
+
+主要数据源：
+
+| Source | 用途 |
+| --- | --- |
+| Polymarket Gamma/Data/CLOB | 市场、价格、只读账户、成交观察 |
+| HLTV/GRID/FACEIT 等 | CS2 赛事、战队、地图、阵容 |
+| Polygon RPC | 聪明钱观察和链上事件 |
+| LLM Providers | 策略实验室和参考概率 |
+
+## 4. 本地数据库角色
+
+本地 SQLite 是产品的核心资产，而不是缓存。
+
+核心数据：
+
+- Matches / Teams
+- Markets
+- Odds Snapshots
+- Signal Snapshots
+- Sim Accounts
+- Sim Bets
+- Sim Bet Legs
+- Bet Reviews
+- Training Sessions
+- Strategy Profiles
+
+## 5. 主用户路径
+
+### 5.1 赛前模拟
+
+```text
+赛事大厅 → 选择 CS2 比赛 → 点击赔率 → 加入投注单
+→ 输入 stake/用户概率/理由 → 风险检查 → 提交模拟下注
+→ 本地保存下注和盘口快照
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        DATA FLOW                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  External Services                                               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
-│  │Polymarket│  │  HLTV    │  │ OpenAI   │  │Anthropic │  ...   │
-│  │CLOB+Gamma│  │ (Scraper)│  │ GPT-4o   │  │ Claude   │       │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘       │
-│       │              │             │             │              │
-│       ▼              ▼             ▼             ▼              │
-│  ┌────────────────────────────────────────────────────┐        │
-│  │              Infrastructure Layer                   │        │
-│  │  Clients (API封装) + Crawlers (爬虫)                │        │
-│  │         │                                           │        │
-│  │         ▼                                           │        │
-│  │  ┌──────────┐  ┌──────────┐                        │        │
-│  │  │PostgreSQL│  │  Redis   │                        │        │
-│  │  └──────────┘  └──────────┘                        │        │
-│  └──────────────────────┬─────────────────────────────┘        │
-│                         │                                       │
-│                         ▼                                       │
-│  ┌────────────────────────────────────────────────────┐        │
-│  │                Domain Layer                         │        │
-│  │  Engines (分析引擎) + Models (领域模型)              │        │
-│  │  ┌──────────────┐  ┌──────────────┐                │        │
-│  │  │PredictionEng │  │WhaleScoring  │  ...           │        │
-│  │  └──────────────┘  └──────────────┘                │        │
-│  └──────────────────────┬─────────────────────────────┘        │
-│                         │                                       │
-│                         ▼                                       │
-│  ┌────────────────────────────────────────────────────┐        │
-│  │               Application Layer                     │        │
-│  │  Controllers → Services → (编排 Domain + Infra)     │        │
-│  │         │                                           │        │
-│  │         ├── REST API (JSON)                         │        │
-│  │         └── WebSocket (实时推送)                     │        │
-│  └──────────────────────┬─────────────────────────────┘        │
-│                         │                                       │
-│                         ▼                                       │
-│  ┌────────────────────────────────────────────────────┐        │
-│  │               Presentation Layer                    │        │
-│  │  Pages → Features → Components                     │        │
-│  │  Zustand Stores ← HTTP/WS                          │        │
-│  └────────────────────────────────────────────────────┘        │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+
+### 5.2 赛后复盘
+
+```text
+结算赛果 → 更新 PnL → 打开复盘中心
+→ 对比下注价/收盘价/AI概率/赛果 → 标记错误类型
+→ 写复盘笔记 → 更新 Brier/CLV/ROI/训练建议
 ```
 
----
+## 6. 安全边界
 
-## 5. 关键设计决策
+- 主流程不发送真实订单。
+- 主 UI 不出现充值、提现、奖金、VIP、返现。
+- Polymarket private key 不应成为常规使用前提。
+- 如果保留 live trading 代码，只能在高级设置中启用，并需要独立 E2E 覆盖。
+- 默认文案使用模拟、虚拟、练习、复盘。
 
-| 决策 | 选择 | 理由 |
-|------|------|------|
-| Monorepo 方案 | Turborepo + npm workspaces | 4 个 package 共享类型，统一构建 |
-| Domain 层零依赖 | 纯 TypeScript | 可独立测试，不被框架锁定 |
-| 前端状态管理 | Zustand | 比 Redux 轻量，适合中等复杂度应用 |
-| 后端框架 | Express.js | 生态成熟，中间件丰富，适合 API 服务 |
-| 实时通信 | 原生 ws 库 | 轻量，无需 Socket.IO 的额外抽象 |
-| 数据库 | PostgreSQL | 时序数据 + JSON 字段，适合分析场景 |
-| 缓存 | Redis | Pub/Sub 消息分发 + 热数据缓存 |
-| LLM 调用 | 统一 Client 接口 | 6 个 Provider 通过工厂模式统一调用 |
-| 提示词管理 | YAML 文件 | 版本控制友好，非技术人员可维护 |
-| 爬虫 | Cheerio + node-cron | 轻量 HTML 解析 + 定时调度 |
+## 7. 当前迁移状态
 
----
+| 项 | 状态 |
+| --- | --- |
+| 产品规划 | 已完成 `docs/cs2-simbook-product-redesign.md` |
+| PRD | 已更新为 simulation-first |
+| 视觉规范 | 已更新为 sportsbook/workbench |
+| 运行代码 | 仍处于旧 IA，待 Phase 1 迁移 |
+| Polymarket 账户 | 只读账户能力存在，应降级到数据库/设置 |
+| 实盘交易入口 | 后续需从主路径移除或默认隐藏 |
 
-## 6. 技术栈总览
+## 8. 下一步
 
-| 类别 | 技术 | 版本 |
-|------|------|------|
-| 语言 | TypeScript | 5.x |
-| 构建工具 | Vite (web) / tsc (server/core/infra) | 5.x |
-| 前端框架 | React | 18.x |
-| 样式 | Tailwind CSS | 3.x |
-| UI 组件 | shadcn/ui | latest |
-| 图表 | Recharts + Lightweight Charts | latest |
-| 图可视化 | D3.js | 7.x |
-| 状态管理 | Zustand | 4.x |
-| 路由 | React Router DOM | 6.x |
-| 后端框架 | Express.js | 4.x |
-| WebSocket | ws | 8.x |
-| 数据库 | PostgreSQL | 16 |
-| 缓存 | Redis | 7 |
-| 链上交互 | ethers.js | 6.x |
-| 爬虫 | Cheerio | 1.x |
-| 定时任务 | node-cron | 3.x |
-| Monorepo | Turborepo | latest |
-| 部署 | Docker Compose | latest |
+1. 实现 `VirtualBankrollBar`。
+2. 实现 `PracticeBetSlip` 壳和前端 store。
+3. 将 Sidebar 导航按新 IA 重排。
+4. 新增 sim database migration。

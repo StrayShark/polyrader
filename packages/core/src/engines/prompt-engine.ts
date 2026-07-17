@@ -29,6 +29,10 @@ export interface PromptContext {
   marketProbA?: number;
 }
 
+export interface PromptEngineOptions {
+  locale?: string;
+}
+
 // ============================================================
 // YAML Template Types
 // ============================================================
@@ -67,11 +71,13 @@ interface AllocationSystemYaml {
 // Template Loader
 // ============================================================
 
-const PROMPTS_DIR = path.join(import.meta.dirname, '..', 'prompts');
+function getPromptsDir(): string {
+  return path.join(import.meta.dirname, '..', 'prompts');
+}
 
 function loadYaml<T>(filename: string): T | null {
   try {
-    const filepath = path.join(PROMPTS_DIR, filename);
+    const filepath = path.join(getPromptsDir(), filename);
     const content = fs.readFileSync(filepath, 'utf-8');
     return yaml.load(content) as T;
   } catch {
@@ -83,8 +89,15 @@ function loadYaml<T>(filename: string): T | null {
 // System Prompt Renderer
 // ============================================================
 
-function renderSystemPrompt(yamlData: SystemYaml | null): string {
-  if (!yamlData) return DEFAULT_SYSTEM_PROMPT;
+function renderLanguageInstruction(locale?: string): string {
+  if (locale?.toLowerCase().startsWith('zh')) {
+    return '\n\n请用中文回答，所有分析、理由和字段说明都使用中文。';
+  }
+  return '\n\nRespond in English.';
+}
+
+function renderSystemPrompt(yamlData: SystemYaml | null, locale?: string): string {
+  if (!yamlData) return DEFAULT_SYSTEM_PROMPT + renderLanguageInstruction(locale);
 
   let prompt = `You are a ${yamlData.role}. Your task is to ${yamlData.task}.\n\n`;
   prompt += `Analyze the provided data and output a JSON response with your prediction.\n\n`;
@@ -105,6 +118,7 @@ function renderSystemPrompt(yamlData: SystemYaml | null): string {
     prompt += `\n${yamlData.guidelines.map((g) => `- ${g}`).join('\n')}\n`;
   }
 
+  prompt += renderLanguageInstruction(locale);
   return prompt;
 }
 
@@ -134,12 +148,13 @@ Principles:
 
 Output a JSON object with 'allocations' (array of {matchId, amount, reasoning}) and 'reasoning' (overall strategy summary). Only include opportunities worth betting on.`;
 
-function renderAllocationSystemPrompt(yamlData: AllocationSystemYaml | null): string {
-  if (!yamlData) return DEFAULT_ALLOCATION_SYSTEM_PROMPT;
+function renderAllocationSystemPrompt(yamlData: AllocationSystemYaml | null, locale?: string): string {
+  if (!yamlData) return DEFAULT_ALLOCATION_SYSTEM_PROMPT + renderLanguageInstruction(locale);
 
   let prompt = `You are a ${yamlData.role}. Your task is to ${yamlData.task}.\n\nPrinciples:\n`;
   prompt += yamlData.principles.map((p) => `- ${p}`).join('\n');
   prompt += `\n\n${yamlData.output_notes}`;
+  prompt += renderLanguageInstruction(locale);
   return prompt;
 }
 
@@ -355,20 +370,23 @@ export class PromptEngine {
   private outputSchema: string;
   private contextTemplate: ContextTemplateYaml | null;
   private allocationSystemPrompt: string;
+  private locale?: string;
 
-  constructor(systemPrompt?: string, outputSchema?: string) {
+  constructor(systemPrompt?: string, outputSchema?: string, options?: PromptEngineOptions) {
+    this.locale = options?.locale;
+
     // Load YAML templates
     const systemYaml = loadYaml<SystemYaml>('system.yaml');
     const schemaYaml = loadYaml<OutputSchemaYaml>('output-schema.yaml');
     this.contextTemplate = loadYaml<ContextTemplateYaml>('context-template.yaml');
 
     // Render prompts from YAML, fall back to provided values or defaults
-    this.systemPrompt = systemPrompt ?? renderSystemPrompt(systemYaml);
+    this.systemPrompt = systemPrompt ?? renderSystemPrompt(systemYaml, this.locale);
     this.outputSchema = outputSchema ?? renderOutputSchema(schemaYaml);
 
     // Load allocation system prompt
     const allocYaml = loadYaml<AllocationSystemYaml>('allocation-system.yaml');
-    this.allocationSystemPrompt = renderAllocationSystemPrompt(allocYaml);
+    this.allocationSystemPrompt = renderAllocationSystemPrompt(allocYaml, this.locale);
   }
 
   buildPrompt(context: PromptContext): PromptTemplate {

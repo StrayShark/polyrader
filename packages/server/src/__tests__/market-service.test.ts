@@ -16,6 +16,8 @@ vi.mock('@polyrader/infra', () => ({
   MarketRepository: vi.fn().mockImplementation(() => ({
     findAll: vi.fn(),
     findByConditionId: vi.fn(),
+    findBySlug: vi.fn(),
+    getPriceHistory: vi.fn(),
     upsert: vi.fn(),
   })),
   AlertRepository: vi.fn().mockImplementation(() => ({
@@ -38,12 +40,14 @@ import { MarketService } from '../services/market-service';
 import { cacheGet, cacheSet } from '@polyrader/infra';
 
 describe('MarketService', () => {
+  const envBackup = { ...process.env };
   let service: MarketService;
   let gammaClient: { getMarkets: ReturnType<typeof vi.fn>; getMarket: ReturnType<typeof vi.fn>; getPriceHistory: ReturnType<typeof vi.fn> };
-  let marketRepo: { findAll: ReturnType<typeof vi.fn>; findByConditionId: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+  let marketRepo: { findAll: ReturnType<typeof vi.fn>; findByConditionId: ReturnType<typeof vi.fn>; findBySlug: ReturnType<typeof vi.fn>; getPriceHistory: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env = { ...envBackup };
     service = new MarketService();
 
     gammaClient = (service as unknown as { gammaClient: typeof gammaClient }).gammaClient;
@@ -90,6 +94,47 @@ describe('MarketService', () => {
 
       expect(result).toBe(dbMarkets);
       expect(marketRepo.findAll).toHaveBeenCalledWith(50, 0);
+    });
+
+    it('falls back to local DB when API succeeds with no open markets', async () => {
+      vi.mocked(cacheGet).mockResolvedValue(null);
+      gammaClient.getMarkets.mockResolvedValue([]);
+
+      const dbMarkets = [{ conditionId: 'local-hltv-1', question: 'Local CS2 practice market' }];
+      marketRepo.findAll.mockReturnValue(dbMarkets);
+
+      const result = await service.getMarkets(50, 0);
+
+      expect(result).toBe(dbMarkets);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(50, 0);
+      expect(cacheSet).toHaveBeenCalledWith('markets:50:0', dbMarkets, 60);
+    });
+
+    it('falls back quickly to DB when API is slower than the timeout', async () => {
+      process.env.POLYRADER_MARKET_TIMEOUT_MS = '5';
+      vi.mocked(cacheGet).mockResolvedValue(null);
+      gammaClient.getMarkets.mockImplementation(() => new Promise(() => undefined));
+
+      const dbMarkets = [{ conditionId: 'c1', question: 'DB Market' }];
+      marketRepo.findAll.mockReturnValue(dbMarkets);
+
+      const result = await service.getMarkets(50, 0);
+
+      expect(result).toBe(dbMarkets);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(50, 0);
+    });
+
+    it('returns local seed markets when API and DB are unavailable', async () => {
+      process.env.POLYRADER_MARKET_TIMEOUT_MS = '5';
+      vi.mocked(cacheGet).mockResolvedValue(null);
+      gammaClient.getMarkets.mockImplementation(() => new Promise(() => undefined));
+      marketRepo.findAll.mockReturnValue([]);
+
+      const result = await service.getMarkets(50, 0);
+
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0].tags).toContain('local-seed');
+      expect(marketRepo.upsert).toHaveBeenCalled();
     });
   });
 
@@ -182,12 +227,26 @@ describe('MarketService', () => {
       expect(cacheSet).toHaveBeenCalledWith('markets:50:0', mockMarkets.slice(0, 50), 60);
     });
 
-    it('returns empty array when API fails', async () => {
+    it('returns local seed markets when API refresh fails and DB is empty', async () => {
       gammaClient.getMarkets.mockRejectedValue(new Error('API down'));
+      marketRepo.findAll.mockReturnValue([]);
 
       const result = await service.refreshMarkets();
 
-      expect(result).toEqual([]);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0].tags).toContain('local-seed');
+    });
+
+    it('preserves local DB markets when API refresh succeeds with an empty list', async () => {
+      gammaClient.getMarkets.mockResolvedValue([]);
+      const dbMarkets = [{ conditionId: 'local-db-1', question: 'Local practice market' }];
+      marketRepo.findAll.mockReturnValue(dbMarkets);
+
+      const result = await service.refreshMarkets();
+
+      expect(result).toBe(dbMarkets);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(100, 0);
+      expect(cacheSet).toHaveBeenCalledWith('markets:50:0', dbMarkets, 60);
     });
   });
 

@@ -1,4 +1,4 @@
--- PolyRader CS2 Database Schema (SQLite)
+-- PolyRader Database Schema (SQLite)
 -- Auto-created on first run
 
 -- ============================================================

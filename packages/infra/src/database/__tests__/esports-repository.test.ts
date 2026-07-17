@@ -130,6 +130,57 @@ function setupTestDb() {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE team_source_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_name TEXT DEFAULT '',
+      source_slug TEXT DEFAULT '',
+      source_url TEXT DEFAULT '',
+      confidence REAL DEFAULT 1.0,
+      is_primary INTEGER DEFAULT 0,
+      metadata TEXT DEFAULT '{}',
+      last_seen_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(team_id, source),
+      UNIQUE(source, source_id)
+    );
+
+    CREATE TABLE match_source_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      match_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_name TEXT DEFAULT '',
+      source_url TEXT DEFAULT '',
+      confidence REAL DEFAULT 1.0,
+      metadata TEXT DEFAULT '{}',
+      last_seen_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(match_id, source),
+      UNIQUE(source, source_id)
+    );
+
+    CREATE TABLE roster_source_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_id TEXT NOT NULL DEFAULT '',
+      roster_hash TEXT NOT NULL,
+      player_ids TEXT NOT NULL DEFAULT '[]',
+      players TEXT NOT NULL DEFAULT '[]',
+      valid_from TEXT,
+      valid_to TEXT,
+      is_current INTEGER DEFAULT 1,
+      metadata TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(team_id, source, source_id, roster_hash)
+    );
+
     CREATE TABLE analysis_config (
       id INTEGER PRIMARY KEY DEFAULT 1,
       min_tier TEXT NOT NULL DEFAULT 'B',
@@ -171,6 +222,14 @@ describe('EsportsRepository', () => {
       const h2 = EsportsRepository.computeRosterHash(['p1', 'p2', 'p3', 'p4', 'p6']);
       expect(h1).not.toBe(h2);
     });
+
+    it('namespaces identical rosters by team when requested', () => {
+      const players = ['p1', 'p2', 'p3', 'p4', 'p5'];
+      const teamAHash = EsportsRepository.computeRosterHash(players, 'team-a');
+      const teamBHash = EsportsRepository.computeRosterHash(players, 'team-b');
+
+      expect(teamAHash).not.toBe(teamBHash);
+    });
   });
 
   describe('upsertPlayer', () => {
@@ -199,6 +258,70 @@ describe('EsportsRepository', () => {
       });
       const p2 = repo.getPlayer('p1');
       expect(p2!.rating).toBe(1.30);
+    });
+  });
+
+  describe('source alignment links', () => {
+    it('upserts and retrieves team source links', () => {
+      repo.upsertTeamSourceLink({
+        teamId: 't1',
+        source: 'liquipedia',
+        sourceId: 'Natus Vincere',
+        sourceName: 'Natus Vincere',
+        sourceUrl: 'https://liquipedia.net/counterstrike/Natus_Vincere',
+        confidence: 0.92,
+        isPrimary: true,
+        metadata: { alias: 'NAVI' },
+      });
+
+      const links = repo.getTeamSourceLinks('t1');
+      expect(links).toHaveLength(1);
+      expect(links[0].source).toBe('liquipedia');
+      expect(links[0].metadata?.alias).toBe('NAVI');
+
+      const bySource = repo.findTeamBySource('liquipedia', 'Natus Vincere');
+      expect(bySource?.teamId).toBe('t1');
+    });
+
+    it('upserts match source links', () => {
+      repo.upsertMatchSourceLink({
+        matchId: 'm1',
+        source: 'hltv',
+        sourceId: '2395371',
+        sourceUrl: 'https://www.hltv.org/matches/2395371/_',
+        metadata: { status: 'upcoming' },
+      });
+
+      const links = repo.getMatchSourceLinks('m1');
+      expect(links).toHaveLength(1);
+      expect(links[0].sourceId).toBe('2395371');
+      expect(links[0].metadata?.status).toBe('upcoming');
+    });
+
+    it('stores current roster source snapshots and marks older source snapshots inactive', () => {
+      repo.upsertRosterSourceSnapshot({
+        teamId: 't1',
+        source: 'liquipedia',
+        sourceId: 'Natus Vincere',
+        rosterHash: 'hash-a',
+        playerIds: ['p1', 'p2'],
+        players: [{ playerId: 'p1', nickname: 'A' }],
+        isCurrent: true,
+      });
+      repo.upsertRosterSourceSnapshot({
+        teamId: 't1',
+        source: 'liquipedia',
+        sourceId: 'Natus Vincere',
+        rosterHash: 'hash-b',
+        playerIds: ['p1', 'p3'],
+        players: [{ playerId: 'p3', nickname: 'C' }],
+        isCurrent: true,
+      });
+
+      const snapshots = repo.getRosterSourceSnapshots('t1', 'liquipedia');
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots.find((s) => s.rosterHash === 'hash-b')?.isCurrent).toBe(true);
+      expect(snapshots.find((s) => s.rosterHash === 'hash-a')?.isCurrent).toBe(false);
     });
   });
 

@@ -1,6 +1,7 @@
 import { checkDbConnection, getCacheStats, PolymarketClobClient, GridClient } from '@polyrader/infra';
 import { sharedWhaleIngestion } from './services/whale-ingestion-service';
 import { sharedPolymarketStream } from './services/polymarket-stream-service';
+import { envNumber, withTimeout } from './utils/timeout';
 
 // Lazy reference to WebSocket server (set via setWsServer)
 let wssRef: { clients: Set<unknown> } | null = null;
@@ -66,7 +67,11 @@ export async function checkHealth(): Promise<HealthStatus> {
   let gridStatus = gridConfigured ? 'unknown' : 'skipped';
   if (gridConfigured && process.env.POLYRADER_SKIP_EXTERNAL_HEALTH !== '1') {
     try {
-      const gridOk = await new GridClient().testConnection();
+      const gridOk = await withTimeout(
+        new GridClient().testConnection(),
+        healthProbeTimeoutMs(),
+        'grid health probe',
+      );
       gridStatus = gridOk ? 'ok' : 'error';
     } catch {
       gridStatus = 'error';
@@ -75,16 +80,17 @@ export async function checkHealth(): Promise<HealthStatus> {
     gridStatus = 'skipped';
   }
 
-  // Determine overall status
-  const allOk = dbResult.status === 'ok' && wsInfo.status === 'ok'
-    && externalChecks.status === 'ok' && ingestionStatus === 'ok'
-    && (streamStatus === 'ok' || streamStatus === 'skipped' || streamStatus === 'idle')
-    && (gridStatus === 'ok' || gridStatus === 'skipped');
-  const hasError = dbResult.status === 'error' || ingestionStatus === 'error'
-    || gridStatus === 'error';
+  // Local database + websocket determine whether the app itself is usable.
+  // External data providers degrade live data quality but should not mark the local practice database as down.
+  const coreError = dbResult.status === 'error' || wsInfo.status === 'error';
+  const degraded =
+    externalChecks.status !== 'ok' ||
+    ingestionStatus !== 'ok' ||
+    !['ok', 'skipped', 'idle'].includes(streamStatus) ||
+    gridStatus === 'error';
 
   return {
-    status: hasError ? 'unhealthy' : allOk ? 'healthy' : 'degraded',
+    status: coreError ? 'unhealthy' : degraded ? 'degraded' : 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     dependencies: {
@@ -139,38 +145,51 @@ function checkWebSocket(): { status: string; connections: number } {
  * Only checks if the endpoint responds — does not validate response body.
  */
 async function checkExternalApis(): Promise<{ status: string; checks: Array<{ name: string; status: string }> }> {
-  const checks: Array<{ name: string; status: string }> = [];
-
   // Check Polymarket Gamma API
   const gammaUrl = process.env.POLYMARKET_GAMMA_API_URL ?? 'https://gamma-api.polymarket.com';
-  checks.push(await checkEndpoint('polymarket-gamma', `${gammaUrl}/markets?limit=1`));
 
   // Check Polymarket CLOB API
   const clobClient = new PolymarketClobClient();
-  const clobProbe = await clobClient.probeReachability();
-  checks.push({ name: 'polymarket-clob', status: clobProbe.ok ? 'ok' : 'error' });
 
   // Check Polygon RPC
   const polygonUrl = process.env.POLYGON_RPC_URL ?? 'https://polygon-rpc.com';
-  checks.push(await checkEndpoint('polygon-rpc', polygonUrl));
+  const [gammaCheck, clobProbe, polygonCheck] = await Promise.all([
+    checkEndpoint('polymarket-gamma', `${gammaUrl}/markets?limit=1`),
+    withTimeout(
+      clobClient.probeReachability(),
+      healthProbeTimeoutMs(),
+      'polymarket clob health probe',
+    ).catch((err) => ({ ok: false, message: (err as Error).message })),
+    checkEndpoint('polygon-rpc', polygonUrl),
+  ]);
+  const checks = [
+    gammaCheck,
+    { name: 'polymarket-clob', status: clobProbe.ok ? 'ok' : 'error' },
+    polygonCheck,
+  ];
 
   const anyError = checks.some((c) => c.status === 'error');
   return { status: anyError ? 'degraded' : 'ok', checks };
 }
 
 async function checkEndpoint(name: string, url: string): Promise<{ name: string; status: string }> {
+  const timeoutMs = healthProbeTimeoutMs();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-
     await fetch(url, {
       method: 'HEAD',
       signal: controller.signal,
     });
 
-    clearTimeout(timeout);
     return { name, status: 'ok' };
   } catch {
     return { name, status: 'error' };
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function healthProbeTimeoutMs(): number {
+  return envNumber('POLYRADER_HEALTH_PROBE_TIMEOUT_MS', envNumber('POLYRADER_EXTERNAL_TIMEOUT_MS', 2500, 250, 10000), 250, 10000);
 }

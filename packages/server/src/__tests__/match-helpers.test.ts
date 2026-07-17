@@ -55,6 +55,31 @@ describe('match-helpers', () => {
       expect(result.teamA.teamId).toBe('');
       expect(result.teamA.name).toBe('');
     });
+
+    it('hydrates team profiles, form, roster, and map pool from DB rows', () => {
+      const player = { playerId: 'p1', name: 'Player One', nickname: 'one', rating: 1.12, kdRatio: 1.1, headshotPercent: 0.5, mapsPlayed: 30, role: 'Rifler' };
+      const teamRow = (teamId: string, name: string, rank: number) => ({
+        team_id: teamId,
+        name,
+        logo: `https://img.example/${teamId}.png`,
+        rank,
+        region: 'EU',
+        players: JSON.stringify(Array.from({ length: 5 }, (_, index) => ({ ...player, playerId: `${teamId}-${index}` }))),
+        recent_form: JSON.stringify({ last10Matches: [{ opponent: 'Other', result: 'win', score: '2-0', date: '2026-07-10', event: 'Cup' }], winRate: 1, streak: 1, averageRating: 1.12 }),
+        map_pool: JSON.stringify({ maps: [{ map: 'Nuke', winRate: 0.6, matchesPlayed: 5, roundsWon: 0, roundsLost: 0 }] }),
+        updated_at: '2026-07-14 10:00:00',
+      });
+      const result = buildMatchInfo({
+        match_id: 'local-hltv-1', team_a_id: '1', team_b_id: '2', team_a_name: 'Alpha', team_b_name: 'Beta',
+        scheduled_at: '2026-07-15T10:00:00.000Z', status: 'scheduled', maps: '["Nuke"]',
+      }, teamRow('1', 'Alpha', 10), teamRow('2', 'Beta', 20));
+
+      expect(result.teamA).toMatchObject({ rank: 10, region: 'EU', logo: 'https://img.example/1.png' });
+      expect(result.teamDetails?.isComplete).toBe(true);
+      expect(result.teamDetails?.teamB.players).toHaveLength(5);
+      expect(result.teamDetails?.teamA.recentForm.last10Matches).toHaveLength(1);
+      expect(result.teamDetails?.teamA.mapPool.maps[0].map).toBe('Nuke');
+    });
   });
 
   describe('buildFallbackMatchInfo', () => {

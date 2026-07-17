@@ -13,6 +13,7 @@ function record(page: string, module: string, status: AuditEntry['status'], note
 test.describe('PRD module audit', () => {
   test.beforeEach(async ({ page }) => {
     await blockWs(page);
+    await setupCommonMocks(page);
     await page.addInitScript(() => {
       localStorage.setItem('polyrader-locale', 'zh');
     });
@@ -22,126 +23,81 @@ test.describe('PRD module audit', () => {
     writeAuditReport('e2e-prd-audit.json', auditResults, 'E2E PRD 功能审计');
   });
 
-  test('Dashboard — stats, heatmap, anomalies, deviations, markets', async ({ page }) => {
-    await setupCommonMocks(page);
+  test('Lobby — CS2 rail, match matrix, and +N expand', async ({ page }) => {
     await page.goto('/#/');
     await waitForMainHeading(page);
 
-    record('dashboard', 'page-render', 'pass');
-    record('dashboard', 'stats-cards', await page.locator('main .grid').first().isVisible() ? 'pass' : 'fail');
-    record('dashboard', 'heatmap', await page.getByText('市场热力图').isVisible() ? 'pass' : 'fail');
-    record('dashboard', 'anomaly-table', await page.getByText('Spirit vs G2').count() > 0 ? 'pass' : 'fail');
-    record('dashboard', 'active-markets', await page.locator('main table').count() > 0 ? 'pass' : 'fail');
+    record('lobby', 'page-render', 'pass');
+    record('lobby', 'title', await page.getByRole('heading', { name: '赛事大厅' }).isVisible() ? 'pass' : 'fail');
+
+    const rail = page.locator('main').getByRole('button', { name: /BO1|BO3|BO5/ }).first();
+    record('lobby', 'cs2-rail', await rail.isVisible().catch(() => false) ? 'pass' : 'fail');
+
+    const oddsButton = page.locator('main [aria-label*="Spirit"]').first();
+    record('lobby', 'odds-matrix', await oddsButton.isVisible().catch(() => false) ? 'pass' : 'partial');
+
+    record('lobby', 'practice-slip-desktop', await page.getByTestId('desktop-bet-slip').count() > 0 ? 'pass' : 'fail');
   });
 
-  test('Daily — overview, deviations, whale alerts', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/daily');
-    await waitForMainHeading(page);
-    record('daily', 'page-render', 'pass');
-    record('daily', 'overview-cards', await page.locator('main .grid').first().isVisible() ? 'pass' : 'fail');
-    record('daily', 'match-table', await page.getByText('Spirit').count() > 0 ? 'pass' : 'fail');
-  });
-
-  test('Match Detail — header, LLM consensus, orderbook, decision', async ({ page }) => {
+  test('Match Detail — overview odds and practice slip path', async ({ page }) => {
     await setupMatchDetailMocks(page);
     await page.goto('/#/match/spirit-vs-g2-bo3');
     await waitForMainHeading(page);
-    await expect(page.getByText('Spirit').first()).toBeVisible();
 
     record('match-detail', 'page-render', 'pass');
+    record('match-detail', 'match-info', await page.getByText('IEM Cologne').count() > 0 ? 'pass' : 'fail');
+    record('match-detail', 'format-badge', await page.getByText('BO3').count() > 0 ? 'pass' : 'fail');
 
-    await page.getByRole('tab', { name: '市场数据' }).click();
-    record('match-detail', 'price-chart', await page.locator('main canvas').count() > 0 ? 'pass' : 'fail');
+    const teamOdds = page.locator('main [aria-label*="Spirit"]').first();
+    record('match-detail', 'odds-matrix', await teamOdds.isVisible().catch(() => false) ? 'pass' : 'partial');
 
-    await page.getByRole('button', { name: '触发 LLM 分析' }).click();
-    await page.getByRole('tab', { name: 'AI 分析' }).click();
-    await expect(page.getByText('LLM 共识分析')).toBeVisible({ timeout: 10000 });
-    record('match-detail', 'llm-consensus', await page.locator('main svg').count() > 1 ? 'pass' : 'partial');
-
-    await page.getByRole('tab', { name: '市场数据' }).click();
-    record('match-detail', 'orderbook', await page.getByText('订单簿深度').first().isVisible() ? 'pass' : 'fail');
-
-    await page.getByRole('tab', { name: '模拟决策' }).click();
-    record('match-detail', 'decision-area', await page.getByRole('button', { name: /记录模拟注.*Spirit/i }).isVisible() ? 'pass' : 'fail');
+    await teamOdds.click().catch(() => {});
+    const slipHasSelection = await page.getByTestId('desktop-bet-slip').getByText(/Spirit|G2/).count() > 0;
+    record('match-detail', 'practice-slip-path', slipHasSelection ? 'pass' : 'partial');
   });
 
-  test('Whales — leaderboard and graph', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/whales');
+  test('Bankroll — balance cards and RiskMeter', async ({ page }) => {
+    await page.goto('/#/bankroll');
     await waitForMainHeading(page);
-    record('whales', 'page-render', 'pass');
-    record('whales', 'leaderboard', await page.getByText('0xabc1').count() > 0 ? 'pass' : 'fail');
+
+    record('bankroll', 'page-render', 'pass');
+    record('bankroll', 'title', await page.getByRole('heading', { name: '我的账本' }).isVisible() ? 'pass' : 'fail');
+    record('bankroll', 'balance-cards', await page.locator('main .grid').first().isVisible() ? 'pass' : 'fail');
+    record('bankroll', 'risk-meter', await page.getByText(/风险|Risk/).count() > 0 ? 'pass' : 'fail');
+    record('bankroll', 'bets-tabs', await page.getByRole('tab', { name: /未结算|已结算/ }).count() > 0 ? 'pass' : 'fail');
   });
 
-  test('Esports — rankings and schedule', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/esports');
+  test('Review Center — filters and settled bets list', async ({ page }) => {
+    await page.goto('/#/review');
     await waitForMainHeading(page);
-    record('esports', 'page-render', 'pass');
-    await expect(page.getByText('Team Spirit')).toBeVisible({ timeout: 5000 });
-    record('esports', 'rankings', 'pass');
-    record('esports', 'schedule', await page.getByText('Spirit').count() > 0 ? 'pass' : 'partial');
+
+    record('review', 'page-render', 'pass');
+    record('review', 'title', await page.getByRole('heading', { name: '复盘中心' }).isVisible() ? 'pass' : 'fail');
+    record('review', 'filter-format', await page.getByText('赛制').count() > 0 ? 'pass' : 'fail');
+    record('review', 'filter-result', await page.getByText('结果').count() > 0 ? 'pass' : 'fail');
+    record('review', 'bets-table', await page.locator('main table').count() > 0 ? 'pass' : 'fail');
   });
 
-  test('Signals — comparison, backtest, arbitrage', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/signals');
+  test('Database — backup info and CSV/JSON export', async ({ page }) => {
+    await page.goto('/#/database');
     await waitForMainHeading(page);
-    record('signals', 'page-render', 'pass');
-    record('signals', 'signal-table', await page.locator('main table').count() > 0 ? 'pass' : 'fail');
-    record('signals', 'backtest-panel', await page.getByText('历史回测与校准').isVisible() ? 'pass' : 'fail');
+
+    record('database', 'page-render', 'pass');
+    record('database', 'title', await page.getByRole('heading', { name: '本地数据库' }).isVisible() ? 'pass' : 'fail');
+    record('database', 'backup-info', await page.getByText('总记录数').count() > 0 ? 'pass' : 'fail');
+
+    const hasCsv = await page.getByRole('button', { name: /CSV/ }).count() > 0;
+    const hasJson = await page.getByRole('button', { name: /JSON/ }).count() > 0;
+    record('database', 'csv-export', hasCsv ? 'pass' : 'fail');
+    record('database', 'json-export', hasJson ? 'pass' : 'fail');
   });
 
-  test('Polymarket Account — connection and holdings', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/polymarket/account');
-    await expect(page.locator('h1')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('连接状态')).toBeVisible({ timeout: 10000 });
-    record('polymarket-account', 'page-render', 'pass');
-    record('polymarket-account', 'connection-status', 'pass');
-    record('polymarket-account', 'positions', await page.getByText('Spirit vs G2').count() > 0 ? 'pass' : 'fail');
-  });
-
-  test('AI Config — keys, usage, background tasks', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/ai/config');
-    await expect(page.locator('h1')).toBeVisible({ timeout: 10000 });
-    record('ai-config', 'page-render', 'pass');
-    record('ai-config', 'api-keys', await page.getByText('openai').count() > 0 ? 'pass' : 'partial');
-    record('ai-config', 'background-tasks', await page.getByText('后台任务').count() > 0 ? 'pass' : 'fail');
-  });
-
-  test('AI Stats — leaderboard and user stats', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/ai/stats');
-    await expect(page.locator('h1')).toBeVisible({ timeout: 10000 });
-    record('ai-stats', 'page-render', 'pass');
-    record('ai-stats', 'leaderboard', await page.getByText('openai').count() > 0 ? 'pass' : 'partial');
-  });
-
-  test('LLM Analysis — equity and breakdown', async ({ page }) => {
-    await setupCommonMocks(page);
-    await page.goto('/#/llm/analysis/openai');
+  test('Strategy Lab — tabs and empty state', async ({ page }) => {
+    await page.goto('/#/strategy');
     await waitForMainHeading(page);
-    record('llm-analysis', 'page-render', 'pass');
-    record('llm-analysis', 'equity-curve', await page.locator('svg').count() > 0 ? 'pass' : 'partial');
-    record('llm-analysis', 'team-breakdown', await page.getByText('Spirit').count() > 0 ? 'pass' : 'partial');
-  });
 
-  test('Prompt Variants, Allocation, Simulation — render', async ({ page }) => {
-    await setupCommonMocks(page);
-
-    await page.goto('/#/prompt-variants');
-    await waitForMainHeading(page, '/prompt-variants');
-    record('prompt-variants', 'page-render', 'pass');
-
-    await page.goto('/#/allocation');
-    await waitForMainHeading(page, '/allocation');
-    record('allocation', 'page-render', 'pass');
-
-    await page.goto('/#/simulation');
-    await waitForMainHeading(page, '/simulation');
-    record('simulation', 'page-render', 'pass');
+    record('strategy-lab', 'page-render', 'pass');
+    record('strategy-lab', 'title', await page.getByRole('heading', { name: '策略实验室' }).isVisible() ? 'pass' : 'fail');
+    record('strategy-lab', 'tabs', await page.getByRole('tab').count() > 0 ? 'pass' : 'fail');
   });
 });

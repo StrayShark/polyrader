@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Bell, Zap, Play, Loader2, Inbox, Users, ExternalLink } from 'lucide-react';
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
+import { useFeatureFlagStore } from '../stores/feature-flag-store';
 import { useI18n } from '../hooks/use-i18n';
 import { Badge, Button, Card, CardHeader, CardTitle, Input } from '@/components/ui';
 import { ProductModeNotice } from './ProductModeNotice';
@@ -11,6 +12,7 @@ import type { FollowedWallet, WalletCopySignal } from '@polyrader/core';
 
 export function CopyFollowPanel() {
   const { t } = useI18n();
+  const { liveTradingEnabled } = useFeatureFlagStore();
   const {
     followed,
     config,
@@ -75,7 +77,7 @@ export function CopyFollowPanel() {
               <Badge variant={config.mode === 'live' ? 'red' : 'yellow'}>
                 {config.mode === 'live' ? t('whales.modeLive') : t('whales.modePaper')}
               </Badge>
-              {tradingStatus?.canPlaceOrders ? (
+              {liveTradingEnabled && tradingStatus?.canPlaceOrders ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -83,7 +85,7 @@ export function CopyFollowPanel() {
                 >
                   {config.mode === 'live' ? t('whales.switchToPaper') : t('whales.switchToLive')}
                 </Button>
-              ) : tradingStatus?.liveEnabled ? (
+              ) : liveTradingEnabled && tradingStatus?.liveEnabled ? (
                 <span className="text-xs text-muted-foreground">{t('whales.liveNotConfigured')}</span>
               ) : null}
             </div>

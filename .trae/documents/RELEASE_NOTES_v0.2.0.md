@@ -1,7 +1,9 @@
 # PolyRader CS2 v0.2.0 — Release Notes
 
+> 历史版本说明：v0.2.0 发布于产品重定位之前，仍使用 PolyRader CS2 / Polymarket 分析工具叙事。当前产品方向见 `docs/cs2-simbook-product-redesign.md` 与 `.trae/documents/PRD.md`。
+
 **发布日期**: 2026-06-19
-**下载**: [GitHub Release](https://github.com/StrayShark/polyrader_cs2/releases/tag/v0.2.0)
+**下载**: [GitHub Release](https://github.com/StrayShark/polyrader/releases/tag/v0.2.0)
 
 ---
 

@@ -1,8 +1,8 @@
 import type { Team, MatchInfo } from '@polyrader/core';
-import { HLTVCrawler, LLMRepository } from '@polyrader/infra';
+import { HLTVCrawler, LLMRepository, MarketRepository } from '@polyrader/infra';
 import { cacheGet, cacheSet } from '@polyrader/infra';
 import { logger } from '../utils/logger';
-import { mapLegacyMatchStatus } from './match-helpers';
+import { buildMatchInfo, buildTeamFromDbRow } from './match-helpers';
 
 interface EventSummary {
   matchId: string;
@@ -22,6 +22,7 @@ interface RankingEntry {
 export class EsportsService {
   private hltvCrawler = new HLTVCrawler();
   private llmRepo = new LLMRepository();
+  private marketRepo = new MarketRepository();
 
   async getEvents(): Promise<EventSummary[]> {
     const cacheKey = 'esports:events';
@@ -52,6 +53,12 @@ export class EsportsService {
     if (cached) return cached;
 
     try {
+      const row = this.llmRepo.getTeam(teamId);
+      if (row) {
+        const team = buildTeamFromDbRow(row, teamId);
+        await cacheSet(cacheKey, team, 600);
+        return team;
+      }
       const team = await this.hltvCrawler.getTeam(teamId);
       await cacheSet(cacheKey, team, 600);
       return team;
@@ -83,36 +90,55 @@ export class EsportsService {
 
     try {
       // Try DB first
-      const dbMatch = this.llmRepo.getMatch(matchId);
+      let dbMatch = this.llmRepo.getMatch(matchId);
+      if (!dbMatch) {
+        const market = this.marketRepo.findBySlug(matchId) ?? this.marketRepo.findByConditionId(matchId);
+        const linkedMatchId = market?.match?.matchId;
+        if (linkedMatchId && linkedMatchId !== matchId) dbMatch = this.llmRepo.getMatch(linkedMatchId);
+      }
       if (dbMatch) {
-        const match: MatchInfo = {
-          matchId: String(dbMatch.match_id ?? matchId),
-          teamA: { teamId: String(dbMatch.team_a_id ?? ''), name: String(dbMatch.team_a_name ?? ''), rank: 0, logo: '', region: '' },
-          teamB: { teamId: String(dbMatch.team_b_id ?? ''), name: String(dbMatch.team_b_name ?? ''), rank: 0, logo: '', region: '' },
-          eventName: String(dbMatch.event_name ?? ''),
-          format: (String(dbMatch.format ?? 'BO3')) as 'BO1' | 'BO3' | 'BO5',
-          scheduledAt: String(dbMatch.scheduled_at ?? new Date().toISOString()),
-          eventType: (String(dbMatch.event_type ?? 'Online')) as 'LAN' | 'Online',
-          status: mapLegacyMatchStatus(String(dbMatch.status ?? 'upcoming'), String(dbMatch.scheduled_at ?? new Date().toISOString())),
-          maps: Array.isArray(dbMatch.maps) ? dbMatch.maps as string[] : [],
-          lineups: typeof dbMatch.lineups === 'string' ? JSON.parse(dbMatch.lineups) : undefined,
-        };
+        const teamARow = this.llmRepo.getTeam(String(dbMatch.team_a_id ?? ''));
+        const teamBRow = this.llmRepo.getTeam(String(dbMatch.team_b_id ?? ''));
+        const match = buildMatchInfo(dbMatch, teamARow, teamBRow);
         await cacheSet(cacheKey, match, 300);
         return match;
       }
 
       // Fallback: fetch from HLTV
       const detail = await this.hltvCrawler.getMatchDetail(matchId);
+      const [teamAData, teamBData] = await Promise.all([
+        detail.teamAId ? this.hltvCrawler.getTeam(detail.teamAId) : null,
+        detail.teamBId ? this.hltvCrawler.getTeam(detail.teamBId) : null,
+      ]);
       const match: MatchInfo = {
         matchId,
-        teamA: { teamId: '', name: '', rank: 0, logo: '', region: '' },
-        teamB: { teamId: '', name: '', rank: 0, logo: '', region: '' },
-        eventName: '',
+        teamA: {
+          teamId: detail.teamAId,
+          name: detail.teamA,
+          rank: detail.teamARank,
+          logo: teamAData?.logo ?? '',
+          region: teamAData?.region ?? '',
+        },
+        teamB: {
+          teamId: detail.teamBId,
+          name: detail.teamB,
+          rank: detail.teamBRank,
+          logo: teamBData?.logo ?? '',
+          region: teamBData?.region ?? '',
+        },
+        eventName: detail.event,
         eventType: 'Online',
-        format: 'BO3',
-        scheduledAt: new Date().toISOString(),
+        format: (detail.format || 'BO3') as MatchInfo['format'],
+        scheduledAt: detail.date || new Date().toISOString(),
         status: 'scheduled',
         maps: detail.maps,
+        lineups: detail.lineups ?? undefined,
+        teamDetails: teamAData && teamBData ? {
+          teamA: teamAData,
+          teamB: teamBData,
+          source: 'hltv',
+          isComplete: false,
+        } : undefined,
       };
       await cacheSet(cacheKey, match, 300);
       return match;

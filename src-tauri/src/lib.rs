@@ -382,7 +382,7 @@ pub fn run() {
             let icon = app.default_window_icon().cloned();
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("PolyRader CS2");
+                .tooltip("PolyRader");
             if let Some(ic) = icon {
                 tray_builder = tray_builder.icon(ic);
             }

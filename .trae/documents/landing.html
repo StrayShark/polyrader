@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PolyRader CS2 — 首次配置</title>
+<title>CS2 Simbook — 历史首次配置参考</title>
 <style>
 /* ============================================================
    shadcn/ui DESIGN TOKENS — Dark / Light / Matrix
@@ -823,6 +823,19 @@ body {
   animation: spin 0.6s linear infinite;
 }
 
+.reposition-notice {
+  max-width: 920px;
+  margin: 20px auto 0;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.reposition-notice strong { color: var(--foreground); }
+.reposition-notice a { color: var(--blue); }
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
@@ -840,6 +853,10 @@ body {
 </style>
 </head>
 <body>
+
+<div class="reposition-notice">
+  <strong>历史参考：</strong>本页面是旧版首次配置原型。当前产品名为 PolyRader，定位为 CS2 博彩模拟盘练习工具 + 本地数据库。新的首次启动应优先创建虚拟练习账户、本地数据目录和可选只读数据源，详见 <a href="./PRD.md">PRD.md</a> 与 <a href="./design-spec.md">design-spec.md</a>。
+</div>
 
 <div class="landing">
 
@@ -863,8 +880,8 @@ body {
         <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605"/>
       </svg>
     </div>
-    <h1>PolyRader CS2</h1>
-    <p>Polymarket CS2 电竞预测分析工具。完成以下配置，开始你的智能预测之旅。</p>
+    <h1>CS2 Simbook</h1>
+    <p>历史首次配置参考。当前首次启动应围绕虚拟练习账户、本地数据目录和可选只读数据源。</p>
   </div>
 
   <!-- ====== STEP INDICATOR ====== -->
@@ -1444,7 +1461,7 @@ function updateProviderCount() {
 // ============================================================
 function pickFolder() {
   // In Tauri: use native dialog. Here we simulate with a prompt.
-  const path = prompt('请输入数据存储文件夹路径（Tauri 桌面版将使用原生文件夹选择器）：', selectedFolder || '/Users/' + (navigator.userAgent.includes('Mac') ? 'username' : 'user') + '/Documents/PolyRader');
+  const path = prompt('请输入数据存储文件夹路径（Tauri 桌面版将使用原生文件夹选择器）：', selectedFolder || '/Users/' + (navigator.userAgent.includes('Mac') ? 'username' : 'user') + '/Documents/CS2Simbook');
 
   if (path && path.trim()) {
     selectedFolder = path.trim();
@@ -1493,7 +1510,7 @@ function finishSetup() {
 
     setTimeout(() => {
       const llmCount = Object.keys(configuredKeys).length;
-      alert('配置完成！即将进入 PolyRader CS2 主界面。\n\n' +
+      alert('配置完成！即将进入 CS2 Simbook 主界面。\n\n' +
         'LLM 模型: ' + llmCount + ' / 6 个已配置\n' +
         'Polymarket: 5 个数据源就绪\n' +
         '存储路径: ' + (selectedFolder || '默认路径') + '\n' +

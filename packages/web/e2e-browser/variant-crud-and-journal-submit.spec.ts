@@ -76,7 +76,7 @@ test.describe('Prompt Variant CRUD', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Click create button
     const createBtn = page.getByRole('button', { name: /创建变体|Create Variant/ }).first();
@@ -107,7 +107,7 @@ test.describe('Prompt Variant CRUD', () => {
     }
 
     // Should not crash
-    await expect(page.locator('aside')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 5000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);
@@ -179,7 +179,7 @@ test.describe('Prompt Variant CRUD', () => {
       }
     }
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 5000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);
@@ -257,7 +257,7 @@ test.describe('Prompt Variant CRUD', () => {
     await page.waitForTimeout(2000);
 
     // Should not crash
-    await expect(page.locator('aside')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 5000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);
@@ -365,7 +365,7 @@ test.describe('Decision Journal form submission', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Fill the decision journal form
     // Check if journal form is present by looking for the submit button
@@ -400,7 +400,7 @@ test.describe('Decision Journal form submission', () => {
       }
     }
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 5000 });
 
     const errorCount = await page.locator('text=Something went wrong').count();
     expect(errorCount).toBe(0);

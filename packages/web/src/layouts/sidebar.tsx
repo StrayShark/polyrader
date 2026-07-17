@@ -1,15 +1,18 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  CalendarDays,
   Swords,
+  Trophy,
+  Ticket,
+  Wallet,
+  BookOpen,
+  Database,
+  FlaskConical,
+  Settings,
   Fish,
-  Gamepad2,
   Activity,
-  Settings2,
   BarChart3,
-  PieChart,
   Beaker,
+  PieChart,
   LineChart,
   CreditCard,
   Sun,
@@ -22,32 +25,39 @@ import { useTheme } from '../components/ThemeProvider';
 import { useI18n } from '../hooks/use-i18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { cn } from '../utils/cn';
+import { PRODUCT_NAME } from '../utils/brand';
+import { useFeatureFlagStore } from '../stores/feature-flag-store';
 
 const navigation = [
   {
-    group: 'Markets',
+    group: 'Practice',
     items: [
-      { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
-      { to: '/daily', icon: CalendarDays, labelKey: 'nav.daily' },
+      { to: '/', icon: Trophy, labelKey: 'nav.lobby' },
+      { to: '/bankroll', icon: Wallet, labelKey: 'nav.bankroll' },
+      { to: '/review', icon: BookOpen, labelKey: 'nav.review' },
     ],
   },
   {
-    group: 'Analysis',
+    group: 'Data',
     items: [
+      { to: '/database', icon: Database, labelKey: 'nav.database' },
+      { to: '/strategy', icon: FlaskConical, labelKey: 'nav.strategy' },
+      { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
+    ],
+  },
+  {
+    group: 'Advanced',
+    items: [
+      { to: '/daily', icon: Ticket, labelKey: 'nav.daily' },
+      { to: '/esports', icon: Activity, labelKey: 'nav.esports' },
+      { to: '/signals', icon: BarChart3, labelKey: 'nav.signals' },
       { to: '/whales', icon: Fish, labelKey: 'nav.whales' },
-      { to: '/esports', icon: Gamepad2, labelKey: 'nav.esports' },
-      { to: '/signals', icon: Activity, labelKey: 'nav.signals' },
-      { to: '/polymarket/account', icon: CreditCard, labelKey: 'nav.polymarketAccount' },
-    ],
-  },
-  {
-    group: 'AI',
-    items: [
-      { to: '/ai/config', icon: Settings2, labelKey: 'nav.aiConfig' },
-      { to: '/ai/stats', icon: BarChart3, labelKey: 'nav.aiStats' },
+      { to: '/ai/config', icon: Settings, labelKey: 'nav.aiConfig' },
+      { to: '/ai/stats', icon: LineChart, labelKey: 'nav.aiStats' },
       { to: '/prompt-variants', icon: Beaker, labelKey: 'nav.promptVariants' },
       { to: '/allocation', icon: PieChart, labelKey: 'nav.allocation' },
       { to: '/simulation', icon: LineChart, labelKey: 'nav.simulation' },
+      { to: '/polymarket/account', icon: CreditCard, labelKey: 'nav.polymarketAccount', featureFlag: 'polymarketAccountEnabled' as const },
     ],
   },
 ];
@@ -60,6 +70,7 @@ interface SidebarProps {
 export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
+  const { polymarketAccountEnabled } = useFeatureFlagStore();
 
   return (
     <>
@@ -72,6 +83,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
       )}
 
       <aside
+        data-testid="app-sidebar"
         className={cn(
           'flex flex-col border-r border-border bg-sidebar transition-all duration-200',
           'fixed inset-y-0 left-0 z-50 w-[240px]',
@@ -85,7 +97,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
           collapsed && 'lg:justify-center lg:px-2',
         )}>
           <Swords className="h-5 w-5 flex-shrink-0 text-primary" />
-          {!collapsed && <span className="text-sm font-semibold">PolyRader CS2</span>}
+          {!collapsed && <span className="text-sm font-semibold">{PRODUCT_NAME}</span>}
           {onToggle && (
             <button
               onClick={onToggle}
@@ -105,7 +117,9 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                   {group.group}
                 </div>
               )}
-              {group.items.map((item) => (
+              {group.items
+                .filter((item) => (item.featureFlag ? polymarketAccountEnabled : true))
+                .map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

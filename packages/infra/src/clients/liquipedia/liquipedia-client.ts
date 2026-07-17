@@ -1,0 +1,287 @@
+import type { Player, PlayerRole } from '@polyrader/core';
+
+const DEFAULT_API_URL = 'https://liquipedia.net/counterstrike/api.php';
+const DEFAULT_USER_AGENT = 'PolyraderCS2/0.3 local-development (Liquipedia API; set LIQUIPEDIA_USER_AGENT)';
+
+export interface LiquipediaTeamSearchResult {
+  pageId: number;
+  title: string;
+  canonicalName: string;
+  sourceId: string;
+  sourceUrl: string;
+  confidence: number;
+  snippet?: string;
+}
+
+export interface LiquipediaRosterPlayer extends Player {
+  nationality?: string;
+  status?: 'active' | 'inactive' | 'coach' | 'substitute';
+  joinDate?: string;
+  leaveDate?: string;
+}
+
+export interface LiquipediaRosterSnapshot {
+  teamTitle: string;
+  sourceId: string;
+  sourceUrl: string;
+  players: LiquipediaRosterPlayer[];
+  fetchedAt: string;
+  rawLength: number;
+}
+
+interface LiquipediaClientOptions {
+  apiUrl?: string;
+  userAgent?: string;
+  timeoutMs?: number;
+  minIntervalMs?: number;
+}
+
+let lastRequestAt = 0;
+
+export class LiquipediaClient {
+  private readonly apiUrl: string;
+  private readonly userAgent: string;
+  private readonly timeoutMs: number;
+  private readonly minIntervalMs: number;
+
+  constructor(options: LiquipediaClientOptions = {}) {
+    this.apiUrl = options.apiUrl ?? process.env.LIQUIPEDIA_API_URL ?? DEFAULT_API_URL;
+    this.userAgent = options.userAgent ?? process.env.LIQUIPEDIA_USER_AGENT ?? DEFAULT_USER_AGENT;
+    this.timeoutMs = options.timeoutMs ?? envNumber('LIQUIPEDIA_TIMEOUT_MS', 8000, 500, 30000);
+    this.minIntervalMs = options.minIntervalMs ?? envNumber('LIQUIPEDIA_MIN_INTERVAL_MS', 2100, 0, 10000);
+  }
+
+  async searchTeams(name: string, limit = 5): Promise<LiquipediaTeamSearchResult[]> {
+    const query = name.trim();
+    if (!query) return [];
+
+    const data = await this.fetchApi<Record<string, unknown>>({
+      action: 'query',
+      list: 'search',
+      srsearch: `${query} team`,
+      srnamespace: '0',
+      srlimit: String(limit),
+    });
+    const rows = ((data.query as Record<string, unknown> | undefined)?.search ?? []) as Array<Record<string, unknown>>;
+
+    return rows
+      .map((row) => {
+        const title = String(row.title ?? '');
+        return {
+          pageId: Number(row.pageid) || 0,
+          title,
+          canonicalName: title.replace(/_/g, ' '),
+          sourceId: title,
+          sourceUrl: this.pageUrl(title),
+          confidence: nameConfidence(query, title),
+          snippet: stripHtml(String(row.snippet ?? '')),
+        };
+      })
+      .filter((row) => row.title)
+      .sort((a, b) => b.confidence - a.confidence);
+  }
+
+  async getCurrentRoster(title: string): Promise<LiquipediaRosterSnapshot> {
+    const wikitext = await this.getPageWikitext(title);
+    return {
+      teamTitle: title,
+      sourceId: title,
+      sourceUrl: this.pageUrl(title),
+      players: parseRosterFromWikitext(wikitext),
+      fetchedAt: new Date().toISOString(),
+      rawLength: wikitext.length,
+    };
+  }
+
+  async getPageWikitext(title: string): Promise<string> {
+    const data = await this.fetchApi<Record<string, unknown>>({
+      action: 'query',
+      prop: 'revisions',
+      rvprop: 'content',
+      rvslots: 'main',
+      titles: title,
+    });
+    const pages = (data.query as Record<string, unknown> | undefined)?.pages as Record<string, unknown> | Record<string, unknown>[] | undefined;
+    const firstPage = Array.isArray(pages)
+      ? pages[0]
+      : pages ? Object.values(pages)[0] as Record<string, unknown> | undefined : undefined;
+    const revisions = (firstPage?.revisions ?? []) as Array<Record<string, unknown>>;
+    const revision = revisions[0];
+    const slots = revision?.slots as Record<string, unknown> | undefined;
+    const main = slots?.main as Record<string, unknown> | undefined;
+    return String(main?.content ?? main?.['*'] ?? revision?.content ?? revision?.['*'] ?? '');
+  }
+
+  private async fetchApi<T>(params: Record<string, string>): Promise<T> {
+    await this.rateLimit();
+
+    const url = new URL(this.apiUrl);
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('formatversion', '2');
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': this.userAgent,
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Liquipedia API HTTP ${response.status}: ${text.slice(0, 200)}`);
+      }
+      return response.json() as Promise<T>;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async rateLimit(): Promise<void> {
+    if (this.minIntervalMs <= 0) {
+      lastRequestAt = Date.now();
+      return;
+    }
+    const elapsed = Date.now() - lastRequestAt;
+    if (elapsed < this.minIntervalMs) {
+      await new Promise((resolve) => setTimeout(resolve, this.minIntervalMs - elapsed));
+    }
+    lastRequestAt = Date.now();
+  }
+
+  private pageUrl(title: string): string {
+    return `https://liquipedia.net/counterstrike/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+  }
+}
+
+export function parseRosterFromWikitext(wikitext: string): LiquipediaRosterPlayer[] {
+  const focused = focusRosterSection(wikitext.replace(/<!--[\s\S]*?-->/g, ''));
+  const players = new Map<string, LiquipediaRosterPlayer>();
+  const templateRegex = /\{\{([^{}]+)\}\}/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = templateRegex.exec(focused)) !== null) {
+    const parsed = parseTemplate(match[1]);
+    if (!parsed) continue;
+    const templateName = parsed.name.toLowerCase();
+    if (!/(person|player|roster|squad|teamcard)/.test(templateName)) continue;
+    if (/coach/.test(templateName) && !templateName.includes('player')) continue;
+
+    const nickname = cleanWikiText(
+      parsed.params.id
+      ?? parsed.params.player
+      ?? parsed.params.nickname
+      ?? parsed.params.nick
+      ?? parsed.positionals[0]
+      ?? parsed.positionals[1]
+      ?? '',
+    );
+    if (!nickname || nickname.length > 32) continue;
+
+    const playerId = normalizePlayerId(nickname);
+    if (!playerId || players.has(playerId)) continue;
+
+    const realName = cleanWikiText(
+      parsed.params.name
+      ?? parsed.params.realname
+      ?? parsed.params.real_name
+      ?? parsed.params.fullname
+      ?? '',
+    );
+    const role = parseRole(parsed.params.igl === 'y' ? 'IGL' : parsed.params.role ?? parsed.params.position ?? templateName);
+    if (role === 'Coach') continue;
+    players.set(playerId, {
+      playerId,
+      name: realName,
+      nickname,
+      rating: 1,
+      kdRatio: 1,
+      headshotPercent: 0,
+      mapsPlayed: 0,
+      role,
+      nationality: cleanWikiText(parsed.params.nationality ?? parsed.params.country ?? ''),
+      status: templateName.includes('coach') ? 'coach' : templateName.includes('sub') ? 'substitute' : 'active',
+      joinDate: cleanWikiText(parsed.params.joindate ?? parsed.params.join_date ?? ''),
+      leaveDate: cleanWikiText(parsed.params.leavedate ?? parsed.params.leave_date ?? ''),
+    });
+  }
+
+  return Array.from(players.values());
+}
+
+function focusRosterSection(wikitext: string): string {
+  const start = wikitext.search(/={2,}\s*(current\s+)?(players|player\s+roster|roster|active\s+roster|lineup)\s*={2,}/i);
+  if (start < 0) return wikitext;
+  const rest = wikitext.slice(start);
+  const next = rest.slice(1).search(/={2,}\s*(former|organization|achievements|results|timeline|references|external links)/i);
+  return next > 0 ? rest.slice(0, next + 1) : rest;
+}
+
+function parseTemplate(raw: string): { name: string; params: Record<string, string>; positionals: string[] } | null {
+  const parts = raw.split('|').map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  const [name, ...rest] = parts;
+  const params: Record<string, string> = {};
+  const positionals: string[] = [];
+  for (const part of rest) {
+    const equals = part.indexOf('=');
+    if (equals > 0) {
+      params[part.slice(0, equals).trim().toLowerCase()] = part.slice(equals + 1).trim();
+    } else {
+      positionals.push(part);
+    }
+  }
+  return { name, params, positionals };
+}
+
+function parseRole(value: string): PlayerRole {
+  const text = value.toLowerCase();
+  if (text.includes('awp') || text.includes('sniper')) return 'AWPer';
+  if (text.includes('igl') || text.includes('captain') || text.includes('leader')) return 'IGL';
+  if (text.includes('entry')) return 'Entry';
+  if (text.includes('support')) return 'Support';
+  if (text.includes('lurk')) return 'Lurker';
+  if (text.includes('coach')) return 'Coach';
+  return 'Rifler';
+}
+
+function cleanWikiText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\[\[(?:[^|\]]+\|)?([^\]]+)\]\]/g, '$1')
+    .replace(/\{\{[^{}]*\}\}/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizePlayerId(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_]+/g, '');
+}
+
+function normalizeName(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+}
+
+function nameConfidence(query: string, title: string): number {
+  const a = normalizeName(query);
+  const b = normalizeName(title);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
+  return 0.5;
+}
+
+function envNumber(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}

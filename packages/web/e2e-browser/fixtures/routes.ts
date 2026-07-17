@@ -5,7 +5,13 @@ export interface AppRoute {
 }
 
 export const APP_ROUTES: AppRoute[] = [
-  { path: '/', name: 'dashboard', hash: '/#/' },
+  { path: '/', name: 'lobby', hash: '/#/' },
+  { path: '/dashboard', name: 'dashboard', hash: '/#/dashboard' },
+  { path: '/bankroll', name: 'bankroll', hash: '/#/bankroll' },
+  { path: '/review', name: 'review', hash: '/#/review' },
+  { path: '/database', name: 'database', hash: '/#/database' },
+  { path: '/strategy', name: 'strategy-lab', hash: '/#/strategy' },
+  { path: '/settings', name: 'settings', hash: '/#/settings' },
   { path: '/daily', name: 'daily', hash: '/#/daily' },
   { path: '/whales', name: 'whales', hash: '/#/whales' },
   { path: '/esports', name: 'esports', hash: '/#/esports' },
@@ -20,5 +26,5 @@ export const APP_ROUTES: AppRoute[] = [
 ];
 
 export const DESIGN_AUDIT_PAGES = APP_ROUTES.filter((r) =>
-  ['dashboard', 'ai-config', 'signals'].includes(r.name),
+  ['lobby', 'bankroll', 'review', 'database', 'strategy-lab', 'signals', 'ai-config'].includes(r.name),
 );

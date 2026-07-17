@@ -38,6 +38,46 @@ export interface PlayerRecord {
   source?: string;
 }
 
+export interface TeamSourceLink {
+  teamId: string;
+  source: string;
+  sourceId: string;
+  sourceName?: string;
+  sourceSlug?: string;
+  sourceUrl?: string;
+  confidence?: number;
+  isPrimary?: boolean;
+  metadata?: Record<string, unknown>;
+  lastSeenAt?: string;
+}
+
+export interface MatchSourceLink {
+  matchId: string;
+  source: string;
+  sourceId: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+  lastSeenAt?: string;
+}
+
+export interface RosterSourceSnapshot {
+  id?: number;
+  teamId: string;
+  source: string;
+  sourceId?: string;
+  rosterHash: string;
+  playerIds: string[];
+  players: unknown[];
+  validFrom?: string;
+  validTo?: string;
+  isCurrent?: boolean;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export class EsportsRepository {
   // ─── Roster Hash ──────────────────────────────────────────
 
@@ -46,9 +86,9 @@ export class EsportsRepository {
    * Player IDs are sorted alphabetically before hashing so the order
    * of players in the source HTML doesn't matter.
    */
-  static computeRosterHash(playerIds: string[]): string {
+  static computeRosterHash(playerIds: string[], teamId = ''): string {
     const sorted = [...playerIds].filter(Boolean).map((id) => id.toLowerCase()).sort();
-    return createHash('sha256').update(sorted.join(',')).digest('hex').substring(0, 16);
+    return createHash('sha256').update(`${teamId.toLowerCase()}|${sorted.join(',')}`).digest('hex').substring(0, 16);
   }
 
   // ─── Players ──────────────────────────────────────────────
@@ -97,6 +137,177 @@ export class EsportsRepository {
     };
   }
 
+  // ─── Source Alignment ─────────────────────────────────────
+
+  upsertTeamSourceLink(link: TeamSourceLink): void {
+    transaction(() => {
+      query(
+        `DELETE FROM team_source_links WHERE source = ? AND (team_id = ? OR source_id = ?)`,
+        link.source,
+        link.teamId,
+        link.sourceId,
+      );
+      query(
+        `INSERT INTO team_source_links (team_id, source, source_id, source_name, source_slug, source_url, confidence, is_primary, metadata, last_seen_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), datetime('now'))`,
+        link.teamId,
+        link.source,
+        link.sourceId,
+        link.sourceName ?? '',
+        link.sourceSlug ?? '',
+        link.sourceUrl ?? '',
+        link.confidence ?? 1,
+        link.isPrimary ? 1 : 0,
+        JSON.stringify(link.metadata ?? {}),
+        link.lastSeenAt ?? null,
+      );
+    });
+  }
+
+  getTeamSourceLinks(teamId: string): TeamSourceLink[] {
+    const rows = query<Record<string, unknown>>(
+      `SELECT * FROM team_source_links WHERE team_id = ? ORDER BY is_primary DESC, source ASC`,
+      teamId,
+    );
+    return rows.map((row) => ({
+      teamId: String(row.team_id),
+      source: String(row.source),
+      sourceId: String(row.source_id),
+      sourceName: String(row.source_name ?? ''),
+      sourceSlug: String(row.source_slug ?? ''),
+      sourceUrl: String(row.source_url ?? ''),
+      confidence: Number(row.confidence) || 0,
+      isPrimary: !!row.is_primary,
+      metadata: parseJsonObject(row.metadata),
+      lastSeenAt: String(row.last_seen_at ?? ''),
+    }));
+  }
+
+  findTeamBySource(source: string, sourceId: string): TeamSourceLink | null {
+    const row = queryOne<Record<string, unknown>>(
+      `SELECT * FROM team_source_links WHERE source = ? AND source_id = ?`,
+      source,
+      sourceId,
+    );
+    if (!row) return null;
+    return {
+      teamId: String(row.team_id),
+      source: String(row.source),
+      sourceId: String(row.source_id),
+      sourceName: String(row.source_name ?? ''),
+      sourceSlug: String(row.source_slug ?? ''),
+      sourceUrl: String(row.source_url ?? ''),
+      confidence: Number(row.confidence) || 0,
+      isPrimary: !!row.is_primary,
+      metadata: parseJsonObject(row.metadata),
+      lastSeenAt: String(row.last_seen_at ?? ''),
+    };
+  }
+
+  upsertMatchSourceLink(link: MatchSourceLink): void {
+    transaction(() => {
+      query(
+        `DELETE FROM match_source_links WHERE source = ? AND (match_id = ? OR source_id = ?)`,
+        link.source,
+        link.matchId,
+        link.sourceId,
+      );
+      query(
+        `INSERT INTO match_source_links (match_id, source, source_id, source_name, source_url, confidence, metadata, last_seen_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), datetime('now'))`,
+        link.matchId,
+        link.source,
+        link.sourceId,
+        link.sourceName ?? '',
+        link.sourceUrl ?? '',
+        link.confidence ?? 1,
+        JSON.stringify(link.metadata ?? {}),
+        link.lastSeenAt ?? null,
+      );
+    });
+  }
+
+  getMatchSourceLinks(matchId: string): MatchSourceLink[] {
+    const rows = query<Record<string, unknown>>(
+      `SELECT * FROM match_source_links WHERE match_id = ? ORDER BY source ASC`,
+      matchId,
+    );
+    return rows.map((row) => ({
+      matchId: String(row.match_id),
+      source: String(row.source),
+      sourceId: String(row.source_id),
+      sourceName: String(row.source_name ?? ''),
+      sourceUrl: String(row.source_url ?? ''),
+      confidence: Number(row.confidence) || 0,
+      metadata: parseJsonObject(row.metadata),
+      lastSeenAt: String(row.last_seen_at ?? ''),
+    }));
+  }
+
+  upsertRosterSourceSnapshot(snapshot: RosterSourceSnapshot): void {
+    if (snapshot.isCurrent !== false) {
+      query(
+        `UPDATE roster_source_snapshots SET is_current = 0, updated_at = datetime('now')
+         WHERE team_id = ? AND source = ?`,
+        snapshot.teamId,
+        snapshot.source,
+      );
+    }
+
+    query(
+      `INSERT INTO roster_source_snapshots (team_id, source, source_id, roster_hash, player_ids, players, valid_from, valid_to, is_current, metadata, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(team_id, source, source_id, roster_hash) DO UPDATE SET
+         player_ids = excluded.player_ids,
+         players = excluded.players,
+         valid_from = COALESCE(excluded.valid_from, roster_source_snapshots.valid_from),
+         valid_to = excluded.valid_to,
+         is_current = excluded.is_current,
+         metadata = excluded.metadata,
+         updated_at = datetime('now')`,
+      snapshot.teamId,
+      snapshot.source,
+      snapshot.sourceId ?? '',
+      snapshot.rosterHash,
+      JSON.stringify(snapshot.playerIds),
+      JSON.stringify(snapshot.players),
+      snapshot.validFrom ?? null,
+      snapshot.validTo ?? null,
+      snapshot.isCurrent === false ? 0 : 1,
+      JSON.stringify(snapshot.metadata ?? {}),
+    );
+  }
+
+  getRosterSourceSnapshots(teamId: string, source?: string, limit = 20): RosterSourceSnapshot[] {
+    const rows = source
+      ? query<Record<string, unknown>>(
+        `SELECT * FROM roster_source_snapshots WHERE team_id = ? AND source = ? ORDER BY updated_at DESC LIMIT ?`,
+        teamId,
+        source,
+        limit,
+      )
+      : query<Record<string, unknown>>(
+        `SELECT * FROM roster_source_snapshots WHERE team_id = ? ORDER BY updated_at DESC LIMIT ?`,
+        teamId,
+        limit,
+      );
+    return rows.map((row) => ({
+      id: Number(row.id),
+      teamId: String(row.team_id),
+      source: String(row.source),
+      sourceId: String(row.source_id ?? ''),
+      rosterHash: String(row.roster_hash),
+      playerIds: parseJsonArray<string>(row.player_ids),
+      players: parseJsonArray<unknown>(row.players),
+      validFrom: row.valid_from ? String(row.valid_from) : undefined,
+      validTo: row.valid_to ? String(row.valid_to) : undefined,
+      isCurrent: !!row.is_current,
+      metadata: parseJsonObject(row.metadata),
+      createdAt: String(row.created_at ?? ''),
+      updatedAt: String(row.updated_at ?? ''),
+    }));
+  }
+
   // ─── Team Rosters ─────────────────────────────────────────
 
   /**
@@ -105,7 +316,7 @@ export class EsportsRepository {
    * If it's a new hash, insert a new row and mark previous rosters as inactive.
    */
   upsertTeamRoster(teamId: string, playerIds: string[]): string {
-    const rosterHash = EsportsRepository.computeRosterHash(playerIds);
+    const rosterHash = EsportsRepository.computeRosterHash(playerIds, teamId);
 
     transaction(() => {
       // Check if this roster already exists for this team
@@ -575,5 +786,31 @@ export class EsportsRepository {
     );
 
     return this.getAnalysisFilterConfig();
+  }
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string' || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseJsonArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
   }
 }

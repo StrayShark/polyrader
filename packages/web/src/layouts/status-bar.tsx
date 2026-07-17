@@ -4,6 +4,7 @@ import { useWebSocket } from '../hooks/use-websocket';
 import { ConnectionStatus } from '../components/connection-status';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
+import { PRODUCT_NAME } from '../utils/brand';
 
 interface HealthSnapshot {
   whaleIngestion?: {
@@ -91,7 +92,7 @@ export function StatusBar() {
         )}
       </div>
       <div className="flex items-center gap-2 md:gap-4 shrink-0">
-        <span className="hidden sm:inline">PolyRader CS2 v0.3.0</span>
+        <span className="hidden sm:inline">{PRODUCT_NAME} v0.3.0</span>
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
           {time.toLocaleTimeString()}

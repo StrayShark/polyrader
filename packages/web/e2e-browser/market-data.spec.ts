@@ -67,36 +67,33 @@ async function mockMarketData(page: Page) {
 }
 
 test.describe('P3-2: Market data rendering', () => {
-  test('dashboard renders CS2 market data from API', async ({ page }) => {
+  test('lobby renders CS2 market data from API', async ({ page }) => {
     await mockMarketData(page);
     await page.goto('/#/');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('aside')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
-    const statsCards = page.locator('.grid > div');
-    await expect(statsCards.first()).toBeVisible({ timeout: 5000 });
-
-    const tableRows = page.locator('table tbody tr');
-    await expect(tableRows.first()).toBeVisible({ timeout: 5000 });
-
-    const firstRowText = await tableRows.first().textContent();
-    expect(firstRowText).toContain('Counter-Strike');
+    // Event grouping header
+    await expect(page.getByRole('heading', { name: 'IEM Cologne' })).toBeVisible({ timeout: 5000 });
+    // Match row rendered by MatchOddsRow now displays teams in separate columns.
+    const row = page.locator('.group').filter({ hasText: 'Spirit' }).filter({ hasText: 'G2' }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
   });
 
-  test('market table shows correct price percentages', async ({ page }) => {
+  test('lobby match row shows correct price percentages', async ({ page }) => {
     await mockMarketData(page);
     await page.goto('/#/');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    const marketRow = page.locator('table tbody tr', { hasText: 'Spirit vs G2' }).first();
-    await expect(marketRow).toBeVisible({ timeout: 5000 });
+    const row = page.locator('.group').filter({ hasText: 'Spirit' }).filter({ hasText: 'G2' }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
 
-    const rowText = await marketRow.textContent();
-    expect(rowText).toContain('65%');
-    expect(rowText).toContain('35%');
+    const rowText = await row.textContent();
+    expect(rowText).toContain('65.0%');
+    expect(rowText).toContain('35.0%');
   });
 
   test('only CS2 markets are displayed (no non-CS2 data)', async ({ page }) => {
@@ -141,6 +138,7 @@ test.describe('P3-2: Market data rendering', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('text=Counter-Strike').first()).toBeVisible({ timeout: 5000 });
+    const row = page.locator('.group').filter({ hasText: 'Spirit' }).filter({ hasText: 'G2' }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
   });
 });

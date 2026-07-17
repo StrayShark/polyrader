@@ -11,7 +11,7 @@ const GAMMA_API_URL = process.env.POLYMARKET_GAMMA_API_URL ?? 'https://gamma-api
  * stack bypasses this, so all Gamma API calls route through Playwright.
  */
 async function gammaFetch<T>(url: string): Promise<T> {
-  return fetchJsonWithBrowser<T>(url);
+  return fetchJsonWithBrowser<T>(url, { timeoutMs: envNumber('POLYMARKET_GAMMA_TIMEOUT_MS', 8000) });
 }
 
 export class PolymarketGammaClient {
@@ -34,9 +34,6 @@ export class PolymarketGammaClient {
    * Polymarket Gamma API does not support tag=cs2 filtering (CS2 markets
    * have empty tags arrays). Instead, we fetch active markets sorted by
    * volume and filter by "Counter-Strike" in the question text.
-   *
-   * If insufficient active CS2 markets are found, also fetch closed markets
-   * (useful during CS2 off-season) to keep the dashboard populated for analysis.
    */
   async getMarkets(limit = 50, offset = 0): Promise<Market[]> {
     const isCs2 = (item: unknown): boolean => {
@@ -68,35 +65,14 @@ export class PolymarketGammaClient {
       } catch { break; }
       if (!batch || batch.length === 0) break;
 
-      const cs2Batch = batch.filter(isCs2).map((item) => this.mapMarket(item as Record<string, unknown>));
+      const cs2Batch = batch
+        .filter((item) => isCs2(item) && this.isTradableMarket(item as Record<string, unknown>))
+        .map((item) => this.mapMarket(item as Record<string, unknown>));
       cs2Markets = cs2Markets.concat(cs2Batch);
 
       // Stop early if we have enough and this page had no CS2 markets
       if (cs2Markets.length >= limit && cs2Batch.length === 0 && page > 0) break;
       if (batch.length < pageSize) break; // last page
-    }
-
-    // 2) If not enough active CS2 markets, supplement with closed ones (sorted by volume)
-    if (cs2Markets.length < limit) {
-      for (let page = 0; page < maxPages; page++) {
-        let closedBatch: unknown[];
-        try {
-          closedBatch = await this.fetch<unknown[]>('/markets', {
-            limit: String(pageSize),
-            offset: String(page * pageSize),
-            closed: 'true',
-            order: 'volume',
-            ascending: 'false',
-          });
-        } catch { break; }
-        if (!closedBatch || closedBatch.length === 0) break;
-
-        const cs2Closed = closedBatch.filter(isCs2).map((item) => this.mapMarket(item as Record<string, unknown>));
-        cs2Markets = cs2Markets.concat(cs2Closed);
-
-        if (cs2Markets.length >= limit) break;
-        if (closedBatch.length < pageSize) break;
-      }
     }
 
     return cs2Markets.slice(0, limit);
@@ -202,4 +178,25 @@ export class PolymarketGammaClient {
       resolvedPrice: Number.isFinite(resolvedPrice) ? resolvedPrice : undefined,
     };
   }
+
+  private isTradableMarket(data: Record<string, unknown>): boolean {
+    const closed = data.closed === true || String(data.closed ?? '').toLowerCase() === 'true';
+    const active = data.active === undefined || String(data.active).toLowerCase() !== 'false';
+    const resolved = data.resolvedOutcome !== null && data.resolvedOutcome !== undefined
+      || data.resolvedPrice !== null && data.resolvedPrice !== undefined;
+    if (!active || closed || resolved) return false;
+
+    const endDate = String(data.endDate ?? data.end_date_iso ?? '');
+    if (!endDate) return true;
+    const endMs = Date.parse(endDate);
+    if (!Number.isFinite(endMs)) return true;
+
+    return endMs >= Date.now() - 5 * 60 * 1000;
+  }
+}
+
+function envNumber(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? process.env.POLYRADER_EXTERNAL_TIMEOUT_MS);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(30000, Math.max(250, value));
 }

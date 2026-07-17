@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { blockWs } from './fixtures/block-ws';
-import { setupCommonMocks } from './fixtures/api-mocks';
+import { setupCommonMocks, setupMatchDetailMocks } from './fixtures/api-mocks';
 import { setTheme, waitForMainHeading } from './fixtures/theme';
 
 /**
@@ -17,11 +17,15 @@ test.describe('P1 UI audit fixes', () => {
     await setTheme(page, 'dark');
   });
 
-  test('AI stats page shows simulation mode notice', async ({ page }) => {
-    await page.goto('/#/ai/stats');
-    await waitForMainHeading(page);
-    await expect(page.getByText(/模拟投注|Paper Trading/i).first()).toBeVisible();
-    await expect(page.getByText(/不会向 Polymarket|No real Polymarket/i).first()).toBeVisible();
+  test('match detail practice tab shows simulation mode notice', async ({ page }) => {
+    await setupMatchDetailMocks(page);
+    await page.goto('/#/match/spirit-vs-g2-bo3');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1000);
+    await page.getByRole('tab', { name: /模拟|Practice/i }).click();
+    const notice = page.getByRole('note');
+    await expect(notice.getByText(/模拟投注|Paper Trading/i)).toBeVisible();
+    await expect(notice.getByText(/不会向 Polymarket|No real Polymarket/i)).toBeVisible();
   });
 
   test('follow tab shows onboarding guide when wallet list is empty', async ({ page }) => {
@@ -45,14 +49,15 @@ test.describe('P1 UI audit fixes', () => {
     expect(await page.locator('input:not([class*="flex"])').count()).toBe(0);
   });
 
-  test('sidebar AI section has distinct nav labels', async ({ page }) => {
+  test('sidebar advanced section has distinct nav labels', async ({ page }) => {
     await page.goto('/#/');
     await waitForMainHeading(page);
 
-    const sidebar = page.getByRole('complementary');
+    const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.getByRole('link', { name: /设置|Settings/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /Prompt|prompt-variants|提示词/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /资金分配|Allocation/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /模拟盘|Simulation/i })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: /Polymarket/i })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: /Polymarket/i })).toHaveCount(0);
   });
 });

@@ -118,6 +118,21 @@ export const teamParamsSchema = z.object({
   teamId: z.string().min(1, 'teamId is required'),
 });
 
+export const teamSourceParamsSchema = z.object({
+  teamId: z.string().min(1, 'teamId is required'),
+  source: z.enum(['polymarket', 'hltv', 'liquipedia', 'grid', 'cs_api', 'manual']),
+});
+
+export const upsertTeamSourceBodySchema = z.object({
+  sourceId: z.string().min(1, 'sourceId is required'),
+  sourceName: z.string().max(160).optional(),
+  sourceSlug: z.string().max(200).optional(),
+  sourceUrl: z.string().url().or(z.literal('')).optional(),
+  confidence: z.coerce.number().min(0).max(1).optional(),
+  isPrimary: z.boolean().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const matchParamsSchema = z.object({
   matchId: z.string().min(1, 'matchId is required'),
 });
@@ -310,6 +325,46 @@ export type UpdateBankrollBody = z.infer<typeof updateBankrollBodySchema>;
 export type CreateAllocationBody = z.infer<typeof createAllocationBodySchema>;
 export type CreateVariantBody = z.infer<typeof createVariantSchema>;
 export type UpdateVariantBody = z.infer<typeof updateVariantSchema>;
+
+// ============================================================
+// Sim Betting schemas
+// ============================================================
+export const placeSimBetBodySchema = z.object({
+  accountId: z.string().optional(),
+  matchId: z.string().optional(),
+  marketId: z.string().optional(),
+  betType: z.enum(['single', 'parlay']).default('single'),
+  stake: z.number().min(1).max(1000000),
+  legs: z.array(z.object({
+    matchId: z.string().optional(),
+    marketId: z.string().optional(),
+    selection: z.string().min(1),
+    odds: z.number().min(1.01).max(1000),
+    source: z.string().optional(),
+  })).min(1),
+  userProbability: z.number().min(0).max(1).optional(),
+  modelProbability: z.number().min(0).max(1).optional(),
+  marketProbability: z.number().min(0).max(1).optional(),
+  matchFormat: z.enum(['BO1', 'BO3', 'BO5']).nullable().optional(),
+  matchTier: z.string().max(8).nullable().optional(),
+  reasoning: z.string().optional(),
+});
+
+export const settleSimBetBodySchema = z.object({
+  result: z.enum(['won', 'lost', 'push']),
+  pnl: z.number().optional(),
+});
+
+export const createSimReviewBodySchema = z.object({
+  errorTags: z.array(z.string()).optional(),
+  note: z.string().optional(),
+  closingOdds: z.number().min(1.01).optional(),
+});
+
+export type PlaceSimBetBody = z.infer<typeof placeSimBetBodySchema>;
+export type SettleSimBetBody = z.infer<typeof settleSimBetBodySchema>;
+export type CreateSimReviewBody = z.infer<typeof createSimReviewBodySchema>;
+
 export type CreateAlertBody = z.infer<typeof createAlertBodySchema>;
 export type UpdateAlertBody = z.infer<typeof updateAlertBodySchema>;
 
@@ -328,4 +383,73 @@ export const updateSimulationConfigSchema = z.object({
   oddsSource: z.enum(['market', 'llm_inverse']).optional(),
   participatingProviders: z.array(z.string()).optional(),
   autoSettle: z.boolean().optional(),
+});
+
+// ============================================================
+// Strategy Profile & Training Session schemas
+// ============================================================
+export const profileIdParamsSchema = z.object({
+  id: z.string().min(1, 'Profile id is required'),
+});
+
+export const createStrategyProfileBodySchema = z.object({
+  name: z.string().min(1, 'Name is required').max(128),
+  description: z.string().max(512).optional(),
+  sourceWeights: signalSourceWeightsSchema,
+  behaviorWeights: signalBehaviorWeightsSchema,
+  recommendation: signalRecommendationSchema,
+  capitalParams: z.object({
+    initialBankroll: z.number().min(0).optional(),
+    maxSingleRiskPct: z.number().min(0).max(1).optional(),
+    maxDailyRiskPct: z.number().min(0).max(1).optional(),
+    betStrategy: z.enum(['fixed', 'kelly', 'proportional']).optional(),
+  }).optional(),
+  lastBacktest: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const updateStrategyProfileBodySchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  description: z.string().max(512).optional().nullable(),
+  sourceWeights: signalSourceWeightsSchema.optional(),
+  behaviorWeights: signalBehaviorWeightsSchema.optional(),
+  recommendation: signalRecommendationSchema.optional(),
+  capitalParams: z.object({
+    initialBankroll: z.number().min(0).optional(),
+    maxSingleRiskPct: z.number().min(0).max(1).optional(),
+    maxDailyRiskPct: z.number().min(0).max(1).optional(),
+    betStrategy: z.enum(['fixed', 'kelly', 'proportional']).optional(),
+  }).optional().nullable(),
+  lastBacktest: z.record(z.string(), z.unknown()).optional().nullable(),
+});
+
+export const createTrainingSessionBodySchema = z.object({
+  title: z.string().min(1).max(128),
+  type: z.enum(['consecutive_reasoning', 'single_risk_limit', 'high_confidence_bets']),
+  target: z.object({
+    count: z.number().int().min(1).optional(),
+    maxRiskPct: z.number().min(0).max(1).optional(),
+    minEdge: z.number().min(0).max(1).optional(),
+    minConfidence: z.number().min(0).max(1).optional(),
+    consecutive: z.boolean().optional(),
+  }),
+  startAt: z.string().refine((v) => !Number.isNaN(Date.parse(v))).optional(),
+  endAt: z.string().refine((v) => !Number.isNaN(Date.parse(v))).optional(),
+});
+
+export const updateTrainingSessionBodySchema = z.object({
+  title: z.string().min(1).max(128).optional(),
+  target: z.object({
+    count: z.number().int().min(1).optional(),
+    maxRiskPct: z.number().min(0).max(1).optional(),
+    minEdge: z.number().min(0).max(1).optional(),
+    minConfidence: z.number().min(0).max(1).optional(),
+    consecutive: z.boolean().optional(),
+  }).optional(),
+  status: z.enum(['active', 'completed', 'abandoned']).optional(),
+  progress: z.number().min(0).max(1).optional(),
+  endAt: z.string().refine((v) => !Number.isNaN(Date.parse(v))).optional().nullable(),
+});
+
+export const trainingSessionIdParamsSchema = z.object({
+  id: z.string().min(1, 'Session id is required'),
 });

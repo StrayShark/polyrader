@@ -7,7 +7,33 @@
 // fetchWithBrowser lazily starts a single browser instance and reuses it.
 // Pages are created per-request with randomized viewport, locale, and UA.
 
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+type BrowserContextLike = {
+  addInitScript(script: () => void): Promise<unknown>;
+  newPage(): Promise<{
+    mouse: { move(x: number, y: number): Promise<void> };
+    goto(url: string, options: { waitUntil: 'domcontentloaded'; timeout: number }): Promise<{
+      ok(): boolean;
+      status(): number;
+      statusText(): string;
+    } | null>;
+    waitForTimeout(timeout: number): Promise<void>;
+    content(): Promise<string>;
+  }>;
+  close(): Promise<void>;
+};
+
+type BrowserLike = {
+  isConnected(): boolean;
+  newContext(options: {
+    userAgent: string;
+    viewport: { width: number; height: number };
+    locale: string;
+    timezoneId: string;
+    extraHTTPHeaders: Record<string, string>;
+  }): Promise<BrowserContextLike>;
+  on(event: 'disconnected', handler: () => void): void;
+  close(): Promise<void>;
+};
 
 // ---------------------------------------------------------------------------
 // User-Agent pool — real browser UAs, updated regularly
@@ -116,10 +142,10 @@ export async function fetchWithRetry(url: string, maxRetries = 3): Promise<strin
 // Playwright browser fetch (bypasses Cloudflare / JS challenges)
 // ---------------------------------------------------------------------------
 
-let browserInstance: Browser | null = null;
-let browserLaunchPromise: Promise<Browser> | null = null;
+let browserInstance: BrowserLike | null = null;
+let browserLaunchPromise: Promise<BrowserLike> | null = null;
 
-async function getBrowser(): Promise<Browser> {
+async function getBrowser(): Promise<BrowserLike> {
   if (browserInstance && browserInstance.isConnected()) {
     return browserInstance;
   }
@@ -127,7 +153,9 @@ async function getBrowser(): Promise<Browser> {
     return browserLaunchPromise;
   }
 
-  browserLaunchPromise = chromium.launch({
+  const playwrightModule = ['play', 'wright'].join('');
+  const playwright = await import(playwrightModule) as typeof import('playwright');
+  browserLaunchPromise = playwright.chromium.launch({
     headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -135,17 +163,18 @@ async function getBrowser(): Promise<Browser> {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
     ],
-  });
+  }) as Promise<BrowserLike>;
 
-  browserInstance = await browserLaunchPromise;
+  const browser = await browserLaunchPromise;
+  browserInstance = browser;
   browserLaunchPromise = null;
 
   // Auto-cleanup on exit
-  browserInstance.on('disconnected', () => {
+  browser.on('disconnected', () => {
     browserInstance = null;
   });
 
-  return browserInstance;
+  return browser;
 }
 
 /**
@@ -160,7 +189,7 @@ export async function fetchWithBrowser(url: string, maxRetries = 2): Promise<str
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    let context: BrowserContext | null = null;
+    let context: BrowserContextLike | null = null;
     try {
       await rateLimit();
 

@@ -7,6 +7,16 @@ test.describe('Polymarket Account page', () => {
   test.beforeEach(async ({ page }) => {
     await blockWs(page);
     await setupCommonMocks(page);
+    await page.unroute('**/api/system/features**');
+    await page.route('**/api/system/features**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { marketOrdersEnabled: false, liveTradingEnabled: false, polymarketAccountEnabled: true },
+        }),
+      }),
+    );
   });
 
   test('renders connection, trading stats, equity curve, balances, positions, and orders', async ({ page }) => {
@@ -14,7 +24,7 @@ test.describe('Polymarket Account page', () => {
     await waitForMainHeading(page);
     await expect(page.locator('main h1')).toBeVisible();
 
-    await expect(page.getByText('连接状态').or(page.getByText('Connection'))).toBeVisible();
+    await expect(page.getByText('连接状态').or(page.getByText('Connection'))).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('0x1234...cdef')).toBeVisible();
     await expect(page.getByText('胜率', { exact: true }).or(page.getByText('Win Rate', { exact: true }))).toBeVisible();
     await expect(page.getByText('50.0%')).toBeVisible();

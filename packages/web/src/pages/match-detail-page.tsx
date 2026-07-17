@@ -1,62 +1,77 @@
-import { useParams } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { TrendingUp, Brain, BarChart3, Users, AlertTriangle, Loader2, DollarSign, Check, X } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { TrendingUp, Brain, BarChart3, Users, AlertTriangle, Loader2, Target, Shield, Info, Trophy, ChevronRight, Swords } from 'lucide-react';
 import { api } from '../utils/api';
 import { PriceChart } from '../components/PriceChart';
 import { OrderBookChart } from '../components/OrderBookChart';
-import { FactorRing } from '../components/FactorRing';
-import { LLMConsensusGauge } from '../components/LLMConsensusGauge';
 import { WinRateTimeline, type TimelineSnapshot } from '../components/WinRateTimeline';
-import { PriceFlash } from '../components/PriceFlash';
 import { MatchDetailSkeleton } from '../components/Skeletons';
 import { useWebSocket } from '../hooks/use-websocket';
 import { useI18n } from '../hooks/use-i18n';
-import { Card, CardHeader, CardTitle, Badge, Button, Input, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
+import { Card, CardHeader, CardTitle, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
+import { OddsButton } from '../components/OddsButton';
+import { usePracticeSlipStore } from '../stores/practice-slip-store';
 import { ProductModeNotice } from '../components/ProductModeNotice';
-import { Breadcrumbs } from '../components/Breadcrumbs';
-import type { LLMAggregation, LLMAnalysisResult, MatchInfo } from '@polyrader/core';
+import { RiskMeter } from '../components/RiskMeter';
+import { MatchSourcePanel } from '../components/SourceAlignmentPanel';
+import { TeamIntelligencePanel } from '../components/TeamIntelligencePanel';
+import { useBankrollStore } from '../stores/bankroll-store';
+import { parsePolymarketMatch, type MarketCategory } from '../utils/match-parser';
+import { useMarketStore } from '../stores/market-store';
+import type { LLMAggregation, LLMAnalysisResult, MatchInfo, Market, TeamBrief } from '@polyrader/core';
 
 export function MatchDetailPage() {
   const { slug } = useParams();
   const { subscribe } = useWebSocket();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const { summary } = useBankrollStore();
+  const { markets } = useMarketStore();
   const [match, setMatch] = useState<MatchInfo | null>(null);
   const [matchLoading, setMatchLoading] = useState(true);
   const [aggregation, setAggregation] = useState<LLMAggregation | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [decision, setDecision] = useState<'team_a' | 'team_b' | 'skip' | null>(null);
-  const [betAmount, setBetAmount] = useState(100);
+  const addLeg = usePracticeSlipStore((s) => s.addLeg);
+  const stake = usePracticeSlipStore((s) => s.stake);
   const [priceData, setPriceData] = useState<Array<{ time: string; value: number }>>([]);
   const [orderBookData, setOrderBookData] = useState<{ bids: Array<{ price: number; size: number; side: 'bid' }>; asks: Array<{ price: number; size: number; side: 'ask' }> }>({ bids: [], asks: [] });
   const [timelineData, setTimelineData] = useState<TimelineSnapshot[]>([]);
   const [section, setSection] = useState('overview');
   const [conditionId, setConditionId] = useState<string | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
-  const [canLiveTrade, setCanLiveTrade] = useState(false);
-  const [liveOrderMessage, setLiveOrderMessage] = useState<string | null>(null);
+  const [marketSource, setMarketSource] = useState<'local-sim' | 'polymarket' | null>(null);
+
+  const loadMatch = useCallback(async () => {
+    if (!slug) return;
+    setMatchLoading(true);
+    try {
+      const { data } = await api.get<{ data: MatchInfo }>(`/esports/matches/${slug}`);
+      setMatch(data);
+    } catch {
+      setMatch(null);
+    } finally {
+      setMatchLoading(false);
+    }
+  }, [slug]);
 
   // Fetch match data
   useEffect(() => {
-    if (!slug) return;
-    setMatchLoading(true);
-    api.get<{ data: MatchInfo }>(`/esports/matches/${slug}`)
-      .then(({ data }) => setMatch(data))
-      .catch(() => setMatch(null))
-      .finally(() => setMatchLoading(false));
-  }, [slug]);
+    void loadMatch();
+  }, [loadMatch]);
 
   useEffect(() => {
     if (!slug) return;
-    api.get<{ data: { conditionId: string; outcomePrices: string[] } }>(`/markets/by-slug/${slug}`)
+    api.get<{ data: { conditionId: string; outcomePrices: string[]; tags?: string[] } }>(`/markets/by-slug/${slug}`)
       .then(({ data }) => {
         setConditionId(data.conditionId);
         setLivePrice(parseFloat(data.outcomePrices[0] ?? '0.5'));
+        setMarketSource(data.tags?.includes('local-sim') ? 'local-sim' : 'polymarket');
       })
-      .catch(() => setConditionId(null));
-    api.get<{ data: { canPlaceOrders: boolean } }>('/market-orders/status')
-      .then(({ data }) => setCanLiveTrade(data.canPlaceOrders))
-      .catch(() => setCanLiveTrade(false));
+      .catch(() => {
+        setConditionId(null);
+        setMarketSource(null);
+      });
+    // Live trading is intentionally hidden from the main path per simulation-first positioning.
   }, [slug]);
 
   useEffect(() => {
@@ -80,7 +95,11 @@ export function MatchDetailPage() {
 
   // Fetch order book data (poll every 10s)
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || marketSource === null) return;
+    if (marketSource === 'local-sim') {
+      setOrderBookData({ bids: [], asks: [] });
+      return;
+    }
     const fetchOrderBook = () => {
       api.get<{ data: { bids: Array<{ price: string; size: string }>; asks: Array<{ price: string; size: string }> } }>(`/markets/${slug}/orderbook`)
         .then(({ data }) => {
@@ -94,7 +113,7 @@ export function MatchDetailPage() {
     fetchOrderBook();
     const interval = setInterval(fetchOrderBook, 10000);
     return () => clearInterval(interval);
-  }, [slug]);
+  }, [slug, marketSource]);
 
   // Fetch 24h analysis timeline for win-rate chart
   useEffect(() => {
@@ -120,12 +139,12 @@ export function MatchDetailPage() {
     setIsAnalyzing(true);
     setAnalysisError(null);
     try {
-      const result = await api.post<LLMAggregation>(
+      const { data } = await api.post<{ data: LLMAggregation }>(
         `/ai/analyze`,
-        { matchId: slug, teamAId: match.teamA.teamId, teamBId: match.teamB.teamId },
+        { matchId: slug, teamAId: match.teamA.teamId, teamBId: match.teamB.teamId, locale },
       );
-      if (result) {
-        setAggregation(result);
+      if (data) {
+        setAggregation(data);
       }
     } catch (err) {
       setAnalysisError((err as Error).message);
@@ -133,33 +152,29 @@ export function MatchDetailPage() {
     setIsAnalyzing(false);
   };
 
-  const confirmBet = async (team: 'team_a' | 'team_b', live = false) => {
-    setDecision(team);
-    try {
-      if (live && slug && canLiveTrade) {
-        await api.post('/market-orders', {
-          slug,
-          team,
-          side: 'buy',
-          amountUsd: betAmount,
-        });
-        setLiveOrderMessage(t('match.liveBetSuccess'));
-        return;
-      }
-      await api.post('/ai/stats/bet', {
-        matchId: slug,
-        team: team === 'team_a' ? match?.teamA.name ?? 'Team A' : match?.teamB.name ?? 'Team B',
-        amount: betAmount,
-        odds: 1 / (team === 'team_a' ? (aggregation?.aggregatedProbability?.teamA ?? 0.5) : (aggregation?.aggregatedProbability?.teamB ?? 0.5)),
-        // Pass 'user' as provider for manual bets — the backend defaults to 'user' if omitted
-        provider: 'user',
-      });
-    } catch {}
+  const matchOddsA = livePrice && livePrice > 0 ? 1 / livePrice : undefined;
+  const matchOddsB = livePrice && livePrice > 0 && livePrice < 1 ? 1 / (1 - livePrice) : undefined;
+
+  const handleAddMatchWinner = (side: 'a' | 'b') => {
+    if (!match || !matchOddsA || !matchOddsB) return;
+    const selection = side === 'a' ? match.teamA.name : match.teamB.name;
+    const odds = side === 'a' ? matchOddsA : matchOddsB;
+    addLeg({
+      id: '',
+      matchId: match.matchId ?? slug ?? '',
+      marketId: conditionId ?? slug ?? '',
+      selection,
+      odds,
+      source: marketSource === 'local-sim' ? 'local-sim' : 'polymarket',
+      matchLabel: `${match.teamA.name} vs ${match.teamB.name}`,
+      marketLabel: t('match.matchWinner'),
+      matchFormat: match.format,
+    });
   };
 
   const results = aggregation?.results ?? [];
   const consensus = aggregation?.consensus;
-  const kelly = aggregation?.kellyAllocation;
+  // kelly allocation intentionally not surfaced as betting advice
   const aggregatedProb = aggregation?.aggregatedProbability;
   const lineups = match?.lineups;
 
@@ -169,6 +184,31 @@ export function MatchDetailPage() {
     weak: t('match.weakConsensus'),
     divergent: t('match.disagreement'),
   };
+
+  // Group related markets for this match — must stay before any early return to keep hook order stable.
+  const relatedMarkets = useMemo<Market[]>(() => {
+    if (!match) return [];
+    return markets.filter((m: Market) => {
+      const parsed = parsePolymarketMatch(m.question);
+      if (!parsed) return false;
+      return (
+        parsed.teamAName === match.teamA.name &&
+        parsed.teamBName === match.teamB.name
+      );
+    });
+  }, [markets, match]);
+
+  const marketsByCategory = useMemo(() => {
+    const map = new Map<MarketCategory, typeof relatedMarkets>();
+    for (const m of relatedMarkets) {
+      const parsed = parsePolymarketMatch(m.question);
+      if (!parsed) continue;
+      const list = map.get(parsed.category) ?? [];
+      list.push(m);
+      map.set(parsed.category, list);
+    }
+    return map;
+  }, [relatedMarkets]);
 
   if (matchLoading) {
     return <MatchDetailSkeleton />;
@@ -187,108 +227,258 @@ export function MatchDetailPage() {
   const teamAPlayers = lineups?.teamA?.players ?? [];
   const teamBPlayers = lineups?.teamB?.players ?? [];
   const hasLineups = teamAPlayers.length > 0 || teamBPlayers.length > 0;
+  const lineupsConfirmed = Boolean(lineups?.teamA?.isConfirmed && lineups?.teamB?.isConfirmed);
   const teamAHasStandin = lineups?.teamA?.hasStandin ?? false;
   const teamBHasStandin = lineups?.teamB?.hasStandin ?? false;
 
+  const handleAddMarketLeg = (market: Market, sideIndex: number) => {
+    const parsed = parsePolymarketMatch(market.question);
+    if (!parsed || !match) return;
+    const price = parseFloat(market.outcomePrices[sideIndex] ?? '0');
+    if (!price || price <= 0 || price >= 1) return;
+    const odds = 1 / price;
+    const selection = market.outcomes[sideIndex] ?? (sideIndex === 0 ? parsed.teamAName : parsed.teamBName);
+    addLeg({
+      id: '',
+      matchId: match.matchId ?? slug ?? '',
+      marketId: market.conditionId,
+      selection,
+      odds,
+      source: 'polymarket',
+      matchLabel: `${parsed.teamAName} vs ${parsed.teamBName}`,
+      marketLabel: parsed.marketLabel,
+      matchFormat: match.format ?? parsed.format,
+    });
+  };
+
+  const renderOddsMatrix = (market: Market) => {
+    const parsed = parsePolymarketMatch(market.question);
+    if (!parsed) return null;
+    return (
+      <div key={market.conditionId} className="flex items-center gap-3">
+        {market.outcomePrices.map((p, idx) => {
+          const price = parseFloat(p);
+          const odds = price > 0 && price < 1 ? 1 / price : 0;
+          const selection = market.outcomes[idx] ?? (idx === 0 ? parsed.teamAName : parsed.teamBName);
+          return (
+            <OddsButton
+              key={idx}
+              odds={odds}
+              selection={selection}
+              disabled={odds < 1.01}
+              onClick={() => handleAddMarketLeg(market, idx)}
+            />
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('match.analysis')}</h1>
-          <p className="text-sm text-muted-foreground">
-            {match.eventName} · {match.format}
-            {livePrice !== null && (
-              <span className="ml-2 tabular-nums">· {t('match.livePrice')} {(livePrice * 100).toFixed(1)}¢</span>
-            )}
-          </p>
+      {/* Match header */}
+      <div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/" className="hover:text-foreground transition-colors">{t('nav.lobby')}</Link>
+          <ChevronRight className="h-3.5 w-3.5" />
+          <span>{match.eventName}</span>
         </div>
-        <Button
-          onClick={triggerAnalysis}
-          disabled={isAnalyzing}
-        >
-          {isAnalyzing ? (
-            <><Loader2 className="h-4 w-4 animate-spin" /> {t('match.analyzing')}</>
-          ) : (
-            <><Brain className="h-4 w-4" /> {t('match.triggerAnalysis')}</>
+        <div className="mt-2 flex items-center gap-3">
+          <Trophy className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {match.teamA.name} <span className="text-muted-foreground">vs</span> {match.teamB.name}
+          </h1>
+          <Badge variant="outline" className="text-[10px]">{match.format}</Badge>
+          {match.status === 'live' && (
+            <Badge variant="red" className="text-[10px]">{t('lobby.live')}</Badge>
           )}
-        </Button>
+          {match.status === 'finished' && (
+            <Badge variant="outline" className="text-[10px]">{t('match.statusFinished')}</Badge>
+          )}
+          {match.status === 'delayed' && (
+            <Badge variant="yellow" className="text-[10px]">{t('match.statusDelayed')}</Badge>
+          )}
+          {match.status === 'cancelled' && (
+            <Badge variant="outline" className="text-[10px]">{t('match.statusCancelled')}</Badge>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {match.eventName} · {match.format}
+          {livePrice !== null && (
+            <span className="ml-2 tabular-nums">· {t('match.livePrice')} {(livePrice * 100).toFixed(1)}¢</span>
+          )}
+        </p>
       </div>
 
       {analysisError && (
         <div className="rounded-lg border border-red/20 bg-red/5 p-4 text-sm text-red">{analysisError}</div>
       )}
 
-      <Breadcrumbs
-        items={[
-          { label: t('nav.esports'), to: '/esports' },
-          { label: t('match.analysis') },
-          { label: `${match.teamA.name} vs ${match.teamB.name}` },
-        ]}
-      />
-
       <Tabs value={section} onValueChange={setSection} className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">{t('match.sectionOverview')}</TabsTrigger>
-          <TabsTrigger value="analysis">{t('match.sectionAnalysis')}</TabsTrigger>
           <TabsTrigger value="market">{t('match.sectionMarket')}</TabsTrigger>
-          <TabsTrigger value="decision">{t('match.sectionDecision')}</TabsTrigger>
+          <TabsTrigger value="analysis">{t('match.sectionAnalysis')}</TabsTrigger>
+          <TabsTrigger value="practice">{t('match.sectionPractice')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-0">
       {/* Match Header */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="text-center flex-1">
-            <div className="text-lg font-semibold">{match.teamA.name}</div>
-            <div className="text-xs text-muted-foreground">{match.eventType === 'LAN' ? 'LAN' : 'Online'}</div>
-          </div>
-          <div className="text-center px-4">
-            <div className="text-sm text-muted-foreground">{match.eventName}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{match.format}</div>
-            <div className="mt-2 text-2xl font-bold tabular-nums text-green">VS</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {match.scheduledAt ? new Date(match.scheduledAt).toLocaleDateString() : 'TBD'}
+      <Card className="overflow-hidden p-0">
+        <div className="grid min-h-40 grid-cols-[minmax(0,1fr)_82px_minmax(0,1fr)] items-center gap-2 px-3 py-5 sm:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)] sm:px-6">
+          <MatchTeamIdentity team={match.teamA} />
+          <div className="text-center">
+            <div className="truncate text-xs text-muted-foreground">{match.eventName}</div>
+            <div className="mt-2 text-xl font-semibold tabular-nums">
+              {match.currentScore ? `${match.currentScore.teamA} : ${match.currentScore.teamB}` : 'VS'}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className="rounded border border-border px-1.5 py-0.5">{match.format}</span>
+              <span className="rounded border border-border px-1.5 py-0.5">{match.eventType}</span>
+            </div>
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              {match.scheduledAt ? new Date(match.scheduledAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'TBD'}
             </div>
           </div>
-          <div className="text-center flex-1">
-            <div className="text-lg font-semibold">{match.teamB.name}</div>
-            <div className="text-xs text-muted-foreground">{match.maps ? `${match.maps.length} maps` : ''}</div>
-          </div>
-        </div>
-
-        {/* Win Rate Bar */}
-        <div className="mt-6">
-          <div className="flex justify-between text-sm">
-            <PriceFlash
-              value={aggregatedProb ? aggregatedProb.teamA : 0}
-              format={(v) => aggregatedProb ? `${(v * 100).toFixed(1)}%` : '--'}
-            />
-            <span className="text-muted-foreground">{t('match.aggregateProbability')}</span>
-            <PriceFlash
-              value={aggregatedProb ? aggregatedProb.teamB : 0}
-              format={(v) => aggregatedProb ? `${(v * 100).toFixed(1)}%` : '--'}
-            />
-          </div>
-          <div className="mt-2 flex h-3 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-l-full bg-primary transition-all duration-500"
-              style={{ width: `${aggregatedProb ? aggregatedProb.teamA * 100 : 50}%` }}
-            />
-            <div
-              className="h-full rounded-r-full bg-orange transition-all duration-500"
-              style={{ width: `${aggregatedProb ? aggregatedProb.teamB * 100 : 50}%` }}
-            />
-          </div>
+          <MatchTeamIdentity team={match.teamB} align="right" />
         </div>
       </Card>
+
+      {match.teamDetails && (
+        <TeamIntelligencePanel
+          teamA={match.teamDetails.teamA}
+          teamB={match.teamDetails.teamB}
+          lineups={lineups}
+          isComplete={match.teamDetails.isComplete}
+          updatedAt={match.teamDetails.updatedAt}
+        />
+      )}
+
+      <MatchSourcePanel
+        matchId={match.matchId ?? slug ?? ''}
+        teamA={match.teamA}
+        teamB={match.teamB}
+        lineups={lineups}
+        onLineupRefresh={loadMatch}
+      />
+
+      {/* Odds Matrix */}
+      <div className="space-y-4">
+        {/* Match Winner */}
+        <Card className="p-4">
+          <CardHeader className="flex-row items-center gap-2 mb-4">
+            <Target className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm">{t('match.matchWinner')}</CardTitle>
+          </CardHeader>
+          <p className="mb-4 text-xs text-muted-foreground">{t('match.practiceHint')}</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-3">
+              <span className="w-24 truncate text-sm font-medium">{match.teamA.name}</span>
+              <OddsButton
+                odds={matchOddsA ?? 0}
+                selection={match.teamA.name}
+                disabled={!matchOddsA}
+                onClick={() => handleAddMatchWinner('a')}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-24 truncate text-sm font-medium">{match.teamB.name}</span>
+              <OddsButton
+                odds={matchOddsB ?? 0}
+                selection={match.teamB.name}
+                disabled={!matchOddsB}
+                onClick={() => handleAddMatchWinner('b')}
+              />
+            </div>
+          </div>
+        </Card>
+
+        {/* Map Winners */}
+        {(marketsByCategory.get('map_winner')?.length ?? 0) > 0 && (
+          <Card className="p-4">
+            <CardHeader className="flex-row items-center gap-2 mb-4">
+              <Swords className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">{t('match.mapWinners')}</CardTitle>
+            </CardHeader>
+            <div className="space-y-3">
+              {marketsByCategory.get('map_winner')?.map((market) => {
+                const parsed = parsePolymarketMatch(market.question);
+                return (
+                  <div key={market.conditionId} className="flex items-center justify-between rounded-md border border-border p-3">
+                    <span className="text-sm font-medium">{parsed?.marketLabel ?? market.question}</span>
+                    {renderOddsMatrix(market)}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+
+        {/* Handicap */}
+        {(marketsByCategory.get('handicap')?.length ?? 0) > 0 && (
+          <Card className="p-4">
+            <CardHeader className="flex-row items-center gap-2 mb-4">
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">{t('match.handicap')}</CardTitle>
+            </CardHeader>
+            <div className="space-y-3">
+              {marketsByCategory.get('handicap')?.map((market) => (
+                <div key={market.conditionId} className="flex items-center justify-between rounded-md border border-border p-3">
+                  <span className="text-sm font-medium">{market.question}</span>
+                  {renderOddsMatrix(market)}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Total Maps */}
+        {(marketsByCategory.get('total_maps')?.length ?? 0) > 0 && (
+          <Card className="p-4">
+            <CardHeader className="flex-row items-center gap-2 mb-4">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">{t('match.totalMaps')}</CardTitle>
+            </CardHeader>
+            <div className="space-y-3">
+              {marketsByCategory.get('total_maps')?.map((market) => (
+                <div key={market.conditionId} className="flex items-center justify-between rounded-md border border-border p-3">
+                  <span className="text-sm font-medium">{market.question}</span>
+                  {renderOddsMatrix(market)}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Correct Score */}
+        {(marketsByCategory.get('correct_score')?.length ?? 0) > 0 && (
+          <Card className="p-4">
+            <CardHeader className="flex-row items-center gap-2 mb-4">
+              <Target className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">{t('match.correctScore')}</CardTitle>
+            </CardHeader>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {marketsByCategory.get('correct_score')?.map((market) => renderOddsMatrix(market))}
+            </div>
+          </Card>
+        )}
+
+        {relatedMarkets.length === 0 && (
+          <Card className="p-4">
+            <div className="text-sm text-muted-foreground">{t('match.noRelatedMarkets')}</div>
+          </Card>
+        )}
+      </div>
 
       {/* Lineup Comparison */}
       <Card className="p-4">
         <CardHeader className="flex-row items-center gap-2 mb-4">
           <Users className="h-4 w-4 text-muted-foreground" />
           <CardTitle className="text-sm">{t('match.lineupComparison')}</CardTitle>
-          {hasLineups ? (
+          {hasLineups && lineupsConfirmed ? (
             <Badge variant="green" className="ml-auto text-[10px]">{t('match.lineupConfirmed')}</Badge>
+          ) : hasLineups ? (
+            <Badge variant="yellow" className="ml-auto text-[10px]">{t('sourceAlignment.lineupFallback')}</Badge>
           ) : (
             <Badge variant="secondary" className="ml-auto text-[10px]">{t('match.lineupPending')}</Badge>
           )}
@@ -357,121 +547,89 @@ export function MatchDetailPage() {
         </TabsContent>
 
         <TabsContent value="analysis" className="space-y-4 mt-0">
-      {/* Analysis Sections */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* 6-Factor Breakdown */}
-        <Card className="p-4">
-          <CardHeader className="flex-row items-center gap-2 mb-4">
+      <div className="flex items-start gap-2 rounded-md border border-yellow/20 bg-yellow/5 p-3 text-xs text-yellow">
+        <Info className="h-4 w-4 shrink-0" />
+        <span>{t('match.aiReferenceHint')}</span>
+      </div>
+
+      {/* Probability comparison: market vs model vs user */}
+      <Card className="p-4">
+        <CardHeader className="flex-row items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('match.factorBreakdown')}</CardTitle>
-          </CardHeader>
-          {aggregatedProb ? (
-            <>
-              <div className="flex justify-center mb-4">
-                {(() => {
-                  // Compute real factor values from available match data
-                  const rankA = match.teamA.rank || 50;
-                  const rankB = match.teamB.rank || 50;
-                  // Rank factor: lower rank number = stronger. Convert to 0-1 probability for teamA.
-                  const rankFactor = rankA + rankB > 0 ? rankB / (rankA + rankB) : 0.5;
+            <CardTitle className="text-sm">{t('match.probabilityComparison')}</CardTitle>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={triggerAnalysis}
+            disabled={isAnalyzing}
+          >
+            {isAnalyzing ? (
+              <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> {t('match.analyzing')}</>
+            ) : (
+              <><Brain className="mr-1 h-3.5 w-3.5" /> {t('match.triggerAnalysis')}</>
+            )}
+          </Button>
+        </CardHeader>
 
-                  // Lineup factor: average player rating
-                  const avgRatingA = teamAPlayers.length > 0
-                    ? teamAPlayers.reduce((s, p) => s + p.rating, 0) / teamAPlayers.length
-                    : 1.0;
-                  const avgRatingB = teamBPlayers.length > 0
-                    ? teamBPlayers.reduce((s, p) => s + p.rating, 0) / teamBPlayers.length
-                    : 1.0;
-                  const lineupFactor = avgRatingA + avgRatingB > 0
-                    ? avgRatingA / (avgRatingA + avgRatingB)
-                    : 0.5;
-
-                  // Market/consensus factor from LLM aggregation
-                  const marketFactor = aggregatedProb.teamA;
-
-                  // Form factor: proxy from lineup rating variance (less variance = more stable)
-                  const varianceA = teamAPlayers.length > 1
-                    ? Math.sqrt(teamAPlayers.reduce((s, p) => s + Math.pow(p.rating - avgRatingA, 2), 0) / teamAPlayers.length)
-                    : 0.1;
-                  const varianceB = teamBPlayers.length > 1
-                    ? Math.sqrt(teamBPlayers.reduce((s, p) => s + Math.pow(p.rating - avgRatingB, 2), 0) / teamBPlayers.length)
-                    : 0.1;
-                  const formFactor = varianceA + varianceB > 0
-                    ? varianceB / (varianceA + varianceB)
-                    : 0.5;
-
-                  return (
-                    <FactorRing
-                      factors={[
-                        { label: 'HLTV', value: rankFactor, color: '#3B82F6' },
-                        { label: t('match.factor.form'), value: formFactor, color: '#8B5CF6' },
-                        { label: t('match.factor.lineup'), value: lineupFactor, color: '#10B981' },
-                        { label: t('match.factor.map'), value: marketFactor * 0.7 + 0.15, color: '#F97316' },
-                        { label: t('match.factor.h2h'), value: 0.5, color: '#EAB308' },
-                        { label: t('match.factor.momentum'), value: marketFactor, color: '#EF4444' },
-                      ]}
-                      size={140}
-                    />
-                  );
-                })()}
+        <div className="grid gap-4 sm:grid-cols-3">
+          {/* Market probability */}
+          <div className="space-y-2 rounded-md border border-border p-3">
+            <div className="text-xs text-muted-foreground">{t('match.marketProbability')}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs">{match.teamA.name}</span>
+              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden flex">
+                <div className="h-full bg-primary" style={{ width: `${(matchOddsA ? 1 / matchOddsA : 0.5) * 100}%` }} />
               </div>
-              {(() => {
-                // Compute real factor values for the bar chart
-                const rankA = match.teamA.rank || 50;
-                const rankB = match.teamB.rank || 50;
-                const rankTeamA = rankA + rankB > 0 ? (rankB / (rankA + rankB)) * 100 : 50;
-                const rankTeamB = 100 - rankTeamA;
-
-                const avgRatingA = teamAPlayers.length > 0
-                  ? teamAPlayers.reduce((s, p) => s + p.rating, 0) / teamAPlayers.length
-                  : 1.0;
-                const avgRatingB = teamBPlayers.length > 0
-                  ? teamBPlayers.reduce((s, p) => s + p.rating, 0) / teamBPlayers.length
-                  : 1.0;
-                const lineupTeamA = avgRatingA + avgRatingB > 0 ? (avgRatingA / (avgRatingA + avgRatingB)) * 100 : 50;
-                const lineupTeamB = 100 - lineupTeamA;
-
-                const varianceA = teamAPlayers.length > 1
-                  ? Math.sqrt(teamAPlayers.reduce((s, p) => s + Math.pow(p.rating - avgRatingA, 2), 0) / teamAPlayers.length)
-                  : 0.1;
-                const varianceB = teamBPlayers.length > 1
-                  ? Math.sqrt(teamBPlayers.reduce((s, p) => s + Math.pow(p.rating - avgRatingB, 2), 0) / teamBPlayers.length)
-                  : 0.1;
-                const formTeamA = varianceA + varianceB > 0 ? (varianceB / (varianceA + varianceB)) * 100 : 50;
-                const formTeamB = 100 - formTeamA;
-
-                const marketTeamA = aggregatedProb.teamA * 100;
-                const marketTeamB = aggregatedProb.teamB * 100;
-
-                return [
-                  { name: t('match.factor.hltvRank'), teamA: rankTeamA, teamB: rankTeamB, weight: 20 },
-                  { name: t('match.factor.recentForm'), teamA: formTeamA, teamB: formTeamB, weight: 15 },
-                  { name: t('match.factor.lineupStrength'), teamA: lineupTeamA, teamB: lineupTeamB, weight: 20 },
-                  { name: t('match.factor.mapPool'), teamA: marketTeamA * 0.7 + 15, teamB: marketTeamB * 0.7 + 15, weight: 15 },
-                  { name: t('match.factor.h2hRecord'), teamA: 50, teamB: 50, weight: 10 },
-                  { name: t('match.factor.marketSentiment'), teamA: marketTeamA, teamB: marketTeamB, weight: 20 },
-                ].map((factor) => (
-                <div key={factor.name} className="mb-3">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>{factor.name}</span>
-                    <span className="text-muted-foreground">{t('match.weight', { weight: factor.weight })}</span>
-                  </div>
-                  <div className="flex h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-l-full bg-primary" style={{ width: `${factor.teamA}%` }} />
-                    <div className="h-full rounded-r-full bg-orange" style={{ width: `${factor.teamB}%` }} />
-                  </div>
-                </div>
-              ));
-              })()}
-            </>
-          ) : (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              {t('match.factorEmpty')}
+              <span className="text-xs tabular-nums font-medium">{matchOddsA ? `${((1 / matchOddsA) * 100).toFixed(1)}%` : '--'}</span>
             </div>
-          )}
-        </Card>
+            <div className="flex items-center gap-2">
+              <span className="text-xs">{match.teamB.name}</span>
+              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden flex">
+                <div className="h-full bg-orange" style={{ width: `${(matchOddsB ? 1 / matchOddsB : 0.5) * 100}%` }} />
+              </div>
+              <span className="text-xs tabular-nums font-medium">{matchOddsB ? `${((1 / matchOddsB) * 100).toFixed(1)}%` : '--'}</span>
+            </div>
+          </div>
 
-        {/* LLM Consensus */}
+          {/* Model probability */}
+          <div className="space-y-2 rounded-md border border-border p-3">
+            <div className="text-xs text-muted-foreground">{t('match.modelProbability')}</div>
+            {aggregatedProb ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs">{match.teamA.name}</span>
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden flex">
+                    <div className="h-full bg-primary" style={{ width: `${aggregatedProb.teamA * 100}%` }} />
+                  </div>
+                  <span className="text-xs tabular-nums font-medium">{(aggregatedProb.teamA * 100).toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs">{match.teamB.name}</span>
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden flex">
+                    <div className="h-full bg-orange" style={{ width: `${aggregatedProb.teamB * 100}%` }} />
+                  </div>
+                  <span className="text-xs tabular-nums font-medium">{(aggregatedProb.teamB * 100).toFixed(1)}%</span>
+                </div>
+              </>
+            ) : (
+              <div className="py-4 text-center text-xs text-muted-foreground">{t('match.modelProbabilityEmpty')}</div>
+            )}
+          </div>
+
+          {/* User probability */}
+          <div className="space-y-2 rounded-md border border-border p-3">
+            <div className="text-xs text-muted-foreground">{t('match.yourProbability')}</div>
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              {t('match.yourProbabilityHint')}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* LLM Consensus (collapsed detail) */}
+      {results.length > 0 && (
         <Card className="p-4">
           <CardHeader className="flex-row items-center gap-2 mb-4">
             <Brain className="h-4 w-4 text-muted-foreground" />
@@ -484,146 +642,66 @@ export function MatchDetailPage() {
                 {consensusLabels[consensus.level]}
               </Badge>
             )}
+            <Badge variant="secondary" className="text-[10px]">
+              {t('match.aiReferenceLabel')}
+            </Badge>
           </CardHeader>
 
-          {(aggregation?.results ?? []).length > 0 && !isAnalyzing && (
-            <div className="flex justify-center mb-4">
-              <LLMConsensusGauge
-                consensus={(aggregation?.results ?? []).filter(r => !r.error).map(r => ({
-                  provider: r.provider,
-                  model: r.model,
-                  teamAProb: r.winProbability.teamA,
-                  confidence: r.confidence,
-                }))}
-                teamAName={match?.teamA.name ?? 'Team A'}
-                teamBName={match?.teamB.name ?? 'Team B'}
-              />
-            </div>
-          )}
-
-          {results.length === 0 && !isAnalyzing && (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              {t('match.llmEmpty')}
-            </div>
-          )}
-
-          {results.length > 0 && (
-            <div className="space-y-3">
-              {results.map((r) => {
-                const isStream = isAnalyzing && !('winProbability' in r);
-                const teamAProb = isStream
-                  ? (r as { probability: number }).probability
-                  : (r as LLMAnalysisResult).winProbability.teamA;
-                const teamBProb = isStream
-                  ? 1 - (r as { probability: number }).probability
-                  : (r as LLMAnalysisResult).winProbability.teamB;
-                return (
-                  <div key={r.provider} className="rounded-md border p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium capitalize">{r.provider}</span>
-                        {!isStream && (
-                          <span className="text-[10px] text-muted-foreground">{(r as LLMAnalysisResult).model}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        {'error' in r && r.error ? (
-                          <span className="text-red">{r.error}</span>
-                        ) : (
-                          <>
-                            <span>{(r.confidence * 100).toFixed(0)}{t('match.confidence')}</span>
-                            {!isStream && <span>{(r as LLMAnalysisResult).latency}ms</span>}
-                          </>
-                        )}
-                      </div>
+          <div className="space-y-3">
+            {results.map((r) => {
+              const isStream = isAnalyzing && !('winProbability' in r);
+              const teamAProb = isStream
+                ? (r as { probability: number }).probability
+                : (r as LLMAnalysisResult).winProbability.teamA;
+              const teamBProb = isStream
+                ? 1 - (r as { probability: number }).probability
+                : (r as LLMAnalysisResult).winProbability.teamB;
+              return (
+                <div key={r.provider} className="rounded-md border p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium capitalize">{r.provider}</span>
+                      {!isStream && (
+                        <span className="text-[10px] text-muted-foreground">{(r as LLMAnalysisResult).model}</span>
+                      )}
                     </div>
-                    {!('error' in r && r.error) && (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{match?.teamA.name}</span>
-                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden flex">
-                            <div className="h-full bg-primary" style={{ width: `${teamAProb * 100}%` }} />
-                            <div className="h-full bg-orange" style={{ width: `${teamBProb * 100}%` }} />
-                          </div>
-                          <span className="text-xs text-muted-foreground">{match?.teamB.name}</span>
-                        </div>
-                        {r.reasoning && (
-                          <p className="mt-1.5 text-[11px] text-muted-foreground line-clamp-2">{r.reasoning}</p>
-                        )}
-                        {!isStream && (r as LLMAnalysisResult).keyFactors && (r as LLMAnalysisResult).keyFactors.length > 0 && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {(r as LLMAnalysisResult).keyFactors.map((f, i) => (
-                              <Badge key={i} variant="secondary" className="text-[10px]">{f}</Badge>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      {'error' in r && r.error ? (
+                        <span className="text-red">{r.error}</span>
+                      ) : (
+                        <>
+                          <span>{(r.confidence * 100).toFixed(0)}{t('match.confidence')}</span>
+                          {!isStream && <span>{(r as LLMAnalysisResult).latency}ms</span>}
+                        </>
+                      )}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-
-          {consensus && (
-            <div className="mt-4 rounded-md bg-muted p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-medium">
-                  {t('match.consensus')} {consensusLabels[consensus.level]} ({consensus.agreementRate * 100}% {t('match.consensusLabel')})
+                  {!('error' in r && r.error) && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{match?.teamA.name}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden flex">
+                          <div className="h-full bg-primary" style={{ width: `${teamAProb * 100}%` }} />
+                          <div className="h-full bg-orange" style={{ width: `${teamBProb * 100}%` }} />
+                        </div>
+                        <span className="text-xs text-muted-foreground">{match?.teamB.name}</span>
+                      </div>
+                      {r.reasoning && (
+                        <p className="mt-1.5 text-[11px] text-muted-foreground line-clamp-2">{r.reasoning}</p>
+                      )}
+                    </>
+                  )}
                 </div>
-                <span className="text-[10px] text-muted-foreground">
-                  σ={consensus.stdDev.toFixed(3)}
-                </span>
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {(aggregation?.results ?? []).filter((r) => !r.error).length}/{(aggregation?.results ?? []).length} {t('match.modelRecommendation')}{' '}
-                {consensus.majorityPick === 'team_a' ? match?.teamA.name ?? 'Team A' : consensus.majorityPick === 'team_b' ? match?.teamB.name ?? 'Team B' : t('match.draw')}
-              </div>
-            </div>
-          )}
-      </Card>
-      </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
         </TabsContent>
 
         <TabsContent value="market" className="space-y-4 mt-0">
-      {/* Kelly Allocation + Market Data */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Kelly Allocation */}
-        <Card className="p-4">
-          <CardHeader className="flex-row items-center gap-2 mb-4">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('match.kellyAllocation')}</CardTitle>
-          </CardHeader>
-          {kelly && kelly.recommendedBet !== 'skip' ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span>{t('match.kellyRatio')}</span>
-                <span className="font-medium tabular-nums">{(kelly.kellyFraction * 100).toFixed(1)}%</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span>{t('match.capitalRatio')}</span>
-                <span className="font-medium tabular-nums">{kelly.bankrollFraction.toFixed(1)}%</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span>{t('match.allocate', { name: match.teamA.name })}</span>
-                <span className="font-medium tabular-nums text-primary">{(kelly.teamAAllocation * 100).toFixed(1)}%</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span>{t('match.allocate', { name: match.teamB.name })}</span>
-                <span className="font-medium tabular-nums text-orange">{(kelly.teamBAllocation * 100).toFixed(1)}%</span>
-              </div>
-              <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden flex">
-                <div className="h-full bg-primary" style={{ width: `${kelly.teamAAllocation * 100}%` }} />
-                <div className="h-full bg-orange" style={{ width: `${kelly.teamBAllocation * 100}%` }} />
-              </div>
-            </div>
-          ) : (
-            <div className="py-4 text-center text-xs text-muted-foreground">
-              {isAnalyzing ? t('match.analyzing') : t('match.analyzingOrNoConsensus')}
-            </div>
-          )}
-        </Card>
-
+      {/* Market Data */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Win Rate Timeline (24h) */}
         {timelineData.length > 0 && (
           <Card className="p-4">
@@ -658,7 +736,11 @@ export function MatchDetailPage() {
         {/* Order Book */}
         <Card className="p-4">
           <CardTitle className="text-sm mb-4">{t('match.orderBookDepth')}</CardTitle>
-          {orderBookData.bids.length > 0 || orderBookData.asks.length > 0 ? (
+          {marketSource === 'local-sim' ? (
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+              {t('match.localOddsNoOrderBook')}
+            </div>
+          ) : orderBookData.bids.length > 0 || orderBookData.asks.length > 0 ? (
             <OrderBookChart bids={orderBookData.bids} asks={orderBookData.asks} height={180} />
           ) : (
             <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
@@ -669,67 +751,71 @@ export function MatchDetailPage() {
       </div>
         </TabsContent>
 
-        <TabsContent value="decision" className="space-y-4 mt-0">
-      <ProductModeNotice mode={canLiveTrade ? 'live-order' : 'simulation'} className="mb-0" />
-      {liveOrderMessage && (
-        <div className="rounded-md border border-green/30 bg-green/5 px-4 py-2 text-sm text-green">{liveOrderMessage}</div>
-      )}
+        <TabsContent value="practice" className="space-y-4 mt-0">
+      <ProductModeNotice mode="simulation" className="mb-0" />
       <Card className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-sm">{t('match.yourDecision')}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">{t('match.decisionHint')}</p>
+        <CardHeader className="flex-row items-center gap-2 mb-4">
+          <Target className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">{t('match.matchWinner')}</CardTitle>
+        </CardHeader>
+        <p className="mb-4 text-xs text-muted-foreground">{t('match.practiceHint')}</p>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-3">
+            <span className="w-24 truncate text-sm font-medium">{match.teamA.name}</span>
+            <OddsButton
+              odds={matchOddsA ?? 0}
+              selection={match.teamA.name}
+              disabled={!matchOddsA}
+              onClick={() => handleAddMatchWinner('a')}
+            />
           </div>
-
-          {decision ? (
-            <div className="flex items-center gap-3">
-              <Badge variant="green" className="flex items-center gap-1.5 px-3 py-1.5 text-sm">
-                <Check className="h-4 w-4" />
-                {t('match.betConfirmed')} {decision === 'team_a' ? match.teamA.name : match.teamB.name}
-              </Badge>
-              <span className="text-xs text-muted-foreground">${betAmount}</span>
-              <Button variant="outline" size="sm" onClick={() => setDecision(null)}>
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-muted-foreground">{t('common.amount')}</label>
-                <Input
-                  type="number"
-                  value={betAmount}
-                  onChange={(e) => setBetAmount(Number(e.target.value))}
-                  className="w-20 text-xs"
-                  min={10}
-                  max={1000}
-                />
-              </div>
-              <Button onClick={() => confirmBet('team_a')} disabled={!aggregation || isAnalyzing}>
-                {t('match.bet', { name: match.teamA.name })}
-              </Button>
-              <Button variant="outline" onClick={() => confirmBet('team_b')} disabled={!aggregation || isAnalyzing}>
-                {t('match.bet', { name: match.teamB.name })}
-              </Button>
-              {canLiveTrade && (
-                <>
-                  <Button variant="default" onClick={() => confirmBet('team_a', true)} disabled={!aggregation || isAnalyzing}>
-                    {t('match.liveBet', { name: match.teamA.name })}
-                  </Button>
-                  <Button variant="outline" onClick={() => confirmBet('team_b', true)} disabled={!aggregation || isAnalyzing}>
-                    {t('match.liveBet', { name: match.teamB.name })}
-                  </Button>
-                </>
-              )}
-              <Button variant="ghost" onClick={() => setDecision('skip')}>
-                {t('match.skip')}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <span className="w-24 truncate text-sm font-medium">{match.teamB.name}</span>
+            <OddsButton
+              odds={matchOddsB ?? 0}
+              selection={match.teamB.name}
+              disabled={!matchOddsB}
+              onClick={() => handleAddMatchWinner('b')}
+            />
+          </div>
         </div>
+      </Card>
+      <Card className="p-4">
+        <CardHeader className="flex-row items-center gap-2 mb-4">
+          <Shield className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">{t('match.practiceRisk')}</CardTitle>
+        </CardHeader>
+        <RiskMeter
+          stake={stake}
+          bankroll={summary?.account.currentBankroll ?? 0}
+          openExposure={summary?.account.openExposure ?? 0}
+        />
+        <p className="mt-2 text-[10px] text-muted-foreground">{t('match.practiceRiskHint')}</p>
       </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function MatchTeamIdentity({ team, align = 'left' }: { team: TeamBrief; align?: 'left' | 'right' }) {
+  const mark = team.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  return (
+    <div className={`flex min-w-0 flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
+      {team.logo ? (
+        <img src={team.logo} alt="" className="h-14 w-14 shrink-0 rounded border border-border bg-white p-2 object-contain sm:h-16 sm:w-16" />
+      ) : (
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded border border-border bg-muted/30 text-base font-semibold text-muted-foreground sm:h-16 sm:w-16">
+          {mark || '?'}
+        </div>
+      )}
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold sm:text-lg">{team.name}</div>
+        <div className="mt-1 font-mono text-[11px] text-muted-foreground">
+          {team.rank > 0 && team.rank < 999 ? `World #${team.rank}` : 'World rank -'}
+        </div>
+        {team.region && <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{team.region}</div>}
+      </div>
     </div>
   );
 }

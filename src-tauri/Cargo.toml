@@ -1,10 +1,10 @@
 [package]
-name = "polyrader-cs2"
+name = "polyrader"
 version = "0.3.0"
-description = "PolyRader CS2 — Polymarket CS2 Esports Prediction Analysis Tool"
+description = "PolyRader - CS2 Esports Simulation & Review Tool"
 authors = ["PolyRader Team"]
 license = "MIT"
-repository = "https://github.com/dutongxue/polyrader_cs2"
+repository = "https://github.com/StrayShark/polyrader"
 edition = "2021"
 rust-version = "1.77.2"
 

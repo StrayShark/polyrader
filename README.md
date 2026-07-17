@@ -1,42 +1,51 @@
-# PolyRader CS2
+# PolyRader
 
-> Open-source Polymarket CS2 esports prediction analysis tool — Tauri Desktop App.
-> 开源 Polymarket CS2 电竞预测分析工具 — Tauri 桌面应用。
+> Local-first CS2 sportsbook simulator and training database.
+> 本地优先的 CS2 模拟盘练习工具与复盘数据库。
 
-**No registration. No login. No payment. All features free. Download and run.**
+**No registration. No login. No deposits. No real-money wagering.**
+
+PolyRader is a Tauri desktop app for practicing CS2 betting decisions with virtual bankrolls. It presents CS2 markets in a sportsbook-style interface, lets users submit simulated bets, and stores match context, odds snapshots, model signals, decisions, results, and review notes in a local SQLite database.
+
+`Simbook` remains a feature concept for the simulated odds desk. The product direction is simulation-first: Polymarket and other market feeds are data sources, not the main product promise.
 
 ---
 
-## Features
+## Product Direction
 
-| Module | Description |
-|--------|-------------|
-| **Market Overview** | Real-time Polymarket CS2 market data, volume, liquidity, price tracking |
-| **Daily Dashboard** | Auto-scanned matches with attention scoring, TOP 3 recommendations |
-| **Match Analysis** | 6-factor prediction (HLTV rank, recent form, lineup, map pool, H2H, market sentiment) |
-| **Multi-LLM Analysis** | Parallel invocation of 6 LLM providers (GPT-4o, Claude 3.5, Gemini 2.0, DeepSeek V3, Grok 2, Llama 3.3) |
-| **Lineup Evaluation** | Same team, different lineup = independent strength assessment |
-| **Kelly Criterion** | Optimal fund allocation based on LLM consensus |
-| **Whale Tracking** | On-chain address monitoring with 4-dimension suspicious scoring |
-| **Signal Comparison** | Multi-source prediction signal deviation analysis |
-| **AI Stats** | LLM leaderboard, calibration curves, simulated betting history |
-| **AI Config** | API key management, connectivity testing, quota monitoring |
+| Area | Promise |
+| --- | --- |
+| **CS2 Event Lobby** | Browse live/upcoming CS2 matches, tournaments, formats, teams, and odds-like market prices |
+| **Practice Bet Slip** | Build single or parlay-style simulated bets with stake, implied probability, model probability, edge, and risk checks |
+| **Virtual Bankroll** | Track virtual balance, open exposure, daily PnL, ROI, drawdown, and bankroll discipline |
+| **Review Center** | Review settled simulated bets with odds snapshots, model signals, CLV, Brier Score, PnL, and mistake tags |
+| **Local Database** | Keep matches, markets, odds snapshots, simulated bets, reviews, and strategy runs in SQLite |
+| **Strategy Lab** | Compare AI, behavioral finance, market pricing, and wallet/market signals as training aids |
+| **Read-only Market Sources** | Use Polymarket/Gamma/CLOB/Data API data only as observable market inputs by default |
+
+## Safety Boundary
+
+The main UI must stay simulation-first.
+
+- Use **virtual bankroll**, **simulated bet**, **practice**, and **review** language.
+- Do not use deposit, withdraw, bonus, VIP, cashback, or real-money wagering language.
+- No real Polymarket order is sent from the core practice flow.
+- Any live trading code retained for advanced experiments must remain disabled by default and outside the primary navigation.
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Desktop Framework | Tauri 2.x (Rust) |
+| --- | --- |
+| Desktop | Tauri 2.x (Rust shell + sidecar lifecycle) |
 | Frontend | React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui |
 | State | Zustand |
-| Routing | React Router v6 (Hash) |
-| Backend | Express.js 4 + WebSocket (ws) — Tauri Sidecar |
-| Domain | Pure TypeScript (zero dependencies) |
-| Database | SQLite (better-sqlite3) — local file |
-| Cache | LRU Cache (in-memory) |
-| Monorepo | Turborepo + npm workspaces |
-| LLM | OpenAI / Anthropic / Google / DeepSeek / xAI / Groq |
-| Data | Polymarket Gamma API + CLOB API + WebSocket |
+| Routing | React Router v6 hash routing |
+| Backend | Express.js 4 + WebSocket sidecar |
+| Domain | Pure TypeScript engines |
+| Database | SQLite via better-sqlite3, local file |
+| Cache | In-process LRU cache |
+| Charts | Recharts + Lightweight Charts |
+| Data Sources | CS2 match data, Polymarket public/read-only APIs, Polygon observations, LLM providers |
 
 ## Quick Start
 
@@ -44,147 +53,101 @@
 
 - Node.js >= 20
 - npm >= 10
-- Rust (for Tauri) — [rustup.rs](https://rustup.rs)
+- Rust for Tauri builds: [rustup.rs](https://rustup.rs)
 
-### 1. Clone & Install
+### Install
 
 ```bash
-git clone https://github.com/dutongxue/polyrader_cs2.git
-cd polyrader-cs2
+git clone https://github.com/StrayShark/polyrader.git
+cd polyrader
 npm install
 ```
 
-### 2. Start Development
+### Web + API Development
 
 ```bash
-npm run tauri dev
+npm run dev:all
 ```
 
-This starts the Tauri development environment with:
-- **WebView**: React SPA with hot reload
-- **Sidecar**: Express API server on a random localhost port
-- **Database**: SQLite auto-created in project `data/` directory
-
-### 3. Build for Production
+### Tauri Development
 
 ```bash
-npm run tauri build
+npm run tauri:dev
 ```
 
-Generates platform-specific installers:
-- **macOS**: `PolyRader_CS2_x64.dmg`
-- **Windows**: `PolyRader_CS2_x64.msi`
-- **Linux**: `PolyRader_CS2_amd64.AppImage`
+### Build
 
-### 4. Configure LLM API Keys (Optional)
+```bash
+npm run build
+npm run tauri:build
+```
 
-Open the app, navigate to **AI Config** page, and enter your API keys. Keys are encrypted with AES-256-GCM and stored locally in your data folder.
+## Current Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Product redesign](docs/cs2-simbook-product-redesign.md) | Product positioning, IA, page design, data model, and phased rollout |
+| [Product docs audit](docs/product-docs-audit.md) | Audit checklist for product docs and visual specs |
+| [.trae PRD](.trae/documents/PRD.md) | Canonical product requirements |
+| [.trae design spec](.trae/documents/design-spec.md) | Visual system and UI behavior rules |
+| [.trae overview](.trae/documents/overview.md) | Architecture and module overview |
+| [.trae roadmap](.trae/documents/DEVELOPMENT.md) | Phase plan for the simulation-first rebuild |
+| [Tauri guide](docs/tauri-guide.md) | Desktop development and packaging notes |
+
+## Target Information Architecture
+
+| Navigation | Job |
+| --- | --- |
+| Event Lobby | Browse CS2 matches and market prices |
+| Simbook | Open a match, select markets, and add simulated bets |
+| Bet Slip | Manage pending simulated selections and risk |
+| Bankroll | Track virtual balance, open exposure, PnL, ROI, and drawdown |
+| Review Center | Review settled decisions and model calibration |
+| Database | Inspect and export local data |
+| Strategy Lab | Tune AI/behavior/market signal weights |
+| Settings | Configure local storage, LLM keys, and read-only data sources |
 
 ## Project Structure
 
-```
-polyrader_cs2/
+```text
+polyrader/
 ├── packages/
-│   ├── core/          # Domain layer — Pure TypeScript engines
-│   │   ├── src/types/         # 30+ type definitions
-│   │   └── src/engines/       # 12 analysis engines
-│   │   └── src/scoring/       # Weight configurations
-│   ├── infra/         # Infrastructure layer
-│   │   ├── src/database/      # SQLite + repositories
-│   │   ├── src/cache/         # LRU in-memory cache
-│   │   ├── src/clients/       # Polymarket + LLM clients
-│   │   └── src/crawlers/      # HLTV crawler
-│   ├── server/        # Application layer (Tauri Sidecar)
-│   │   ├── src/controllers/   # 7 controllers
-│   │   ├── src/services/      # 10 services
-│   │   ├── src/cron/          # Scheduled jobs
-│   │   └── src/websocket/     # WebSocket server
-│   └── web/           # Presentation layer (Tauri WebView)
-│       ├── src/pages/         # 10 page components
-│       ├── src/stores/        # Zustand stores
-│       ├── src/components/    # Shared UI components
-│       └── src/styles/        # 3 themes (Dark+/Light+/Matrix)
-├── src-tauri/         # Tauri Rust backend
-│   ├── src/main.rs
-│   ├── src/lib.rs
-│   ├── tauri.conf.json
-│   └── icons/
-└── .env.example
+│   ├── core/          # Pure TS engines, types, prompts, scoring
+│   ├── infra/         # SQLite, repositories, external clients, crawlers
+│   ├── server/        # Express sidecar, services, routes, websocket
+│   └── web/           # React app, pages, components, stores, styles
+├── src-tauri/         # Tauri desktop shell
+├── docs/              # Product, release, and desktop docs
+└── .trae/documents/   # Canonical PRD/design/architecture/roadmap docs
 ```
 
-## Architecture
+## Development Commands
 
-```
-Tauri Desktop App
-├── WebView (React + shadcn/ui)
-│   ↕ IPC (invoke/event)
-├── Tauri Rust Core
-│   ├── Window management
-│   ├── System tray
-│   ├── Sidecar lifecycle
-│   └── Updater
-│   ↕ Sidecar management
-├── Express Sidecar (localhost:{port})
-│   ↕ Service calls
-├── Domain (Pure TypeScript Engines)
-│   ↕ Repository pattern
-└── Infrastructure (SQLite + LRU Cache + API Clients)
-```
+| Task | Command |
+| --- | --- |
+| Type check | `npm run typecheck` |
+| Lint | `npm run lint` |
+| Unit tests | `npm run test` |
+| Browser E2E | `npm run test:e2e` |
+| Integration E2E | `npm run test:e2e:integration` |
+| Account read-only E2E | `POLYMARKET_ACCOUNT_E2E=1 npm run test:e2e:account` |
+| Web build | `npm run build:web` |
+| Server bundle | `npm run build:server` |
+| Tauri dev | `npm run tauri:dev` |
+| Tauri build | `npm run tauri:build` |
 
-### 6-Factor Prediction Model
+## Visual Direction
 
-| Factor | Weight | Data Source |
-|--------|--------|-------------|
-| HLTV Rank | 20% | HLTV World Ranking |
-| Recent Form | 15% | Last 10 matches |
-| Lineup | 20% | Starting roster + standins |
-| Map Pool | 15% | Map-specific win rates |
-| Head-to-Head | 10% | Historical matchups |
-| Market Sentiment | 20% | Polymarket prices |
+PolyRader uses a dense sportsbook/workbench layout:
 
-### Multi-LLM Analysis Pipeline
+- Left rail for CS2 filters and navigation.
+- Center workspace for event rows, odds grids, match detail, database views, and reviews.
+- Right persistent practice bet slip on desktop, bottom drawer on mobile.
+- Dark sportsbook theme as the primary design target, with light and matrix/terminal themes retained.
+- Cards are used for repeated items and panels only; page sections stay unframed or full-width.
+- Odds buttons have fixed dimensions, show price and implied probability, and flash on price movement.
 
-```
-User triggers analysis
-  → PromptEngine builds 4-layer prompt (System/Context/Data/Output)
-  → 6 LLMs invoked in parallel (30s timeout, 2 retries, exponential backoff)
-  → ResultAggregator: voting + weighted confidence + consensus detection
-  → Kelly Criterion fund allocation
-  → User confirms bet
-  → SettlementEngine auto-settles after match resolution
-```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/markets` | Active CS2 markets |
-| GET | `/api/markets/:id` | Market detail |
-| GET | `/api/markets/:id/prices` | Price history |
-| GET | `/api/daily` | Daily dashboard |
-| POST | `/api/daily/refresh` | Refresh dashboard |
-| GET | `/api/whales` | Whale leaderboard |
-| GET | `/api/whales/:address` | Whale detail |
-| GET | `/api/alerts` | Anomaly alerts |
-| GET | `/api/esports/events` | Match events |
-| GET | `/api/esports/teams/:id` | Team data |
-| GET | `/api/signals/:marketId` | Signal comparison |
-| POST | `/api/ai/analyze` | Trigger LLM analysis |
-| GET | `/api/ai/analysis/:id` | Get analysis result |
-| GET | `/api/ai/config/keys` | Key status list |
-| PUT | `/api/ai/config/keys/:provider` | Set API key |
-| POST | `/api/ai/config/test/:provider` | Test connectivity |
-| GET | `/api/ai/config/usage` | Quota usage |
-| GET | `/api/ai/stats/leaderboard` | LLM leaderboard |
-| GET | `/api/ai/stats/user` | User stats |
-| GET | `/api/ai/stats/history` | Betting history |
-| GET | `/api/ai/stats/calibration/:provider` | Calibration data |
-
-## Themes
-
-- **Dark+** — shadcn/ui dark (`#0A0A0A` background)
-- **Light+** — shadcn/ui light (`#FFFFFF` background)
-- **Matrix** — Codex CLI green-on-black
+See [.trae/documents/design-spec.md](.trae/documents/design-spec.md) for the canonical visual rules.
 
 ## License
 
@@ -192,4 +155,4 @@ MIT
 
 ---
 
-**PolyRader CS2** — Predict smarter. Bet wiser.
+**PolyRader** — Practice the market, keep the receipts.

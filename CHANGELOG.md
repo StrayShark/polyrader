@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to PolyRader CS2.
+All notable changes to the project. Historical entries may use the former PolyRader CS2 or CS2 Simbook names; the current product name is PolyRader.
 
 ## [0.2.0] — 2026-06-18
 

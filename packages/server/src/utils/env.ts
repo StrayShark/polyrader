@@ -22,7 +22,13 @@ const OPTIONAL_VARS = [
   'POLYMARKET_CLOB_API_URL',
   'POLYMARKET_DATA_API_URL',
   'POLYMARKET_WS_URL',
+  'POLYMARKET_GAMMA_TIMEOUT_MS',
+  'POLYMARKET_DATA_API_TIMEOUT_MS',
+  'POLYMARKET_CLOB_API_TIMEOUT_MS',
+  'POLYMARKET_ACCOUNT_OPERATION_TIMEOUT_MS',
+  'POLYMARKET_DISABLE_BROWSER_FETCH',
   'POLYMARKET_ADDRESS',
+  'POLYMARKET_SIGNER_ADDRESS',
   'POLYMARKET_FUNDER',
   'POLYMARKET_API_KEY',
   'POLYMARKET_API_SECRET',
@@ -30,11 +36,31 @@ const OPTIONAL_VARS = [
   'POLYMARKET_PRIVATE_KEY',
   'POLYMARKET_SIGNATURE_TYPE',
   'POLYMARKET_LIVE_TRADING_ENABLED',
+  'POLYMARKET_ACCOUNT_ENABLED',
+  'POLYRADER_EXTERNAL_TIMEOUT_MS',
+  'POLYRADER_MARKET_TIMEOUT_MS',
+  'POLYRADER_HEALTH_PROBE_TIMEOUT_MS',
+  'POLYRADER_DAILY_LLM_TIMEOUT_MS',
+  'POLYRADER_DISABLE_LOCAL_SEED',
   'POLYMARKET_PROBE_TOKEN_ID',
+  'CS2_SIMBOOK_ENABLE_MARKET_ORDERS',
+  'CS2_SIMBOOK_ENABLE_POLYMARKET_ACCOUNT',
   'MANIFOLD_API_URL',
   'GRID_API_KEY',
   'GRID_GRAPHQL_URL',
   'GRID_STATE_URL',
+  'LIQUIPEDIA_API_URL',
+  'LIQUIPEDIA_USER_AGENT',
+  'LIQUIPEDIA_TIMEOUT_MS',
+  'LIQUIPEDIA_MIN_INTERVAL_MS',
+  'POLYRADER_ENABLE_LIQUIPEDIA_SYNC',
+  'POLYRADER_LIQUIPEDIA_MAX_TEAMS_PER_RUN',
+  'POLYRADER_LIQUIPEDIA_CONFIDENCE_THRESHOLD',
+  'POLYRADER_ENABLE_HLTV_LINEUP_REFRESH',
+  'POLYRADER_HLTV_LINEUP_MAX_MATCHES',
+  'POLYRADER_HLTV_DISCOVERY_ENRICH_LIMIT',
+  'POLYRADER_HLTV_TEAM_TTL_HOURS',
+  'POLYRADER_HLTV_DISCOVERY_TIMEOUT_MS',
   'POLYRADER_AUTO_TUNE_SIGNALS',
   'POLYRADER_AUTO_TUNE_PROMPTS',
   'POLYGON_RPC_URL',
@@ -87,7 +113,7 @@ function globalEnvCandidates(): string[] {
   ];
 }
 
-function applyEnvFile(filePath: string, override: boolean): void {
+function applyEnvFile(filePath: string, override: boolean, protectedKeys = new Set<string>()): void {
   if (!existsSync(filePath)) return;
 
   const contents = readFileSync(filePath, 'utf8');
@@ -96,6 +122,7 @@ function applyEnvFile(filePath: string, override: boolean): void {
     if (!parsed) continue;
 
     const [key, value] = parsed;
+    if (protectedKeys.has(key)) continue;
     if (override) process.env[key] = value;
     else process.env[key] ??= value;
   }
@@ -104,6 +131,7 @@ function applyEnvFile(filePath: string, override: boolean): void {
 function loadDotenvFiles(): void {
   if (dotenvLoaded) return;
   dotenvLoaded = true;
+  const initialProcessKeys = new Set(Object.keys(process.env));
 
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const globalFiles = globalEnvCandidates();
@@ -115,10 +143,10 @@ function loadDotenvFiles(): void {
   ];
 
   for (const filePath of [...new Set(globalFiles)]) {
-    applyEnvFile(filePath, false);
+    applyEnvFile(filePath, false, initialProcessKeys);
   }
   for (const filePath of [...new Set(projectFiles)]) {
-    applyEnvFile(filePath, true);
+    applyEnvFile(filePath, true, initialProcessKeys);
   }
 }
 

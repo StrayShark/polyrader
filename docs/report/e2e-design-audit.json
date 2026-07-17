@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-26T12:20:01.216Z",
+  "generatedAt": "2026-07-13T08:18:54.133Z",
   "entries": [
     {
       "page": "global",
@@ -86,14 +86,91 @@
       "note": "got rgb(48, 54, 61)"
     },
     {
-      "page": "dashboard",
+      "page": "lobby",
       "module": "card-no-shadow",
       "theme": "light",
       "status": "pass",
       "note": "none"
     },
     {
-      "page": "dashboard",
+      "page": "lobby",
+      "module": "primary-button-height",
+      "theme": "light",
+      "status": "partial",
+      "note": "28px"
+    },
+    {
+      "page": "lobby",
+      "module": "body-font-inter",
+      "theme": "light",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "bankroll",
+      "module": "card-no-shadow",
+      "theme": "light",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "bankroll",
+      "module": "body-font-inter",
+      "theme": "light",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "review",
+      "module": "card-no-shadow",
+      "theme": "light",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "review",
+      "module": "primary-button-height",
+      "theme": "light",
+      "status": "partial",
+      "note": "26px"
+    },
+    {
+      "page": "review",
+      "module": "body-font-inter",
+      "theme": "light",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "database",
+      "module": "card-no-shadow",
+      "theme": "light",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "database",
+      "module": "primary-button-height",
+      "theme": "light",
+      "status": "partial",
+      "note": "32px"
+    },
+    {
+      "page": "database",
+      "module": "body-font-inter",
+      "theme": "light",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "strategy-lab",
+      "module": "card-no-shadow",
+      "theme": "light",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "strategy-lab",
       "module": "body-font-inter",
       "theme": "light",
       "status": "pass",
@@ -135,14 +212,91 @@
       "note": "Inter, system-ui, -apple-system, sans-serif"
     },
     {
-      "page": "dashboard",
+      "page": "lobby",
       "module": "card-no-shadow",
       "theme": "dark",
       "status": "pass",
       "note": "none"
     },
     {
-      "page": "dashboard",
+      "page": "lobby",
+      "module": "primary-button-height",
+      "theme": "dark",
+      "status": "partial",
+      "note": "28px"
+    },
+    {
+      "page": "lobby",
+      "module": "body-font-inter",
+      "theme": "dark",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "bankroll",
+      "module": "card-no-shadow",
+      "theme": "dark",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "bankroll",
+      "module": "body-font-inter",
+      "theme": "dark",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "review",
+      "module": "card-no-shadow",
+      "theme": "dark",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "review",
+      "module": "primary-button-height",
+      "theme": "dark",
+      "status": "partial",
+      "note": "26px"
+    },
+    {
+      "page": "review",
+      "module": "body-font-inter",
+      "theme": "dark",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "database",
+      "module": "card-no-shadow",
+      "theme": "dark",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "database",
+      "module": "primary-button-height",
+      "theme": "dark",
+      "status": "partial",
+      "note": "32px"
+    },
+    {
+      "page": "database",
+      "module": "body-font-inter",
+      "theme": "dark",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "strategy-lab",
+      "module": "card-no-shadow",
+      "theme": "dark",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "strategy-lab",
       "module": "body-font-inter",
       "theme": "dark",
       "status": "pass",
@@ -184,14 +338,91 @@
       "note": "Inter, system-ui, -apple-system, sans-serif"
     },
     {
-      "page": "dashboard",
+      "page": "lobby",
       "module": "card-no-shadow",
       "theme": "matrix",
       "status": "pass",
       "note": "none"
     },
     {
-      "page": "dashboard",
+      "page": "lobby",
+      "module": "primary-button-height",
+      "theme": "matrix",
+      "status": "partial",
+      "note": "28px"
+    },
+    {
+      "page": "lobby",
+      "module": "body-font-inter",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "bankroll",
+      "module": "card-no-shadow",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "bankroll",
+      "module": "body-font-inter",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "review",
+      "module": "card-no-shadow",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "review",
+      "module": "primary-button-height",
+      "theme": "matrix",
+      "status": "partial",
+      "note": "26px"
+    },
+    {
+      "page": "review",
+      "module": "body-font-inter",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "database",
+      "module": "card-no-shadow",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "database",
+      "module": "primary-button-height",
+      "theme": "matrix",
+      "status": "partial",
+      "note": "32px"
+    },
+    {
+      "page": "database",
+      "module": "body-font-inter",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "strategy-lab",
+      "module": "card-no-shadow",
+      "theme": "matrix",
+      "status": "pass",
+      "note": "none"
+    },
+    {
+      "page": "strategy-lab",
       "module": "body-font-inter",
       "theme": "matrix",
       "status": "pass",
@@ -231,6 +462,55 @@
       "theme": "matrix",
       "status": "pass",
       "note": "Inter, system-ui, -apple-system, sans-serif"
+    },
+    {
+      "page": "lobby",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
+    },
+    {
+      "page": "bankroll",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
+    },
+    {
+      "page": "review",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
+    },
+    {
+      "page": "database",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
+    },
+    {
+      "page": "strategy-lab",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
+    },
+    {
+      "page": "signals",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
+    },
+    {
+      "page": "ai-config",
+      "module": "no-real-money-text",
+      "theme": "all",
+      "status": "pass",
+      "note": ""
     }
   ]
 }

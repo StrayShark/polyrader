@@ -28,6 +28,16 @@ test.describe('Live trading UI (mock CLOB)', () => {
         }),
       }),
     );
+
+    await page.route('**/api/system/features**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { marketOrdersEnabled: true, liveTradingEnabled: true, polymarketAccountEnabled: true },
+        }),
+      }),
+    );
   });
 
   test('copy follow panel exposes live mode toggle when credentials ready', async ({ page }) => {
@@ -38,7 +48,7 @@ test.describe('Live trading UI (mock CLOB)', () => {
     await expect(page.getByText(/纸面跟单|Paper Copy/i).first()).toBeVisible();
   });
 
-  test('match detail shows live buy when trading status allows', async ({ page }) => {
+  test('match detail hides live buy even when trading status allows', async ({ page }) => {
     await setupMatchDetailMocks(page);
     await page.route('**/api/market-orders/status**', (route) =>
       route.fulfill({
@@ -49,8 +59,8 @@ test.describe('Live trading UI (mock CLOB)', () => {
     );
     await page.goto('/#/match/spirit-vs-g2-bo3');
     await waitForMainHeading(page);
-    await page.getByRole('tab', { name: /模拟决策|Simulated Decision/i }).click();
-    await expect(page.getByRole('button', { name: /实盘买入.*Spirit|Live buy.*Spirit/i })).toBeVisible();
+    await page.getByRole('tab', { name: /模拟|Practice/i }).click();
+    await expect(page.getByRole('button', { name: /实盘买入.*Spirit|Live buy.*Spirit/i })).not.toBeVisible();
   });
 
   test('POST market order mock returns success payload', async ({ page }) => {

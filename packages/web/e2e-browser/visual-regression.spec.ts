@@ -14,7 +14,7 @@ const MATCH_DETAIL_ROUTE = {
 
 const VISUAL_ROUTES = [...APP_ROUTES, MATCH_DETAIL_ROUTE];
 
-test.describe('Visual regression — 12 routes × 3 themes', () => {
+test.describe(`Visual regression — ${VISUAL_ROUTES.length} routes × 3 themes`, () => {
   test.beforeEach(async ({ page }) => {
     await blockWs(page);
     await page.addInitScript(() => {

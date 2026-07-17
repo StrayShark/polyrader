@@ -68,10 +68,11 @@ describe('Layout: Sidebar uniqueness', () => {
     document.documentElement.className = '';
   });
 
-  it('renders exactly one <aside> element when sidebar closed (no duplicate)', () => {
+  it('renders exactly one sidebar <aside> plus one practice slip <aside>', () => {
     const { container } = renderAppLayout('/');
     const sidebars = container.querySelectorAll('aside');
-    expect(sidebars.length).toBe(1);
+    // Left navigation sidebar + right practice slip panel
+    expect(sidebars.length).toBe(2);
   });
 
   it('desktop sidebar wrapper has lg:block class', () => {
@@ -92,10 +93,10 @@ describe('Layout: Sidebar uniqueness', () => {
 // Layout: Sidebar Content
 // ============================================================
 describe('Layout: Sidebar content', () => {
-  it('renders all 11 navigation links', () => {
+  it('renders all 15 navigation links (Polymarket account hidden by default)', () => {
     const { container } = renderAppLayout('/');
     const links = container.querySelectorAll('aside nav a');
-    expect(links.length).toBe(11);
+    expect(links.length).toBe(15);
   });
 
   it('renders theme toggle buttons (dark, light, matrix)', () => {

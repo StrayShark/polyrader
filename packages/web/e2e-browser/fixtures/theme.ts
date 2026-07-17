@@ -18,7 +18,7 @@ export async function setTheme(page: Page, theme: AppTheme): Promise<void> {
 }
 
 export async function ensureSidebarVisible(page: Page): Promise<void> {
-  await page.locator('aside').waitFor({ state: 'visible', timeout: 10000 });
+  await page.locator('aside').first().waitFor({ state: 'visible', timeout: 10000 });
 }
 
 export async function waitForMainHeading(page: Page, hashPath?: string): Promise<void> {

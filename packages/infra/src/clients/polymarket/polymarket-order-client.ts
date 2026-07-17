@@ -23,7 +23,7 @@ export interface PlaceLimitOrderResult {
 
 /**
  * Wraps @polymarket/clob-client for signed limit orders.
- * Requires POLYMARKET_PRIVATE_KEY + L2 API credentials + POLYMARKET_ADDRESS (funder).
+ * Requires POLYMARKET_PRIVATE_KEY + L2 API credentials + POLYMARKET_FUNDER/POLYMARKET_ADDRESS.
  */
 export class PolymarketOrderClient {
   private client: ClobClient | null = null;
@@ -37,13 +37,13 @@ export class PolymarketOrderClient {
   getInitError(): string | undefined {
     if (this.initError) return this.initError;
     const privateKey = process.env.POLYMARKET_PRIVATE_KEY?.trim();
-    const address = process.env.POLYMARKET_ADDRESS ?? process.env.POLYMARKET_FUNDER;
+    const funder = envValue(process.env.POLYMARKET_FUNDER) ?? envValue(process.env.POLYMARKET_ADDRESS);
     const apiKey = process.env.POLYMARKET_API_KEY ?? process.env.POLY_API_KEY;
     const apiSecret = process.env.POLYMARKET_API_SECRET ?? process.env.POLY_API_SECRET;
     const apiPassphrase = process.env.POLYMARKET_API_PASSPHRASE ?? process.env.POLY_API_PASSPHRASE;
 
     if (!privateKey) return 'POLYMARKET_PRIVATE_KEY is not configured';
-    if (!address) return 'POLYMARKET_ADDRESS is not configured';
+    if (!funder) return 'POLYMARKET_FUNDER or POLYMARKET_ADDRESS is not configured';
     if (!apiKey || !apiSecret || !apiPassphrase) {
       return 'Polymarket L2 API credentials are not configured';
     }
@@ -86,7 +86,7 @@ export class PolymarketOrderClient {
 
     try {
       const privateKey = process.env.POLYMARKET_PRIVATE_KEY!.trim() as `0x${string}`;
-      const funder = (process.env.POLYMARKET_ADDRESS ?? process.env.POLYMARKET_FUNDER)!.trim();
+      const funder = (envValue(process.env.POLYMARKET_FUNDER) ?? envValue(process.env.POLYMARKET_ADDRESS))!;
       const account = privateKeyToAccount(privateKey);
       const signer = createWalletClient({
         account,
@@ -120,4 +120,9 @@ function optionalString(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
   const text = String(value);
   return text ? text : undefined;
+}
+
+function envValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }

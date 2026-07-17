@@ -8,6 +8,7 @@ import { SetupPage } from './pages/setup-page';
 import { isFirstRun, onTauriEvent } from './utils/tauri-bridge';
 import { checkForUpdates } from './utils/update-checker';
 import { useI18n } from './hooks/use-i18n';
+import { useFeatureFlagStore } from './stores/feature-flag-store';
 
 export default function App() {
   const [showSetup, setShowSetup] = useState(false);
@@ -23,6 +24,9 @@ export default function App() {
       setShowSetup(firstRun);
       setSetupChecked(true);
     });
+
+    // Fetch server feature flags once the backend is reachable
+    void useFeatureFlagStore.getState().fetchFeatures();
 
     // Listen for sidecar events
     const unlistenPromises: Promise<() => void>[] = [];

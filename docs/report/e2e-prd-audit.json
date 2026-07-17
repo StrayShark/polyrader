@@ -1,44 +1,29 @@
 {
-  "generatedAt": "2026-06-26T12:20:05.394Z",
+  "generatedAt": "2026-07-13T08:18:57.884Z",
   "entries": [
     {
-      "page": "dashboard",
+      "page": "lobby",
       "module": "page-render",
       "status": "pass"
     },
     {
-      "page": "dashboard",
-      "module": "stats-cards",
+      "page": "lobby",
+      "module": "title",
       "status": "pass"
     },
     {
-      "page": "dashboard",
-      "module": "heatmap",
+      "page": "lobby",
+      "module": "cs2-rail",
       "status": "pass"
     },
     {
-      "page": "dashboard",
-      "module": "anomaly-table",
+      "page": "lobby",
+      "module": "odds-matrix",
       "status": "pass"
     },
     {
-      "page": "dashboard",
-      "module": "active-markets",
-      "status": "pass"
-    },
-    {
-      "page": "daily",
-      "module": "page-render",
-      "status": "pass"
-    },
-    {
-      "page": "daily",
-      "module": "overview-cards",
-      "status": "pass"
-    },
-    {
-      "page": "daily",
-      "module": "match-table",
+      "page": "lobby",
+      "module": "practice-slip-desktop",
       "status": "pass"
     },
     {
@@ -48,132 +33,112 @@
     },
     {
       "page": "match-detail",
-      "module": "price-chart",
+      "module": "match-info",
       "status": "pass"
     },
     {
       "page": "match-detail",
-      "module": "llm-consensus",
+      "module": "format-badge",
       "status": "pass"
     },
     {
       "page": "match-detail",
-      "module": "orderbook",
+      "module": "odds-matrix",
       "status": "pass"
     },
     {
       "page": "match-detail",
-      "module": "decision-area",
+      "module": "practice-slip-path",
       "status": "pass"
     },
     {
-      "page": "whales",
+      "page": "bankroll",
       "module": "page-render",
       "status": "pass"
     },
     {
-      "page": "whales",
-      "module": "leaderboard",
+      "page": "bankroll",
+      "module": "title",
       "status": "pass"
     },
     {
-      "page": "esports",
+      "page": "bankroll",
+      "module": "balance-cards",
+      "status": "pass"
+    },
+    {
+      "page": "bankroll",
+      "module": "risk-meter",
+      "status": "pass"
+    },
+    {
+      "page": "bankroll",
+      "module": "bets-tabs",
+      "status": "pass"
+    },
+    {
+      "page": "review",
       "module": "page-render",
       "status": "pass"
     },
     {
-      "page": "esports",
-      "module": "rankings",
+      "page": "review",
+      "module": "title",
       "status": "pass"
     },
     {
-      "page": "esports",
-      "module": "schedule",
+      "page": "review",
+      "module": "filter-format",
       "status": "pass"
     },
     {
-      "page": "signals",
+      "page": "review",
+      "module": "filter-result",
+      "status": "pass"
+    },
+    {
+      "page": "review",
+      "module": "bets-table",
+      "status": "pass"
+    },
+    {
+      "page": "database",
       "module": "page-render",
       "status": "pass"
     },
     {
-      "page": "signals",
-      "module": "signal-table",
+      "page": "database",
+      "module": "title",
       "status": "pass"
     },
     {
-      "page": "signals",
-      "module": "backtest-panel",
+      "page": "database",
+      "module": "backup-info",
       "status": "pass"
     },
     {
-      "page": "polymarket-account",
+      "page": "database",
+      "module": "csv-export",
+      "status": "pass"
+    },
+    {
+      "page": "database",
+      "module": "json-export",
+      "status": "pass"
+    },
+    {
+      "page": "strategy-lab",
       "module": "page-render",
       "status": "pass"
     },
     {
-      "page": "polymarket-account",
-      "module": "connection-status",
+      "page": "strategy-lab",
+      "module": "title",
       "status": "pass"
     },
     {
-      "page": "polymarket-account",
-      "module": "positions",
-      "status": "pass"
-    },
-    {
-      "page": "ai-config",
-      "module": "page-render",
-      "status": "pass"
-    },
-    {
-      "page": "ai-config",
-      "module": "api-keys",
-      "status": "pass"
-    },
-    {
-      "page": "ai-config",
-      "module": "background-tasks",
-      "status": "pass"
-    },
-    {
-      "page": "ai-stats",
-      "module": "page-render",
-      "status": "pass"
-    },
-    {
-      "page": "ai-stats",
-      "module": "leaderboard",
-      "status": "pass"
-    },
-    {
-      "page": "llm-analysis",
-      "module": "page-render",
-      "status": "pass"
-    },
-    {
-      "page": "llm-analysis",
-      "module": "equity-curve",
-      "status": "pass"
-    },
-    {
-      "page": "llm-analysis",
-      "module": "team-breakdown",
-      "status": "pass"
-    },
-    {
-      "page": "prompt-variants",
-      "module": "page-render",
-      "status": "pass"
-    },
-    {
-      "page": "allocation",
-      "module": "page-render",
-      "status": "pass"
-    },
-    {
-      "page": "simulation",
-      "module": "page-render",
+      "page": "strategy-lab",
+      "module": "tabs",
       "status": "pass"
     }
   ]

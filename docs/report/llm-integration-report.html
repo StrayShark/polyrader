@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PolyRader CS2 — LLM 接入状态报告</title>
+<title>CS2 Simbook — 历史 LLM 接入状态报告</title>
 <style>
   :root {
     --bg: #0f1117;
@@ -76,12 +76,23 @@
     border-radius: 0.5rem; padding: 0.75rem 1rem; margin: 1rem 0;
     font-size: 0.82rem; color: var(--yellow);
   }
+  .reposition-notice {
+    background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.28);
+    border-radius: 0.5rem; padding: 0.85rem 1rem; margin-bottom: 1rem;
+    font-size: 0.85rem; color: var(--text-dim);
+  }
+  .reposition-notice strong { color: var(--text-bright); }
+  .reposition-notice a { color: var(--accent-light); }
   .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--card-border); color: var(--text-dim); font-size: 0.8rem; }
 </style>
 </head>
 <body>
 
-<h1>PolyRader CS2 — LLM 接入状态报告</h1>
+<div class="reposition-notice">
+  <strong>历史报告：</strong>本报告生成于 PolyRader CS2 时期，仅作为 LLM provider 接入参考。当前产品名为 PolyRader，LLM 能力应服务于模拟训练、复盘和策略校准；当前产品规范见 <a href="../cs2-simbook-product-redesign.md">cs2-simbook-product-redesign.md</a>。
+</div>
+
+<h1>CS2 Simbook — 历史 LLM 接入状态报告</h1>
 <p class="subtitle">生成时间：2026-06-22 | 基于 12 家 LLM 提供商官方文档验证</p>
 
 <div class="summary-stats">
@@ -300,7 +311,7 @@
 </div>
 
 <div class="footer">
-  PolyRader CS2 — LLM 接入状态报告 | 基于 12 家 LLM 提供商官方文档验证 | 生成于 2026-06-22
+  CS2 Simbook — 历史 LLM 接入状态报告 | 基于 12 家 LLM 提供商官方文档验证 | 生成于 2026-06-22
 </div>
 
 </body>

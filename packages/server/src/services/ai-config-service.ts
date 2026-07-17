@@ -7,15 +7,16 @@ import { logger } from '../utils/logger';
 import { buildFallbackTeam, mapLegacyMatchStatus, parseJsonField } from './match-helpers';
 import { SimulationService } from './simulation-service';
 import { MarketService } from './market-service';
+import { SourceAlignmentService } from './source-alignment-service';
 
 export class AiConfigService {
   private llmRepo = new LLMRepository();
-  private promptEngine = new PromptEngine();
   private resultAggregator = new ResultAggregator();
   private keyManager: KeyManager | null = null;
   private circuitBreakers = new Map<string, CircuitBreakerLLMClient>();
   private simulationService = new SimulationService();
   private marketService = new MarketService();
+  private sourceAlignment = new SourceAlignmentService({ llmRepo: this.llmRepo });
 
   /**
    * Compute provider weights from historical calibration data.
@@ -184,12 +185,12 @@ export class AiConfigService {
    * Loads real match/team/lineup data from SQLite.
    * Deduplicates concurrent calls for the same matchId.
    */
-  async analyze(matchId: string, teamAId: string, teamBId: string): Promise<LLMAggregation> {
+  async analyze(matchId: string, teamAId: string, teamBId: string, locale?: string): Promise<LLMAggregation> {
     // Dedup: if analysis for this matchId is already in-flight, return the same Promise
     const existing = this.inflightAnalyses.get(matchId);
     if (existing) return existing;
 
-    const promise = this._doAnalyze(matchId, teamAId, teamBId).finally(() => {
+    const promise = this._doAnalyze(matchId, teamAId, teamBId, locale).finally(() => {
       this.inflightAnalyses.delete(matchId);
     });
 
@@ -197,7 +198,9 @@ export class AiConfigService {
     return promise;
   }
 
-  private async _doAnalyze(matchId: string, teamAId: string, teamBId: string): Promise<LLMAggregation> {
+  private async _doAnalyze(matchId: string, teamAId: string, teamBId: string, locale?: string): Promise<LLMAggregation> {
+    const promptEngine = new PromptEngine(undefined, undefined, { locale });
+
     // Select prompt variant for A/B testing
     const variant = this.selectVariant();
     const variantId = variant?.variantId;
@@ -208,36 +211,12 @@ export class AiConfigService {
       throw new Error('No LLM providers configured');
     }
 
-    // Load match data from local DB — use getMatch for direct lookup
-    const matchData = this.llmRepo.getMatch(matchId);
-    // Business rule: only analyze upcoming matches (not live/finished)
-    const matchStatus = matchData ? String(matchData.status ?? 'scheduled') : 'scheduled';
-    const scheduledAt = matchData ? String(matchData.scheduled_at ?? '') : '';
-    if (!['scheduled', 'upcoming', 'pre_match'].includes(matchStatus)) {
-      throw new Error(`Refused to analyze match ${matchId}: status is "${matchStatus}", only upcoming matches can be analyzed`);
-    }
-    if (scheduledAt && new Date(scheduledAt).getTime() < Date.now()) {
-      throw new Error(`Refused to analyze match ${matchId}: scheduled time ${scheduledAt} is in the past`);
-    }
-    const teamAData = await this.loadTeamData(teamAId);
-    const teamBData = await this.loadTeamData(teamBId);
-    const mappedStatus = mapLegacyMatchStatus(matchStatus, scheduledAt || new Date().toISOString());
+    const prepared = await this.prepareAnalysisData(matchId, teamAId, teamBId);
+    teamAId = prepared.teamAId;
+    teamBId = prepared.teamBId;
+    const { match, teamAData, teamBData } = prepared;
 
-    // Build match info with real data
-    const match: MatchInfo = {
-      matchId,
-      teamA: { teamId: teamAId, name: teamAData?.name ?? teamAId, logo: '', rank: teamAData?.rank ?? 10, region: teamAData?.region ?? '' },
-      teamB: { teamId: teamBId, name: teamBData?.name ?? teamBId, logo: '', rank: teamBData?.rank ?? 10, region: teamBData?.region ?? '' },
-      eventName: matchData ? String(matchData.event_name ?? 'Unknown Event') : 'Unknown Event',
-      eventType: matchData ? (String(matchData.event_type ?? 'Online') as 'LAN' | 'Online') : 'Online',
-      format: matchData ? (String(matchData.format ?? 'BO3') as 'BO1' | 'BO3' | 'BO5') : 'BO3',
-      scheduledAt: scheduledAt || new Date().toISOString(),
-      status: mappedStatus,
-      maps: (parseJsonField(matchData?.maps) as string[]) ?? [],
-      lineups: parseJsonField(matchData?.lineups) as MatchInfo['lineups'],
-    };
-
-    const prompt = this.promptEngine.buildPrompt({
+    const prompt = promptEngine.buildPrompt({
       match,
       teamA: teamAData ?? buildFallbackTeam(teamAId, teamAId, 10, 0.5),
       teamB: teamBData ?? buildFallbackTeam(teamBId, teamBId, 10, 0.5),
@@ -361,12 +340,13 @@ export class AiConfigService {
     teamAId: string,
     teamBId: string,
     onProgress: (result: LLMAnalysisResult) => void,
+    locale?: string,
   ): Promise<LLMAggregation> {
     // Dedup: if analysis for this matchId is already in-flight, return the same Promise
     const existing = this.inflightAnalyses.get(matchId);
     if (existing) return existing;
 
-    const promise = this._doAnalyzeWithProgress(matchId, teamAId, teamBId, onProgress).finally(() => {
+    const promise = this._doAnalyzeWithProgress(matchId, teamAId, teamBId, onProgress, locale).finally(() => {
       this.inflightAnalyses.delete(matchId);
     });
 
@@ -379,7 +359,10 @@ export class AiConfigService {
     teamAId: string,
     teamBId: string,
     onProgress: (result: LLMAnalysisResult) => void,
+    locale?: string,
   ): Promise<LLMAggregation> {
+    const promptEngine = new PromptEngine(undefined, undefined, { locale });
+
     // Select prompt variant for A/B testing
     const variant = this.selectVariant();
     const variantId = variant?.variantId;
@@ -390,34 +373,12 @@ export class AiConfigService {
       throw new Error('No LLM providers configured');
     }
 
-    const matchData = this.llmRepo.getMatch(matchId);
-    // Business rule: only analyze upcoming matches (not live/finished)
-    const matchStatus = matchData ? String(matchData.status ?? 'scheduled') : 'scheduled';
-    const scheduledAt = matchData ? String(matchData.scheduled_at ?? '') : '';
-    if (!['scheduled', 'upcoming', 'pre_match'].includes(matchStatus)) {
-      throw new Error(`Refused to analyze match ${matchId}: status is "${matchStatus}", only upcoming matches can be analyzed`);
-    }
-    if (scheduledAt && new Date(scheduledAt).getTime() < Date.now()) {
-      throw new Error(`Refused to analyze match ${matchId}: scheduled time ${scheduledAt} is in the past`);
-    }
-    const teamAData = await this.loadTeamData(teamAId);
-    const teamBData = await this.loadTeamData(teamBId);
-    const mappedStatus = mapLegacyMatchStatus(matchStatus, scheduledAt || new Date().toISOString());
+    const prepared = await this.prepareAnalysisData(matchId, teamAId, teamBId);
+    teamAId = prepared.teamAId;
+    teamBId = prepared.teamBId;
+    const { match, teamAData, teamBData } = prepared;
 
-    const match: MatchInfo = {
-      matchId,
-      teamA: { teamId: teamAId, name: teamAData?.name ?? teamAId, logo: '', rank: teamAData?.rank ?? 10, region: teamAData?.region ?? '' },
-      teamB: { teamId: teamBId, name: teamBData?.name ?? teamBId, logo: '', rank: teamBData?.rank ?? 10, region: teamBData?.region ?? '' },
-      eventName: matchData ? String(matchData.event_name ?? 'Unknown Event') : 'Unknown Event',
-      eventType: matchData ? (String(matchData.event_type ?? 'Online') as 'LAN' | 'Online') : 'Online',
-      format: matchData ? (String(matchData.format ?? 'BO3') as 'BO1' | 'BO3' | 'BO5') : 'BO3',
-      scheduledAt: scheduledAt || new Date().toISOString(),
-      status: mappedStatus,
-      maps: (parseJsonField(matchData?.maps) as string[]) ?? [],
-      lineups: parseJsonField(matchData?.lineups) as MatchInfo['lineups'],
-    };
-
-    const prompt = this.promptEngine.buildPrompt({
+    const prompt = promptEngine.buildPrompt({
       match,
       teamA: teamAData ?? buildFallbackTeam(teamAId, teamAId, 10, 0.5),
       teamB: teamBData ?? buildFallbackTeam(teamBId, teamBId, 10, 0.5),
@@ -533,6 +494,74 @@ export class AiConfigService {
     return cacheGet<LLMAggregation>(`analysis:${analysisId}`);
   }
 
+  private async prepareAnalysisData(
+    matchId: string,
+    requestedTeamAId: string,
+    requestedTeamBId: string,
+  ): Promise<{ match: MatchInfo; teamAId: string; teamBId: string; teamAData: Team | null; teamBData: Team | null }> {
+    let matchData = this.llmRepo.getMatch(matchId);
+    let teamAId = matchData?.team_a_id ? String(matchData.team_a_id) : requestedTeamAId;
+    let teamBId = matchData?.team_b_id ? String(matchData.team_b_id) : requestedTeamBId;
+    let teamAData = await this.loadTeamData(teamAId);
+    let teamBData = await this.loadTeamData(teamBId);
+
+    if (matchData?.hltv_match_id && this.needsHltvEnrichment(matchData, teamAData, teamBData)) {
+      const enrichment = await this.sourceAlignment.enrichHltvMatchForAnalysis(matchData);
+      if (enrichment.refreshed) {
+        logger.info('HLTV analysis data refreshed', { ...enrichment });
+        matchData = this.llmRepo.getMatch(matchId);
+        teamAId = matchData?.team_a_id ? String(matchData.team_a_id) : enrichment.teamAId ?? teamAId;
+        teamBId = matchData?.team_b_id ? String(matchData.team_b_id) : enrichment.teamBId ?? teamBId;
+        teamAData = await this.loadTeamData(teamAId);
+        teamBData = await this.loadTeamData(teamBId);
+      } else {
+        logger.warn('HLTV analysis data remained incomplete', {
+          matchId,
+          hltvMatchId: String(matchData.hltv_match_id),
+          message: enrichment.message,
+        });
+      }
+    }
+
+    const matchStatus = matchData ? String(matchData.status ?? 'scheduled') : 'scheduled';
+    const scheduledAt = matchData ? String(matchData.scheduled_at ?? '') : '';
+    if (!['scheduled', 'upcoming', 'pre_match'].includes(matchStatus)) {
+      throw new Error(`Refused to analyze match ${matchId}: status is "${matchStatus}", only upcoming matches can be analyzed`);
+    }
+    if (scheduledAt && new Date(scheduledAt).getTime() < Date.now()) {
+      throw new Error(`Refused to analyze match ${matchId}: scheduled time ${scheduledAt} is in the past`);
+    }
+
+    const mappedStatus = mapLegacyMatchStatus(matchStatus, scheduledAt || new Date().toISOString());
+    const match: MatchInfo = {
+      matchId,
+      teamA: { teamId: teamAId, name: teamAData?.name ?? teamAId, logo: '', rank: teamAData?.rank ?? 999, region: teamAData?.region ?? '' },
+      teamB: { teamId: teamBId, name: teamBData?.name ?? teamBId, logo: '', rank: teamBData?.rank ?? 999, region: teamBData?.region ?? '' },
+      eventName: matchData ? String(matchData.event_name ?? 'Unknown Event') : 'Unknown Event',
+      eventType: matchData ? (String(matchData.event_type ?? 'Online') as 'LAN' | 'Online') : 'Online',
+      format: matchData ? (String(matchData.format ?? 'BO3') as 'BO1' | 'BO3' | 'BO5') : 'BO3',
+      scheduledAt: scheduledAt || new Date().toISOString(),
+      status: mappedStatus,
+      maps: (parseJsonField(matchData?.maps) as string[]) ?? [],
+      lineups: parseJsonField(matchData?.lineups) as MatchInfo['lineups'],
+    };
+    return { match, teamAId, teamBId, teamAData, teamBData };
+  }
+
+  private needsHltvEnrichment(matchData: Record<string, unknown>, teamA: Team | null, teamB: Team | null): boolean {
+    const lineups = parseJsonField(matchData.lineups) as MatchInfo['lineups'];
+    const completeTeam = (team: Team | null): boolean => !!team
+      && team.rank > 0
+      && team.rank < 999
+      && team.players.length >= 5
+      && team.recentForm?.last10Matches?.length > 0
+      && team.mapPool?.maps?.length > 0;
+    const completeLineups = !!lineups
+      && lineups.teamA.players.length >= 5
+      && lineups.teamB.players.length >= 5;
+    return !completeTeam(teamA) || !completeTeam(teamB) || !completeLineups;
+  }
+
   /**
    * Race a promise against a timeout, always clearing the timer to avoid leaks.
    */
@@ -558,7 +587,7 @@ export class AiConfigService {
     provider: string,
   ): Promise<LLMAnalysisResult> {
     const maxRetries = 2;
-    const timeout = 60000;
+    const timeout = 100000;
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

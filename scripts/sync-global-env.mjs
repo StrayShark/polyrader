@@ -93,7 +93,7 @@ if (!existsSync(PROJECT_ENV)) {
     writeFileSync(PROJECT_ENV, readFileSync(PROJECT_EXAMPLE, 'utf8'), 'utf8');
     console.log(`Created ${PROJECT_ENV} from .env.example`);
   } else {
-    writeFileSync(PROJECT_ENV, '# PolyRader CS2 local env\n', 'utf8');
+    writeFileSync(PROJECT_ENV, '# PolyRader local env\n', 'utf8');
     console.log(`Created empty ${PROJECT_ENV}`);
   }
 }

@@ -1,6 +1,6 @@
-# Tauri 桌面应用开发指南
+# PolyRader Tauri 桌面应用开发指南
 
-本文档描述 PolyRader CS2 桌面应用的开发、调试和打包流程。
+本文档描述 PolyRader 桌面应用的开发、调试和打包流程。`Simbook` 仅作为模拟盘功能概念使用；当前产品定位为 CS2 模拟盘练习工具与本地数据库。
 
 ## 架构概览
 
@@ -23,15 +23,15 @@
 │  - 系统托盘    │  │  - WebSocket 推送  │
 │  - 文件对话框  │  │  - SQLite 数据库   │
 │  - 通知推送    │  │  - LRU 缓存       │
-│  - config.json│  │  - Polymarket/LLM  │
+│  - config.json│  │  - 市场/CS2/LLM 数据│
 └────────────────┘  └──────────────────┘
 ```
 
 ### 数据流
 
 1. **启动**：Tauri → 读取 `config.json` → 启动 Express sidecar → 通知前端 `sidecar-ready`
-2. **API 请求**：前端 → `http://localhost:{port}/api/*` → Express → Polymarket/LLM/DB
-3. **WebSocket**：前端 → `ws://localhost:{port}` → 实时价格/巨鲸交易推送
+2. **API 请求**：前端 → `http://localhost:{port}/api/*` → Express → 本地 SQLite / 只读数据源 / LLM
+3. **WebSocket**：前端 → `ws://localhost:{port}` → 赔率变化、同步状态、模拟结算事件
 4. **IPC**：前端 → Tauri `invoke()` → 文件选择、通知、配置管理
 
 ## 开发模式
@@ -66,10 +66,11 @@ npm run dev:web
   │     └── first_run_completed = false
   │
   ├── 显示 SetupPage
-  │     ├── Step 1: 配置 LLM API Key（可选跳过）
-  │     ├── Step 2: 确认数据源（全部预配置）
-  │     ├── Step 3: 选择数据存储文件夹
-  │     └── Step 4: 确认 → 保存 config.json
+  │     ├── Step 1: 选择数据存储文件夹
+  │     ├── Step 2: 创建/确认虚拟练习账户
+  │     ├── Step 3: 配置 LLM API Key（可选跳过）
+  │     ├── Step 4: 确认只读数据源
+  │     └── Step 5: 确认 → 保存 config.json
   │
   ├── 生成加密密钥（AES-256-GCM）
   ├── 启动 Express sidecar
@@ -85,7 +86,7 @@ npm run dev:web
 
 ```json
 {
-  "data_dir": "/Users/username/PolyRader",
+  "data_dir": "/Users/username/PolyRaderCS2",
   "first_run_completed": true,
   "sidecar_port": 13001,
   "encryption_key": "<base64-encoded-key>"
@@ -154,17 +155,17 @@ npm run tauri:build
 - 右键菜单：显示窗口 / 退出
 - 托盘图标：`src-tauri/icons/icon.png`
 
-## 侧边栏快捷键
+## 侧边栏快捷键（目标 IA）
 
 | 快捷键 | 动作 |
 |--------|------|
-| `Cmd/Ctrl + 1` | 市场总览 |
-| `Cmd/Ctrl + 2` | 每日看板 |
-| `Cmd/Ctrl + 3` | 巨鲸追踪 |
-| `Cmd/Ctrl + 4` | 赛事分析 |
-| `Cmd/Ctrl + 5` | 信号对比 |
-| `Cmd/Ctrl + 6` | AI 配置 |
-| `Cmd/Ctrl + 7` | AI 统计 |
+| `Cmd/Ctrl + 1` | 赛事大厅 |
+| `Cmd/Ctrl + 2` | 模拟盘 |
+| `Cmd/Ctrl + 3` | 我的账本 |
+| `Cmd/Ctrl + 4` | 复盘中心 |
+| `Cmd/Ctrl + 5` | 数据库 |
+| `Cmd/Ctrl + 6` | 策略实验室 |
+| `Cmd/Ctrl + 7` | 设置 |
 | `Cmd/Ctrl + ,` | 设置 |
 
 ## 调试
@@ -183,7 +184,7 @@ Sidecar stdout 被 Tauri 捕获，通过 `sidecar-error` 事件转发到前端�
 
 ### 数据库
 
-SQLite 数据库位于数据文件夹内 `polyrader.db`，可使用 DB Browser for SQLite 查看。
+SQLite 数据库位于数据文件夹内 `polyrader.db`，可使用 DB Browser for SQLite 查看。后续数据库页会展示 matches、markets、odds_snapshots、sim_bets、sim_bet_legs、bet_reviews 等核心表。
 
 ## 常见问题
 

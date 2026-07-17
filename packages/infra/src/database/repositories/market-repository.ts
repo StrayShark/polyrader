@@ -1,5 +1,5 @@
 import { query, queryOne } from '../connection';
-import type { Market, MatchInfo } from '@polyrader/core';
+import { parsePolymarketMatch, type Market, type MatchInfo } from '@polyrader/core';
 
 export class MarketRepository {
   findAll(limit = 50, offset = 0): Market[] {
@@ -27,6 +27,13 @@ export class MarketRepository {
     return row ? this.mapRow(row) : null;
   }
 
+  findByCanonicalMatchId(canonicalMatchId: string): Market[] {
+    return query<Record<string, unknown>>(
+      `SELECT * FROM markets WHERE canonical_match_id = ? ORDER BY volume_24h DESC`,
+      canonicalMatchId,
+    ).map((row) => this.mapRow(row));
+  }
+
   findByTag(tag: string, limit = 50): Market[] {
     const rows = query<Record<string, unknown>>(
       `SELECT * FROM markets WHERE tags LIKE ? ORDER BY volume_24h DESC LIMIT ?`,
@@ -38,9 +45,10 @@ export class MarketRepository {
 
   upsert(market: Market): void {
     query(
-      `INSERT INTO markets (condition_id, slug, question, description, outcomes, outcome_prices, clob_token_ids, volume, volume_24h, liquidity, end_date, start_date, status, tags, match_info, resolved_outcome, resolved_price, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO markets (condition_id, canonical_match_id, slug, question, description, outcomes, outcome_prices, clob_token_ids, volume, volume_24h, liquidity, end_date, start_date, status, tags, match_info, resolved_outcome, resolved_price, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(condition_id) DO UPDATE SET
+         canonical_match_id = COALESCE(excluded.canonical_match_id, markets.canonical_match_id),
          question = excluded.question,
          slug = excluded.slug,
          outcomes = excluded.outcomes,
@@ -58,6 +66,7 @@ export class MarketRepository {
          resolved_price = excluded.resolved_price,
          updated_at = datetime('now')`,
       market.conditionId,
+      market.canonicalMatchId ?? market.match?.canonicalMatchId ?? null,
       market.slug,
       market.question,
       market.description,
@@ -139,6 +148,66 @@ export class MarketRepository {
     );
   }
 
+  insertPriceHistoryIfChanged(conditionId: string, price: number, epsilon = 0.0001): boolean {
+    const latest = queryOne<{ price: number }>(
+      `SELECT price FROM price_history WHERE condition_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1`,
+      conditionId,
+    );
+    if (latest && Math.abs(Number(latest.price) - price) < epsilon) return false;
+    this.insertPriceHistory(conditionId, price);
+    return true;
+  }
+
+  resolveLocalMarkets(canonicalMatchId: string, winnerSelection: string): Market[] {
+    const markets = this.findByCanonicalMatchId(canonicalMatchId)
+      .filter((market) => market.tags.includes('local-sim') && isSeriesWinnerMarket(market));
+    const normalizedWinner = normalizeSelection(winnerSelection);
+    const resolved: Market[] = [];
+    for (const market of markets) {
+      const winnerIndex = market.outcomes.findIndex((outcome) => normalizeSelection(outcome) === normalizedWinner);
+      if (winnerIndex < 0) continue;
+      const next: Market = {
+        ...market,
+        outcomePrices: market.outcomes.map((_outcome, index) => index === winnerIndex ? '1.00' : '0.00'),
+        status: 'resolved',
+        resolvedOutcome: market.outcomes[winnerIndex],
+        resolvedPrice: 1,
+      };
+      this.upsert(next);
+      this.insertPriceHistoryIfChanged(next.conditionId, winnerIndex === 0 ? 1 : 0);
+      resolved.push(next);
+    }
+    return resolved;
+  }
+
+  closeLocalMarkets(canonicalMatchId: string): Market[] {
+    const markets = this.findByCanonicalMatchId(canonicalMatchId)
+      .filter((market) => market.tags.includes('local-sim'));
+    for (const market of markets) this.upsert({ ...market, status: 'closed' });
+    return markets;
+  }
+
+  alignLocalMarketsWithMatch(match: MatchInfo): Market[] {
+    if (!match.canonicalMatchId) return [];
+    const candidates = this.findByCanonicalMatchId(match.canonicalMatchId);
+    const direct = this.findByConditionId(match.matchId);
+    if (direct && !candidates.some((market) => market.conditionId === direct.conditionId)) candidates.push(direct);
+    const aligned: Market[] = [];
+    for (const market of candidates) {
+      if (!market.tags.includes('local-sim') || !isSeriesWinnerMarket(market)) continue;
+      const next: Market = {
+        ...market,
+        canonicalMatchId: match.canonicalMatchId,
+        question: `Counter-Strike: ${match.teamA.name} vs ${match.teamB.name} (${match.format}) - ${match.eventName}`,
+        outcomes: [match.teamA.name, match.teamB.name],
+        match: { ...match, canonicalMatchId: match.canonicalMatchId },
+      };
+      this.upsert(next);
+      aligned.push(next);
+    }
+    return aligned;
+  }
+
   getPriceHistory(conditionId: string, limit = 100): Array<{ timestamp: string; price: number }> {
     return query<{ timestamp: string; price: number }>(
       `SELECT timestamp, price FROM price_history WHERE condition_id = ? ORDER BY timestamp DESC LIMIT ?`,
@@ -160,6 +229,7 @@ export class MarketRepository {
   private mapRow(row: Record<string, unknown>): Market {
     return {
       conditionId: row.condition_id as string,
+      canonicalMatchId: row.canonical_match_id ? String(row.canonical_match_id) : undefined,
       slug: row.slug as string,
       question: row.question as string,
       description: row.description as string,
@@ -178,6 +248,16 @@ export class MarketRepository {
       resolvedPrice: row.resolved_price === null || row.resolved_price === undefined ? undefined : Number(row.resolved_price),
     };
   }
+}
+
+function normalizeSelection(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isSeriesWinnerMarket(market: Market): boolean {
+  const parsed = parsePolymarketMatch(market.question);
+  return !!parsed && !parsed.isMapMarket
+    && !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(market.question);
 }
 
 function isCs2Text(text: string): boolean {

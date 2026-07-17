@@ -5,8 +5,12 @@ import { MarketRepository } from '@polyrader/infra';
 import { cacheGet, cacheSet } from '@polyrader/infra';
 import { RequestDedup } from './request-dedup';
 import { AlertService } from './alert-service';
+import { getLocalSeedMarkets } from './local-seed-data';
+import { isOpenMarket } from './market-eligibility';
 import { broadcast } from '../websocket';
 import { logger } from '../utils/logger';
+import { envNumber, withTimeout } from '../utils/timeout';
+import { mergeCanonicalMarkets, withCanonicalMarketId } from './canonical-market-merge';
 
 const CACHE_TTL = 60; // 1 minute
 const ORDERBOOK_CACHE_TTL = 10; // 10 seconds for orderbook
@@ -61,20 +65,37 @@ export class MarketService {
 
     return this.dedup.run(cacheKey, async () => {
       try {
-        const markets = await this.gammaClient.getMarkets(limit, offset);
-        await cacheSet(cacheKey, markets, CACHE_TTL);
-        for (const market of markets) {
+        const markets = await withTimeout(
+          this.gammaClient.getMarkets(limit, offset),
+          marketTimeoutMs(),
+          `polymarket gamma markets ${limit}:${offset}`,
+        );
+        const openMarkets = markets.filter((market) => isOpenMarket(market));
+        if (openMarkets.length === 0) {
+          logger.info('Polymarket returned no open markets, falling back to local practice markets', { cacheKey });
+          const fallbackMarkets = await this.getDbOrSeedMarkets(limit, offset);
+          await cacheSet(cacheKey, fallbackMarkets, CACHE_TTL);
+          return fallbackMarkets;
+        }
+        for (const market of openMarkets) {
           try {
             this.marketRepo.upsert(market);
           } catch (err) {
             logger.warn('Failed to upsert market to DB', { conditionId: market.conditionId, error: (err as Error).message });
           }
         }
-        this.checkPriceAlerts(markets);
-        return markets;
+        const localMarkets = (await Promise.resolve(this.marketRepo.findAll(200, 0)) ?? [])
+          .filter((market) => isOpenMarket(market));
+        const merged = mergeCanonicalMarkets([...localMarkets, ...openMarkets]).slice(offset, offset + limit);
+        for (const market of merged) {
+          if (market.canonicalMatchId && market.match) this.marketRepo.upsert(market);
+        }
+        await cacheSet(cacheKey, merged, CACHE_TTL);
+        this.checkPriceAlerts(merged);
+        return merged;
       } catch (err) {
         logger.warn('Polymarket API failed, falling back to DB', { cacheKey, error: (err as Error).message });
-        return this.marketRepo.findAll(limit, offset);
+        return this.getDbOrSeedMarkets(limit, offset);
       }
     }) as Promise<Market[]>;
   }
@@ -85,8 +106,14 @@ export class MarketService {
     if (cached) return cached;
 
     return this.dedup.run(cacheKey, async () => {
+      const stored = this.marketRepo.findByConditionId(conditionId) ?? this.marketRepo.findBySlug(conditionId);
+      if (stored?.tags?.includes('local-sim')) return withCanonicalMarketId(stored);
       try {
-        const market = await this.gammaClient.getMarket(conditionId);
+        const market = await withTimeout(
+          this.gammaClient.getMarket(conditionId),
+          marketTimeoutMs(),
+          `polymarket gamma market ${conditionId}`,
+        );
         if (market) {
           await cacheSet(cacheKey, market, CACHE_TTL);
           try {
@@ -98,15 +125,24 @@ export class MarketService {
         return market;
       } catch (err) {
         logger.warn('Polymarket API failed, falling back to DB', { conditionId, error: (err as Error).message });
-        return this.marketRepo.findByConditionId(conditionId);
+        const dbMarket = await Promise.resolve(this.marketRepo.findByConditionId(conditionId));
+        return dbMarket ?? getLocalSeedMarkets(100, 0).find((market) => market.conditionId === conditionId) ?? null;
       }
     }) as Promise<Market | null>;
   }
 
   async getPriceHistory(conditionId: string): Promise<Array<{ timestamp: string; price: number }>> {
     return this.dedup.run(`pricehistory:${conditionId}`, async () => {
+      const stored = this.marketRepo.findByConditionId(conditionId) ?? this.marketRepo.findBySlug(conditionId);
+      if (stored?.tags?.includes('local-sim')) {
+        return this.marketRepo.getPriceHistory(stored.conditionId, 100).reverse();
+      }
       try {
-        return await this.gammaClient.getPriceHistory(conditionId);
+        return await withTimeout(
+          this.gammaClient.getPriceHistory(conditionId),
+          marketTimeoutMs(),
+          `polymarket gamma price history ${conditionId}`,
+        );
       } catch (err) {
         logger.warn('Failed to fetch price history', { conditionId, error: (err as Error).message });
         return [];
@@ -117,20 +153,37 @@ export class MarketService {
   async refreshMarkets(): Promise<Market[]> {
     return this.dedup.run('refresh:markets', async () => {
       try {
-        const markets = await this.gammaClient.getMarkets(100, 0);
-        for (const market of markets) {
+        const markets = await withTimeout(
+          this.gammaClient.getMarkets(100, 0),
+          marketTimeoutMs(),
+          'polymarket gamma refresh markets',
+        );
+        const openMarkets = markets.filter((market) => isOpenMarket(market));
+        if (openMarkets.length === 0) {
+          logger.info('Polymarket refresh returned no open markets, preserving local practice markets');
+          const fallbackMarkets = await this.getDbOrSeedMarkets(100, 0);
+          await cacheSet('markets:50:0', fallbackMarkets.slice(0, 50), CACHE_TTL);
+          return fallbackMarkets;
+        }
+        for (const market of openMarkets) {
           try {
             this.marketRepo.upsert(market);
           } catch (err) {
             logger.warn('Failed to upsert market to DB', { conditionId: market.conditionId, error: (err as Error).message });
           }
         }
-        await cacheSet('markets:50:0', markets.slice(0, 50), CACHE_TTL);
-        this.checkPriceAlerts(markets);
-        return markets;
+        const localMarkets = (await Promise.resolve(this.marketRepo.findAll(200, 0)) ?? [])
+          .filter((market) => isOpenMarket(market));
+        const merged = mergeCanonicalMarkets([...localMarkets, ...openMarkets]);
+        for (const market of merged) {
+          if (market.canonicalMatchId && market.match) this.marketRepo.upsert(market);
+        }
+        await cacheSet('markets:50:0', merged.slice(0, 50), CACHE_TTL);
+        this.checkPriceAlerts(merged);
+        return merged;
       } catch (err) {
         logger.error('Failed to refresh markets from Polymarket', { error: (err as Error).message });
-        return [];
+        return this.getDbOrSeedMarkets(100, 0);
       }
     }) as Promise<Market[]>;
   }
@@ -142,6 +195,8 @@ export class MarketService {
 
     return this.dedup.run(cacheKey, async () => {
       try {
+        const stored = this.marketRepo.findByConditionId(conditionId) ?? this.marketRepo.findBySlug(conditionId);
+        if (stored?.tags?.includes('local-sim')) return null;
         let resolvedTokenId = tokenId;
         if (!resolvedTokenId) {
           const market = await this.getMarket(conditionId);
@@ -149,7 +204,11 @@ export class MarketService {
           resolvedTokenId = market.clobTokenIds[0];
         }
 
-        const orderBook = await this.clobClient.getOrderBook(resolvedTokenId);
+        const orderBook = await withTimeout(
+          this.clobClient.getOrderBook(resolvedTokenId),
+          marketTimeoutMs(),
+          `polymarket clob orderbook ${conditionId}`,
+        );
         await cacheSet(cacheKey, orderBook, ORDERBOOK_CACHE_TTL);
         return orderBook;
       } catch (err) {
@@ -157,6 +216,30 @@ export class MarketService {
         return null;
       }
     }) as Promise<OrderBookSummary | null>;
+  }
+
+  getLocalOdds(conditionId: string): {
+    conditionId: string;
+    source: 'local-sim';
+    outcomes: string[];
+    probabilities: number[];
+    decimalOdds: number[];
+    capturedAt?: string;
+    history: Array<{ timestamp: string; price: number }>;
+  } | null {
+    const market = this.marketRepo.findByConditionId(conditionId) ?? this.marketRepo.findBySlug(conditionId);
+    if (!market?.tags?.includes('local-sim')) return null;
+    const probabilities = market.outcomePrices.map((price) => Number(price));
+    const history = this.marketRepo.getPriceHistory(market.conditionId, 100).reverse();
+    return {
+      conditionId: market.conditionId,
+      source: 'local-sim',
+      outcomes: market.outcomes,
+      probabilities,
+      decimalOdds: probabilities.map((probability) => probability > 0 ? 1 / probability : 0),
+      capturedAt: history.at(-1)?.timestamp,
+      history,
+    };
   }
 
   async getHolders(conditionId: string, limit = 50): Promise<PolymarketHolder[]> {
@@ -223,6 +306,30 @@ export class MarketService {
     return updated;
   }
 
+  private async getDbOrSeedMarkets(limit: number, offset: number): Promise<Market[]> {
+    const dbMarkets = await Promise.resolve(this.marketRepo.findAll(limit, offset)) ?? [];
+    const openDbMarkets = dbMarkets.filter((market) => isOpenMarket(market));
+    if (openDbMarkets.length > 0) {
+      const merged = mergeCanonicalMarkets(openDbMarkets);
+      const unchanged = merged.length === dbMarkets.length
+        && merged.every((market, index) => market === dbMarkets[index]);
+      return unchanged ? dbMarkets : merged;
+    }
+
+    const seeds = getLocalSeedMarkets(limit, offset);
+    if (seeds.length === 0) return [];
+
+    for (const market of seeds) {
+      try {
+        this.marketRepo.upsert(market);
+      } catch (err) {
+        logger.warn('Failed to persist local seed market', { conditionId: market.conditionId, error: (err as Error).message });
+      }
+    }
+    await cacheSet(`markets:${limit}:${offset}`, seeds, CACHE_TTL);
+    return seeds;
+  }
+
   /** Detect unusual price moves and volume spikes across active markets. */
   async detectAnomalies(limit = 30): Promise<MarketAnomaly[]> {
     const markets = await this.getMarkets(limit, 0);
@@ -269,4 +376,8 @@ export class MarketService {
     const severityRank = { high: 3, medium: 2, low: 1 };
     return anomalies.sort((a, b) => severityRank[b.severity] - severityRank[a.severity]);
   }
+}
+
+function marketTimeoutMs(): number {
+  return envNumber('POLYRADER_MARKET_TIMEOUT_MS', envNumber('POLYRADER_EXTERNAL_TIMEOUT_MS', 8000, 250, 30000), 250, 30000);
 }

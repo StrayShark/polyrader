@@ -6,11 +6,13 @@ import { SignalService } from '../services/signal-service';
 import { HLTVCrawler, PolymarketGammaClient, MarketRepository, CsApiClient, GridClient, closeBrowser } from '@polyrader/infra';
 import { LLMRepository, EsportsRepository } from '@polyrader/infra';
 import { query, queryOne } from '@polyrader/infra';
-import { SettlementEngine, MatchStateMachine, EsportsEnricher, type EnricherSources } from '@polyrader/core';
+import { SettlementEngine, MatchStateMachine, EsportsEnricher, buildCanonicalMatchId, type EnricherSources } from '@polyrader/core';
 import type { SimulatedBet, Team, Player, HeadToHead } from '@polyrader/core';
 import { sharedWhaleIngestion } from '../services/whale-ingestion-service';
 import { WalletPerformanceService } from '../services/wallet-performance-service';
 import { WalletFollowService } from '../services/wallet-follow-service';
+import { SourceAlignmentService } from '../services/source-alignment-service';
+import { MatchReconciliationService } from '../services/match-reconciliation-service';
 import { trackTask } from '../services/task-tracker-service';
 import { autoTunePromptVariants } from '../services/prompt-ab-service';
 import { broadcast } from '../websocket';
@@ -32,6 +34,8 @@ const settlementEngine = new SettlementEngine();
 const whaleIngestion = sharedWhaleIngestion;
 const walletPerformance = new WalletPerformanceService();
 const walletFollow = new WalletFollowService();
+const sourceAlignment = new SourceAlignmentService({ esportsRepo, llmRepo, hltv: hltvCrawler });
+const matchReconciliation = new MatchReconciliationService({ hltv: hltvCrawler, llmRepo, esportsRepo, marketRepo });
 whaleIngestion.setWalletFollowService(walletFollow);
 
 // Track which matches have already been auto-analyzed to avoid duplicates
@@ -144,6 +148,8 @@ export function startCronJobs(): void {
         const matchId = String(m.match_id ?? '');
         const scheduledAt = String(m.scheduled_at ?? '');
         if (!matchId || !scheduledAt) continue;
+        // HLTV-backed matches are owned by the page-status reconciler below.
+        if (m.hltv_match_id) continue;
         const marketStatus = (String(m.status ?? 'active') === 'settled') ? 'resolved' : 'active';
         const newState = MatchStateMachine.determineState(scheduledAt, marketStatus as 'active' | 'closed' | 'resolved', false);
         const currentStatus = String(m.status ?? '');
@@ -182,6 +188,7 @@ export function startCronJobs(): void {
             } catch {
               // best-effort HLTV link
             }
+            const fallbackLineups = sourceAlignment.buildRosterFallbackLineups(result.teamA, result.teamB);
             llmRepo.upsertMatch({
               matchId,
               teamAId: result.teamA.teamId,
@@ -196,13 +203,40 @@ export function startCronJobs(): void {
               maps: [],
               hasTeamData: true,
               hltvMatchId,
-              lineups: result.teamA.players.length > 0 && result.teamB.players.length > 0
-                ? JSON.stringify({
-                    teamA: { players: result.teamA.players.slice(0, 5), isConfirmed: true, hasStandin: false, standinCount: 0, missingKeyPlayers: [] },
-                    teamB: { players: result.teamB.players.slice(0, 5), isConfirmed: true, hasStandin: false, standinCount: 0, missingKeyPlayers: [] },
-                  })
-                : null,
+              lineups: fallbackLineups,
+              canonicalMatchId: buildCanonicalMatchId({
+                hltvMatchId,
+                teamAId: result.teamA.teamId,
+                teamBId: result.teamB.teamId,
+                teamAName: result.teamA.name,
+                teamBName: result.teamB.name,
+                eventName: result.parsed.eventName,
+                scheduledAt: market.endDate,
+              }),
             });
+            marketRepo.upsert({
+              ...market,
+              canonicalMatchId: buildCanonicalMatchId({
+                hltvMatchId,
+                teamAId: result.teamA.teamId,
+                teamBId: result.teamB.teamId,
+                teamAName: result.teamA.name,
+                teamBName: result.teamB.name,
+                eventName: result.parsed.eventName,
+                scheduledAt: market.endDate,
+              }),
+            });
+            sourceAlignment.linkPolymarketMatch(matchId, market.question);
+            sourceAlignment.linkHltvMatch(matchId, hltvMatchId);
+            await sourceAlignment.syncLiquipediaTeamsForMatch(result.teamA, result.teamB);
+            if (hltvMatchId) {
+              await sourceAlignment.refreshHltvLineupForMatch({
+                match_id: matchId,
+                hltv_match_id: hltvMatchId,
+                team_a_id: result.teamA.teamId,
+                team_b_id: result.teamB.teamId,
+              });
+            }
             enriched++;
           } else {
             skipped++;
@@ -234,30 +268,45 @@ export function startCronJobs(): void {
   });
 
   // ============================================================
-  // HLTV delayed/postponed detection: every 30 minutes
+  // HLTV status, result and user practice settlement: every 10 minutes
   // ============================================================
-  cron.schedule('*/30 * * * *', () => {
-    void trackTask('hltv-delayed-check', {
-      name: 'HLTV 延期检测',
+  cron.schedule('*/10 * * * *', () => {
+    void trackTask('hltv-match-reconciliation', {
+      name: 'HLTV 状态与赛果对齐',
       category: 'esports',
       trigger: 'scheduled',
     }, async (ctx) => {
+      const report = await matchReconciliation.reconcileActiveMatches(
+        envNumber('POLYRADER_HLTV_STATUS_MAX_MATCHES', 25, 1, 100),
+      );
       const activeMatches = llmRepo.getActiveMatches();
-      let delayedCount = 0;
+      let lineupRefreshes = 0;
+      let lineupChecks = 0;
+      const maxLineupChecks = envNumber('POLYRADER_HLTV_LINEUP_MAX_MATCHES', 10, 0, 50);
       for (const m of activeMatches) {
         const hltvId = m.hltv_match_id ? String(m.hltv_match_id) : null;
         if (!hltvId) continue;
-        const status = await hltvCrawler.getMatchLiveStatus(hltvId);
-        if (status === 'postponed') {
-          const matchId = String(m.match_id ?? '');
-          if (matchId && String(m.status ?? '') !== 'delayed') {
-            llmRepo.updateMatchStatus(matchId, 'delayed');
-            delayedCount++;
-          }
+        if (process.env.POLYRADER_ENABLE_HLTV_LINEUP_REFRESH !== '0' && lineupChecks < maxLineupChecks) {
+          lineupChecks++;
+          const lineupResult = await sourceAlignment.refreshHltvLineupForMatch(m);
+          if (lineupResult.refreshed) lineupRefreshes++;
         }
       }
-      if (delayedCount > 0) ctx.log(`标记 ${delayedCount} 场比赛为延期`);
-      return { delayedCount };
+      for (const event of report.events) {
+        if (event.settledBets > 0 || event.resolvedMarkets > 0) {
+          broadcast('settlement', {
+            matchId: event.matchId,
+            outcome: event.winnerTeamName,
+            status: event.status,
+            settledCount: event.settledBets,
+            resolvedMarkets: event.resolvedMarkets,
+          });
+        }
+      }
+      if (report.updated > 0) ctx.log(`校正 ${report.updated} 场比赛状态`);
+      if (report.settledBets > 0) ctx.log(`自动处理 ${report.settledBets} 笔用户练习单`);
+      if (lineupRefreshes > 0) ctx.log(`刷新 ${lineupRefreshes} 场 HLTV 阵容`);
+      return { ...report, lineupRefreshes };
     });
   });
 
@@ -903,4 +952,10 @@ export function startCronJobs(): void {
   }
 
   logger.info('Cron: All scheduled jobs started');
+}
+
+function envNumber(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }

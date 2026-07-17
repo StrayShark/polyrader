@@ -118,6 +118,45 @@ const MOCK_BACKTEST = {
 };
 
 export async function setupCommonMocks(page: Page): Promise<void> {
+  await page.route('**/api/system/features**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: { marketOrdersEnabled: false, liveTradingEnabled: false, polymarketAccountEnabled: false },
+      }),
+    }),
+  );
+
+  await page.route('**/api/system/health**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          status: 'degraded',
+          timestamp: '2026-07-11T10:00:00Z',
+          uptime: 3600,
+          dependencies: {
+            database: { status: 'ok', latency: 1 },
+            cache: { status: 'ok', size: 2, maxSize: 5000 },
+            websocket: { status: 'ok', connections: 0 },
+            whaleIngestion: { status: 'ok', consecutiveFailures: 0, lastIngestedCount: 0 },
+            priceStream: { status: 'idle', connected: false, subscriptionCount: 0 },
+            grid: { status: 'skipped', configured: false },
+            externalApis: {
+              status: 'degraded',
+              checks: [
+                { name: 'polymarket-gamma', status: 'error' },
+                { name: 'polymarket-clob', status: 'ok' },
+              ],
+            },
+          },
+        },
+      }),
+    }),
+  );
+
   await page.route('**/api/markets/anomalies**', (route) =>
     route.fulfill({
       status: 200,
@@ -192,6 +231,72 @@ export async function setupCommonMocks(page: Page): Promise<void> {
 
   await page.route('**/api/backup/**', (route) => {
     const url = route.request().url();
+    if (url.includes('/tables/')) {
+      const tableName = decodeURIComponent(url.split('/tables/')[1]?.split('?')[0] ?? 'markets');
+      const sourceRows: Record<string, Record<string, unknown>[]> = {
+        team_source_links: [
+          {
+            id: 'team-source-1',
+            question: 'Counter-Strike: Spirit vs G2',
+            team_id: 'spirit',
+            source: 'liquipedia',
+            source_id: 'Team Spirit',
+            source_name: 'Team Spirit',
+            confidence: 0.98,
+            last_seen_at: '2026-06-25T10:00:00Z',
+            updated_at: '2026-06-25T10:00:00Z',
+          },
+        ],
+        match_source_links: [
+          {
+            id: 'match-source-1',
+            question: 'Counter-Strike: Spirit vs G2',
+            match_id: 'spirit-vs-g2-bo3',
+            source: 'polymarket',
+            source_id: '0xcs2_1',
+            source_name: 'Counter-Strike: Spirit vs G2',
+            confidence: 1,
+            last_seen_at: '2026-06-25T10:00:00Z',
+            updated_at: '2026-06-25T10:00:00Z',
+          },
+        ],
+        roster_source_snapshots: [
+          {
+            id: 'roster-source-1',
+            question: 'Counter-Strike: Spirit vs G2',
+            team_id: 'spirit',
+            source: 'liquipedia',
+            source_id: 'Team Spirit',
+            roster_hash: 'abc123',
+            player_ids: '["donk","sh1ro","zont1x","magixx","chopper"]',
+            updated_at: '2026-06-25T10:00:00Z',
+          },
+        ],
+      };
+      const rows = sourceRows[tableName] ?? [
+        { id: 'row-1', question: 'Counter-Strike: Spirit vs G2', updated_at: '2026-06-25T10:00:00Z' },
+      ];
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            tableName,
+            columns: [
+              { name: 'id', type: 'TEXT' },
+              { name: 'question', type: 'TEXT' },
+              { name: 'source', type: 'TEXT' },
+              { name: 'updated_at', type: 'TEXT' },
+            ],
+            rows,
+            total: rows.length,
+            limit: 25,
+            offset: 0,
+            search: '',
+          },
+        }),
+      });
+    }
     if (url.includes('/info')) {
       return route.fulfill({
         status: 200,
@@ -200,7 +305,15 @@ export async function setupCommonMocks(page: Page): Promise<void> {
           data: {
             fileSize: 1024 * 1024,
             fileSizeFormatted: '1.00 MB',
-            tableCounts: { matches: 10, markets: 20, simulated_bets: 5 },
+            tableCounts: { match_source_links: 1, matches: 10, markets: 20, roster_source_snapshots: 1, sim_bets: 5, team_source_links: 1 },
+            tableMeta: {
+              match_source_links: { source: 'Source alignment', lastUpdate: '2026-06-25T10:00:00Z' },
+              matches: { source: 'HLTV / GRID', lastUpdate: '2026-06-25T10:00:00Z' },
+              markets: { source: 'Polymarket', lastUpdate: '2026-06-25T10:00:00Z' },
+              roster_source_snapshots: { source: 'Liquipedia / HLTV', lastUpdate: '2026-06-25T10:00:00Z' },
+              sim_bets: { source: 'Local practice', lastUpdate: '2026-06-25T10:00:00Z' },
+              team_source_links: { source: 'Source alignment', lastUpdate: '2026-06-25T10:00:00Z' },
+            },
             dbPath: 'polyrader.db',
           },
         }),
@@ -474,6 +587,97 @@ export async function setupCommonMocks(page: Page): Promise<void> {
 
   await page.route('**/api/esports/map-pool**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) }),
+  );
+
+  await page.route('**/api/esports/teams/*/sources**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          links: [
+            {
+              teamId: 'spirit',
+              source: 'liquipedia',
+              sourceId: 'Team Spirit',
+              sourceName: 'Team Spirit',
+              sourceUrl: 'https://liquipedia.net/counterstrike/Team_Spirit',
+              confidence: 0.98,
+              isPrimary: true,
+              lastSeenAt: '2026-06-25T10:00:00Z',
+            },
+            {
+              teamId: 'spirit',
+              source: 'hltv',
+              sourceId: '7020',
+              sourceName: 'Spirit',
+              confidence: 0.92,
+              lastSeenAt: '2026-06-25T09:00:00Z',
+            },
+          ],
+          rosterSnapshots: [
+            {
+              teamId: 'spirit',
+              source: 'liquipedia',
+              sourceId: 'Team Spirit',
+              rosterHash: 'abc123',
+              playerIds: ['donk', 'sh1ro', 'zont1x', 'magixx', 'chopper'],
+              players: [],
+              isCurrent: true,
+              updatedAt: '2026-06-25T10:00:00Z',
+            },
+          ],
+        },
+      }),
+    }),
+  );
+
+  await page.route('**/api/esports/teams/*/sources/*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { links: [], rosterSnapshots: [] } }),
+    }),
+  );
+
+  await page.route('**/api/esports/teams/*/sync-liquipedia', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { linked: true, rosterPlayers: 5 } }),
+    }),
+  );
+
+  await page.route('**/api/esports/matches/*/sources**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [
+          {
+            matchId: 'spirit-vs-g2-bo3',
+            source: 'polymarket',
+            sourceId: '0xcs2_1',
+            sourceName: 'Counter-Strike: Spirit vs G2',
+            sourceUrl: 'https://polymarket.com/event/spirit-vs-g2',
+            confidence: 1,
+            lastSeenAt: '2026-06-25T10:00:00Z',
+          },
+          {
+            matchId: 'spirit-vs-g2-bo3',
+            source: 'hltv',
+            sourceId: '2377000',
+            sourceName: 'Spirit vs G2',
+            confidence: 0.86,
+            lastSeenAt: '2026-06-25T09:30:00Z',
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.route('**/api/esports/matches/*/refresh-lineup', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { updated: true } }) }),
   );
 
   // Generic handler first; specific routes below override (Playwright LIFO).
@@ -841,6 +1045,169 @@ export async function setupCommonMocks(page: Page): Promise<void> {
     });
   });
 
+  await page.route('**/api/sim/**', (route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+    const mockAccount = {
+      id: 'default',
+      name: 'Practice Account',
+      initialBankroll: 10000,
+      currentBankroll: 10000,
+      availableBankroll: 10000,
+      openExposure: 0,
+      maxSingleRiskPct: 0.02,
+      maxDailyRiskPct: 0.06,
+      createdAt: '2026-06-01T00:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+    };
+    if (url.includes('/account')) {
+      const body = method === 'PUT' ? route.request().postDataJSON() : {};
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { ...mockAccount, ...(body ?? {}) } }),
+      });
+    }
+    if (url.includes('/bankroll')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            account: mockAccount,
+            todayPnl: 0,
+            openExposure: 0,
+            equityCurve: [],
+            openBets: [],
+            settledBets: [],
+            riskMetrics: {
+              maxDrawdown: 0,
+              maxDrawdownPct: 0,
+              consecutiveLosses: 0,
+              averageStake: 0,
+              totalBets: 0,
+              winRate: 0,
+              roi: 0,
+            },
+          },
+        }),
+      });
+    }
+    if (url.includes('/bets') && method === 'POST') {
+      const body = route.request().postDataJSON() as { betType: string; stake: number; legs: unknown[] };
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            bet: {
+              id: 'sim-bet-1',
+              accountId: 'default',
+              betType: body?.betType ?? 'single',
+              stake: body?.stake ?? 100,
+              totalOdds: 1.54,
+              status: 'open',
+              pnl: 0,
+              placedAt: new Date().toISOString(),
+            },
+            legs: body?.legs ?? [],
+          },
+        }),
+      });
+    }
+    if (url.includes('/reviews')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              bet: {
+                id: 'bet-1',
+                accountId: 'default',
+                betType: 'single',
+                stake: 100,
+                totalOdds: 1.8,
+                userProbability: 0.6,
+                edge: 0.08,
+                result: 'won',
+                pnl: 80,
+                status: 'settled',
+                matchId: 'spirit-vs-g2-bo3',
+                marketId: 'm1',
+                matchFormat: 'BO3',
+                placedAt: '2026-06-25T10:00:00Z',
+                settledAt: '2026-06-26T10:00:00Z',
+              },
+              review: null,
+              snapshots: [
+                {
+                  id: 'snap-1',
+                  matchId: 'spirit-vs-g2-bo3',
+                  marketId: 'm1',
+                  selection: 'Spirit',
+                  odds: 1.8,
+                  capturedAt: '2026-06-25T10:00:00Z',
+                },
+              ],
+              closingOdds: 1.7,
+              brierScore: 0.16,
+              closingLineValue: -0.0314,
+            },
+          ],
+        }),
+      });
+    }
+    const reviewMatch = url.match(/\/api\/sim\/bets\/([^/]+)\/review/);
+    if (reviewMatch) {
+      if (method === 'POST') {
+        const body = route.request().postDataJSON() as { errorTags?: string[]; note?: string; closingOdds?: number };
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: 'review-1',
+              betId: reviewMatch[1],
+              errorTags: body?.errorTags ?? [],
+              note: body?.note ?? null,
+              brierScore: null,
+              closingLineValue: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            bet: {
+              id: reviewMatch[1],
+              accountId: 'default',
+              betType: 'single',
+              stake: 100,
+              totalOdds: 1.8,
+              status: 'settled',
+              result: 'won',
+              pnl: 80,
+              placedAt: new Date().toISOString(),
+            },
+            review: null,
+            snapshots: [],
+          },
+        }),
+      });
+    }
+    const snapshotsMatch = url.match(/\/api\/sim\/bets\/([^/]+)\/snapshots/);
+    if (snapshotsMatch) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+
   await page.route('**/api/alerts**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) }),
   );
@@ -887,11 +1254,45 @@ export async function setupMatchDetailMocks(page: Page): Promise<void> {
     maps: ['Mirage', 'Inferno'],
   };
 
-  await page.route('**/api/esports/matches/**', (route) =>
-    route.fulfill({
+  await page.route('**/api/esports/matches/**', (route) => {
+    const url = route.request().url();
+    if (url.includes('/sources')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              matchId: 'spirit-vs-g2-bo3',
+              source: 'polymarket',
+              sourceId: '0xcs2_1',
+              sourceName: 'Counter-Strike: Spirit vs G2',
+              confidence: 1,
+              lastSeenAt: '2026-06-25T10:00:00Z',
+            },
+          ],
+        }),
+      });
+    }
+    if (url.includes('/refresh-lineup')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { updated: true } }),
+      });
+    }
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ data: matchInfo }),
+    });
+  });
+
+  await page.route('**/api/esports/teams/**/sources**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { links: [], rosterSnapshots: [] } }),
     }),
   );
 
@@ -954,7 +1355,7 @@ export async function setupMatchDetailMocks(page: Page): Promise<void> {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(MOCK_AGGREGATION),
+      body: JSON.stringify({ data: MOCK_AGGREGATION }),
     }),
   );
 

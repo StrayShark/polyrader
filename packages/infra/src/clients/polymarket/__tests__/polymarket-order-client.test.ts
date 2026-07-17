@@ -33,6 +33,7 @@ describe('PolymarketOrderClient', () => {
     process.env = { ...envBackup };
     delete process.env.POLYMARKET_PRIVATE_KEY;
     delete process.env.POLYMARKET_ADDRESS;
+    delete process.env.POLYMARKET_FUNDER;
     delete process.env.POLYMARKET_API_KEY;
     delete process.env.POLYMARKET_API_SECRET;
     delete process.env.POLYMARKET_API_PASSPHRASE;

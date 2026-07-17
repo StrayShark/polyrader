@@ -1,4 +1,4 @@
-import type { Team, MatchInfo } from '@polyrader/core';
+import type { MapPool, MatchInfo, MatchLineups, Player, RecentForm, Team } from '@polyrader/core';
 import { LLMRepository } from '@polyrader/infra';
 import { logger } from '../utils/logger';
 
@@ -39,16 +39,56 @@ function getRepo(): LLMRepository {
 /**
  * Build a MatchInfo object from a raw DB match row.
  */
-export function buildMatchInfo(dbMatch: Record<string, unknown>): MatchInfo {
+export function buildMatchInfo(
+  dbMatch: Record<string, unknown>,
+  teamARow?: Record<string, unknown> | null,
+  teamBRow?: Record<string, unknown> | null,
+): MatchInfo {
+  const teamAId = String(dbMatch.team_a_id ?? '');
+  const teamBId = String(dbMatch.team_b_id ?? '');
+  const teamAData = teamARow ? buildTeamFromDbRow(teamARow, teamAId) : null;
+  const teamBData = teamBRow ? buildTeamFromDbRow(teamBRow, teamBId) : null;
+  const lineups = parseTypedJson<MatchLineups>(dbMatch.lineups);
+  const maps = parseTypedJson<string[]>(dbMatch.maps);
+  const score = parseTypedJson<{ teamA: number; teamB: number }>(dbMatch.score);
+  const updatedAt = latestTimestamp(teamARow?.updated_at, teamBRow?.updated_at, dbMatch.updated_at);
   return {
     matchId: String(dbMatch.match_id ?? ''),
-    teamA: { teamId: String(dbMatch.team_a_id ?? ''), name: String(dbMatch.team_a_name ?? ''), rank: 0, logo: '', region: '' },
-    teamB: { teamId: String(dbMatch.team_b_id ?? ''), name: String(dbMatch.team_b_name ?? ''), rank: 0, logo: '', region: '' },
+    canonicalMatchId: dbMatch.canonical_match_id ? String(dbMatch.canonical_match_id) : undefined,
+    teamA: {
+      teamId: teamAId,
+      name: String(dbMatch.team_a_name ?? teamAData?.name ?? ''),
+      rank: teamAData?.rank ?? 0,
+      logo: teamAData?.logo ?? '',
+      region: teamAData?.region ?? '',
+    },
+    teamB: {
+      teamId: teamBId,
+      name: String(dbMatch.team_b_name ?? teamBData?.name ?? ''),
+      rank: teamBData?.rank ?? 0,
+      logo: teamBData?.logo ?? '',
+      region: teamBData?.region ?? '',
+    },
     eventName: String(dbMatch.event_name ?? ''),
     eventType: (String(dbMatch.event_type ?? 'Online')) as 'LAN' | 'Online',
     format: (String(dbMatch.format ?? 'BO3')) as 'BO1' | 'BO3' | 'BO5',
     scheduledAt: String(dbMatch.scheduled_at ?? new Date().toISOString()),
     status: mapLegacyMatchStatus(String(dbMatch.status ?? 'upcoming'), String(dbMatch.scheduled_at ?? new Date().toISOString())),
+    maps: Array.isArray(maps) ? maps : [],
+    currentScore: score && Number.isFinite(score.teamA) && Number.isFinite(score.teamB) ? {
+      teamA: score.teamA,
+      teamB: score.teamB,
+      currentMap: '',
+      mapScores: [],
+    } : undefined,
+    lineups: lineups ?? undefined,
+    teamDetails: teamAData && teamBData ? {
+      teamA: teamAData,
+      teamB: teamBData,
+      source: 'database',
+      isComplete: isCompleteTeam(teamAData) && isCompleteTeam(teamBData),
+      updatedAt,
+    } : undefined,
   };
 }
 
@@ -75,24 +115,30 @@ export function loadTeamFromDb(teamId: string): Team {
   try {
     const row = getRepo().getTeam(teamId);
     if (!row) return buildFallbackTeam(teamId, teamId, 0, 0.5);
-
-    return {
-      teamId: String(row.team_id ?? teamId),
-      name: String(row.name ?? teamId),
-      rank: Number(row.rank ?? 0),
-      region: String(row.region ?? ''),
-      logo: '',
-      players: typeof row.players === 'string' ? JSON.parse(row.players) : [],
-      recentForm: typeof row.recent_form === 'string'
-        ? JSON.parse(row.recent_form)
-        : { last10Matches: [], winRate: 0.5, streak: 0, averageRating: 1.0 },
-      mapPool: typeof row.map_pool === 'string' ? JSON.parse(row.map_pool) : { maps: [] },
-      headToHead: [],
-    };
+    return buildTeamFromDbRow(row, teamId);
   } catch (err) {
     logger.warn('Failed to load team from DB', { error: (err as Error).message });
     return buildFallbackTeam(teamId, teamId, 0, 0.5);
   }
+}
+
+export function buildTeamFromDbRow(row: Record<string, unknown>, fallbackTeamId = ''): Team {
+  const players = parseTypedJson<Player[]>(row.players);
+  const recentForm = parseTypedJson<RecentForm>(row.recent_form);
+  const mapPool = parseTypedJson<MapPool>(row.map_pool);
+  return {
+    teamId: String(row.team_id ?? fallbackTeamId),
+    name: String(row.name ?? fallbackTeamId),
+    logo: String(row.logo ?? ''),
+    rank: Number(row.rank ?? 0),
+    region: String(row.region ?? ''),
+    players: Array.isArray(players) ? players : [],
+    recentForm: recentForm && Array.isArray(recentForm.last10Matches)
+      ? recentForm
+      : { last10Matches: [], winRate: 0.5, streak: 0, averageRating: 0 },
+    mapPool: mapPool && Array.isArray(mapPool.maps) ? mapPool : { maps: [] },
+    headToHead: [],
+  };
 }
 
 /**
@@ -128,4 +174,21 @@ export function parseJsonField(val: unknown): unknown {
     return val;
   }
   return null;
+}
+
+function parseTypedJson<T>(value: unknown): T | null {
+  return parseJsonField(value) as T | null;
+}
+
+function isCompleteTeam(team: Team): boolean {
+  return team.rank > 0
+    && team.rank < 999
+    && team.players.length >= 5
+    && team.recentForm.last10Matches.length > 0
+    && team.mapPool.maps.length > 0;
+}
+
+function latestTimestamp(...values: unknown[]): string | undefined {
+  const timestamps = values.map(String).filter((value) => value && value !== 'undefined' && value !== 'null');
+  return timestamps.sort((a, b) => Date.parse(b) - Date.parse(a))[0];
 }

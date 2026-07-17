@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
-  LayoutDashboard,
+  Trophy,
+  Wallet,
+  BookOpen,
+  Database,
+  FlaskConical,
   CalendarDays,
   Fish,
   Gamepad2,
@@ -20,6 +24,7 @@ import { useMarketStore } from '../stores/market-store';
 import { useWhaleStore } from '../stores/whale-store';
 import { useI18n } from '../hooks/use-i18n';
 import { cn } from '../utils/cn';
+import { useFeatureFlagStore } from '../stores/feature-flag-store';
 
 interface CommandItem {
   id: string;
@@ -36,18 +41,26 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
-const NAV_PAGES: Array<{ to: string; icon: LucideIcon; labelKey: string }> = [
-  { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+const NAV_PAGES: Array<{ to: string; icon: LucideIcon; labelKey: string; featureFlag?: 'polymarketAccountEnabled' }> = [
+  // Practice
+  { to: '/', icon: Trophy, labelKey: 'nav.lobby' },
+  { to: '/bankroll', icon: Wallet, labelKey: 'nav.bankroll' },
+  { to: '/review', icon: BookOpen, labelKey: 'nav.review' },
+  // Data
+  { to: '/database', icon: Database, labelKey: 'nav.database' },
+  { to: '/strategy', icon: FlaskConical, labelKey: 'nav.strategy' },
+  { to: '/settings', icon: Settings2, labelKey: 'nav.settings' },
+  // Advanced
   { to: '/daily', icon: CalendarDays, labelKey: 'nav.daily' },
-  { to: '/whales', icon: Fish, labelKey: 'nav.whales' },
   { to: '/esports', icon: Gamepad2, labelKey: 'nav.esports' },
   { to: '/signals', icon: Activity, labelKey: 'nav.signals' },
-  { to: '/polymarket/account', icon: CreditCard, labelKey: 'nav.polymarketAccount' },
+  { to: '/whales', icon: Fish, labelKey: 'nav.whales' },
   { to: '/ai/config', icon: Settings2, labelKey: 'nav.aiConfig' },
   { to: '/ai/stats', icon: BarChart3, labelKey: 'nav.aiStats' },
   { to: '/prompt-variants', icon: Beaker, labelKey: 'nav.promptVariants' },
   { to: '/allocation', icon: PieChart, labelKey: 'nav.allocation' },
   { to: '/simulation', icon: LineChart, labelKey: 'nav.simulation' },
+  { to: '/polymarket/account', icon: CreditCard, labelKey: 'nav.polymarketAccount', featureFlag: 'polymarketAccountEnabled' },
 ];
 
 /**
@@ -61,6 +74,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const markets = useMarketStore((s) => s.markets);
   const whales = useWhaleStore((s) => s.whales);
   const fetchWhales = useWhaleStore((s) => s.fetchWhales);
+  const { polymarketAccountEnabled } = useFeatureFlagStore();
 
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -91,7 +105,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   }, [open, onClose]);
 
   const items = useMemo<CommandItem[]>(() => {
-    const pages: CommandItem[] = NAV_PAGES.map((p) => {
+    const pages: CommandItem[] = NAV_PAGES
+      .filter((p) => (p.featureFlag ? polymarketAccountEnabled : true))
+      .map((p) => {
       const label = t(p.labelKey);
       return {
         id: `page:${p.to}`,

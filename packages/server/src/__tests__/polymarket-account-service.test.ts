@@ -34,8 +34,11 @@ import { cacheGet } from '@polyrader/infra';
 import { PolymarketAccountService } from '../services/polymarket-account-service';
 
 describe('PolymarketAccountService', () => {
+  const envBackup = { ...process.env };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env = { ...envBackup };
     vi.mocked(cacheGet).mockResolvedValue(null);
     mocks.getTotalValue.mockResolvedValue(123.45);
     mocks.getCurrentPositions.mockResolvedValue([]);
@@ -120,11 +123,34 @@ describe('PolymarketAccountService', () => {
     const result = await new PolymarketAccountService().getOverview();
 
     expect(result.status.canReadPrivate).toBe(true);
-    expect(result.status.message).toMatch(/private data unavailable/i);
+    expect(result.status.message).toMatch(/private data unavailable|account data unavailable/i);
     expect(result.diagnostics).toHaveLength(8);
     expect(result.diagnostics.every((diagnostic) => !diagnostic.ok)).toBe(true);
     expect(result.diagnostics.map((diagnostic) => diagnostic.source)).toContain('data-api');
     expect(result.diagnostics.map((diagnostic) => diagnostic.source)).toContain('clob-api');
     expect(result.diagnostics[0].message).toBe('fetch failed');
+  });
+
+  it('returns degraded diagnostics when public account sources time out', async () => {
+    process.env.POLYMARKET_ACCOUNT_OPERATION_TIMEOUT_MS = '5';
+    mocks.getAccountStatus.mockReturnValue({
+      hasApiCredentials: false,
+      hasAddress: true,
+      address: '0xabc',
+      canReadPrivate: false,
+    });
+    mocks.getTotalValue.mockImplementation(() => new Promise(() => undefined));
+    mocks.getCurrentPositions.mockImplementation(() => new Promise(() => undefined));
+    mocks.getClosedPositions.mockImplementation(() => new Promise(() => undefined));
+    mocks.getActivity.mockImplementation(() => new Promise(() => undefined));
+    mocks.getTrades.mockImplementation(() => new Promise(() => undefined));
+
+    const result = await new PolymarketAccountService().getOverview();
+
+    expect(result.totalPositionValue).toBe(0);
+    expect(result.positions).toEqual([]);
+    expect(result.diagnostics).toHaveLength(5);
+    expect(result.diagnostics.every((diagnostic) => !diagnostic.ok)).toBe(true);
+    expect(result.diagnostics[0].message).toMatch(/timed out/i);
   });
 });
