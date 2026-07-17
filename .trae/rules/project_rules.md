@@ -380,4 +380,8 @@ npm run test && cd packages/web && npx playwright test --reporter=line
 - 首次推送提交 `6ffff3b` 已成功到达 `origin/main`，但 GitHub Actions run `29564418447` 在创建 jobs 前失败，且无 job 日志。
 - 原因是 `jobs.live-trading-smoke.if` 直接引用 `secrets.POLYMARKET_PRIVATE_KEY`；GitHub Actions 不允许在该 job 条件位置直接使用 secrets context。
 - 修复方式：job 条件改用非敏感仓库变量 `vars.POLYMARKET_LIVE_SMOKE_ENABLED == 'true'`；默认未配置时整项跳过，只有管理员显式启用后才在最终 smoke 步骤注入 secrets。
-- 后续验证：提交并推送 CI 修复后，确认 workflow 能正常创建全部 jobs；默认情况下 `Live Trading Smoke` 应显示 skipped，其余 CI jobs 正常执行。
+- 修复提交 `79baf62` 触发的 run `29564713257` 已正常创建 jobs；Lint、Type Check、Vitest、Cargo Check 和三平台 Bun Compile 通过，`Live Trading Smoke` 按默认策略 skipped。
+- 该 run 的 Browser E2E 进一步暴露 `real-llm-analysis.spec.ts` 套件归属错误：测试位于只启动 Vite 的 mock browser suite，却直接请求真实 `/api/esports/fetch-upcoming`，导致 201 passed、1 skipped、1 failed，Integration E2E 随后被跳过。
+- 修复方式：将真实 LLM 用例移至 `e2e-integration`，增加 `POLYRADER_REAL_LLM_E2E=1` 显式开关与 `test:e2e:real-llm` 独立脚本；标准 Browser E2E 不再依赖本地 API 或外部网络，Integration E2E 默认安全跳过真实用例。
+- 本地验证：标准 Browser E2E 201 passed / 1 skipped；Integration E2E 8 passed / 4 个显式外部环境用例 skipped，real LLM 用例按预期未连接真实数据源。
+- 后续验证：推送后确认新 GitHub Actions run 全部通过；需要真实数据时再显式运行 `POLYRADER_REAL_LLM_E2E=1 npm run test:e2e:real-llm`。

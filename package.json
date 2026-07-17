@@ -23,6 +23,7 @@
     "test:e2e": "npm run test:e2e --workspace=@polyrader/web",
     "test:e2e:integration": "npm run test:e2e:integration --workspace=@polyrader/web",
     "test:e2e:account": "npm run test:e2e:account --workspace=@polyrader/web",
+    "test:e2e:real-llm": "npm run test:e2e:real-llm --workspace=@polyrader/web",
     "test:e2e:live": "npm run test:e2e:live --workspace=@polyrader/web",
     "clean": "turbo run clean",
     "format": "prettier --write \"packages/**/*.{ts,tsx,json,css}\"",

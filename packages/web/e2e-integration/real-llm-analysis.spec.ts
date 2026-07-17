@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+const enabled = process.env.POLYRADER_REAL_LLM_E2E === '1';
+
+test.skip(
+  !enabled,
+  'Set POLYRADER_REAL_LLM_E2E=1 to run live market and configured LLM checks',
+);
+
 /**
  * Real-data E2E test.
  *
@@ -10,7 +17,7 @@ import { test, expect } from '@playwright/test';
  *   4. Trigger AI analysis and wait for real LLM results.
  *
  * Requirements:
- *   - Server and web must be running (`npm run dev:all`).
+ *   - Run with `POLYRADER_REAL_LLM_E2E=1 npm run test:e2e:real-llm`.
  *   - At least one LLM provider must be configured in /api/ai/config/keys.
  *   - Polygon/Polymarket must be reachable.
  */

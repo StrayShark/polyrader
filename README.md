@@ -131,6 +131,7 @@ polyrader/
 | Browser E2E | `npm run test:e2e` |
 | Integration E2E | `npm run test:e2e:integration` |
 | Account read-only E2E | `POLYMARKET_ACCOUNT_E2E=1 npm run test:e2e:account` |
+| Real market + LLM E2E | `POLYRADER_REAL_LLM_E2E=1 npm run test:e2e:real-llm` |
 | Web build | `npm run build:web` |
 | Server bundle | `npm run build:server` |
 | Tauri dev | `npm run tauri:dev` |
