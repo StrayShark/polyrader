@@ -374,3 +374,10 @@ npm run test && cd packages/web && npx playwright test --reporter=line
 1. **P0-必须** 推送后检查 GitHub Actions，确认 typecheck、Vitest、Playwright、Web build 和 Cargo check 全部通过。
 2. **P1-高** 使用旧版数据库副本验证 migration 021-029、模拟余额和历史分析记录均无丢失。
 3. **P1-高** 在 `StrayShark/polyrader` 做一次无正式发布副作用的 release 构建验证，检查安装包名称和 updater endpoint。
+
+### 推送后 CI 修复
+
+- 首次推送提交 `6ffff3b` 已成功到达 `origin/main`，但 GitHub Actions run `29564418447` 在创建 jobs 前失败，且无 job 日志。
+- 原因是 `jobs.live-trading-smoke.if` 直接引用 `secrets.POLYMARKET_PRIVATE_KEY`；GitHub Actions 不允许在该 job 条件位置直接使用 secrets context。
+- 修复方式：job 条件改用非敏感仓库变量 `vars.POLYMARKET_LIVE_SMOKE_ENABLED == 'true'`；默认未配置时整项跳过，只有管理员显式启用后才在最终 smoke 步骤注入 secrets。
+- 后续验证：提交并推送 CI 修复后，确认 workflow 能正常创建全部 jobs；默认情况下 `Live Trading Smoke` 应显示 skipped，其余 CI jobs 正常执行。

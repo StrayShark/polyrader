@@ -64,7 +64,7 @@ jobs:
   live-trading-smoke:
     name: Live Trading Smoke
     runs-on: ubuntu-latest
-    if: ${{ secrets.POLYMARKET_PRIVATE_KEY != '' }}
+    if: ${{ vars.POLYMARKET_LIVE_SMOKE_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
