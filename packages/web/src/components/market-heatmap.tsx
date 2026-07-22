@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Market } from '@polyrader/core';
+import type { Market } from '@polyrader/core/browser';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader } from '@/components/ui';
 import { cn } from '@/utils/cn';

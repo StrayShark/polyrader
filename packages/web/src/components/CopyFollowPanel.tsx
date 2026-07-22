@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Bell, Zap, Play, Loader2, Inbox, Users, ExternalLink } from 'lucide-react';
+import { Star, Bell, Zap, Play, Loader2, Inbox, Users, ExternalLink, Trophy, Waves, ShieldCheck, Layers3 } from 'lucide-react';
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
-import { useFeatureFlagStore } from '../stores/feature-flag-store';
 import { useI18n } from '../hooks/use-i18n';
 import { Badge, Button, Card, CardHeader, CardTitle, Input } from '@/components/ui';
 import { ProductModeNotice } from './ProductModeNotice';
 import { EmptyStateGuide } from './EmptyStateGuide';
 import { useToast } from './ToastProvider';
-import type { FollowedWallet, WalletCopySignal } from '@polyrader/core';
+import type { FollowedWallet, WalletCopySignal } from '@polyrader/core/browser';
+import { COPY_STRATEGY_PRESETS, matchesCopyStrategyPreset } from '@polyrader/core/browser';
+
+const STRATEGY_ICONS = {
+  high_win_rate: Trophy,
+  large_trade_momentum: Waves,
+  conservative: ShieldCheck,
+  diversified: Layers3,
+};
 
 export function CopyFollowPanel() {
   const { t } = useI18n();
-  const { liveTradingEnabled } = useFeatureFlagStore();
   const {
     followed,
     config,
@@ -24,8 +30,6 @@ export function CopyFollowPanel() {
     fetchSignals,
     fetchCopyTrades,
     fetchCopySummary,
-    tradingStatus,
-    fetchTradingStatus,
     unfollow,
     updateFollow,
     updateConfig,
@@ -39,9 +43,8 @@ export function CopyFollowPanel() {
       fetchSignals(),
       fetchCopyTrades(),
       fetchCopySummary(),
-      fetchTradingStatus(),
     ]);
-  }, [fetchFollowed, fetchConfig, fetchSignals, fetchCopyTrades, fetchCopySummary, fetchTradingStatus]);
+  }, [fetchFollowed, fetchConfig, fetchSignals, fetchCopyTrades, fetchCopySummary]);
 
   const refresh = () => {
     void Promise.all([fetchFollowed(), fetchSignals(), fetchCopyTrades(), fetchCopySummary()]);
@@ -49,8 +52,42 @@ export function CopyFollowPanel() {
 
   return (
     <div className="space-y-4">
-      <ProductModeNotice mode={config?.mode === 'live' ? 'live-copy' : 'paper-copy'} />
+      <ProductModeNotice mode="paper-copy" />
       <p className="text-xs text-muted-foreground" role="note">{t('whales.sameBlockDisclaimer')}</p>
+
+      <Card>
+        <CardHeader className="border-b px-6 py-3">
+          <CardTitle>{t('whales.strategyPresetsTitle')}</CardTitle>
+          <p className="text-xs text-muted-foreground">{t('whales.strategyPresetsHint')}</p>
+        </CardHeader>
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {COPY_STRATEGY_PRESETS.map((preset) => {
+            const Icon = STRATEGY_ICONS[preset.id];
+            const active = config ? matchesCopyStrategyPreset(config, preset) : false;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                data-testid={`copy-strategy-${preset.id}`}
+                onClick={() => updateConfig({ ...preset.config, mode: 'paper' })}
+                className={`min-h-24 rounded-md border p-3 text-left transition-colors ${
+                  active
+                    ? 'border-foreground bg-muted text-foreground'
+                    : 'border-border bg-background hover:bg-muted/50'
+                }`}
+              >
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Icon className="h-4 w-4" />
+                  {t(`whales.strategy.${preset.id}.title`)}
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {t(`whales.strategy.${preset.id}.desc`)}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
 
       <Card>
         <CardHeader className="border-b px-6 py-3">
@@ -74,20 +111,9 @@ export function CopyFollowPanel() {
               >
                 {config.requireUserConfirm ? t('whales.manualConfirm') : t('whales.autoCopyMode')}
               </Button>
-              <Badge variant={config.mode === 'live' ? 'red' : 'yellow'}>
-                {config.mode === 'live' ? t('whales.modeLive') : t('whales.modePaper')}
+              <Badge variant="yellow">
+                {t('whales.modePaper')}
               </Badge>
-              {liveTradingEnabled && tradingStatus?.canPlaceOrders ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => updateConfig({ mode: config.mode === 'live' ? 'paper' : 'live' })}
-                >
-                  {config.mode === 'live' ? t('whales.switchToPaper') : t('whales.switchToLive')}
-                </Button>
-              ) : liveTradingEnabled && tradingStatus?.liveEnabled ? (
-                <span className="text-xs text-muted-foreground">{t('whales.liveNotConfigured')}</span>
-              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <label className="space-y-1">
@@ -139,6 +165,17 @@ export function CopyFollowPanel() {
                   max="1"
                   defaultValue={config.minLeaderWinRate}
                   onBlur={(e) => updateConfig({ minLeaderWinRate: Number(e.target.value) })}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-muted-foreground">{t('whales.minLeaderRoi')}</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="-1"
+                  max="10"
+                  defaultValue={config.minLeaderRoi}
+                  onBlur={(e) => updateConfig({ minLeaderRoi: Number(e.target.value) })}
                 />
               </label>
               <label className="space-y-1">

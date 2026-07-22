@@ -5,7 +5,10 @@ import path from 'path';
 // In Tauri dev mode, the sidecar runs on port 13001.
 // In standalone web dev mode, the server runs on port 3001/3002.
 const SIDECAR_PORT = 13001;
-const isTauri = process.env.TAURI_ENV !== undefined || process.env.TAURI_DEV === 'true';
+const isTauri =
+  process.env.TAURI_ENV !== undefined ||
+  process.env.TAURI_ENV_PLATFORM !== undefined ||
+  process.env.TAURI_DEV === 'true';
 
 export default defineConfig({
   plugins: [react()],

@@ -1,7 +1,11 @@
 import { getApiBase } from './tauri-bridge';
-import type { AddressGraph } from '@polyrader/core';
+import type { AddressGraph } from '@polyrader/core/browser';
 
 let apiBasePromise: Promise<string> | null = null;
+
+interface ApiRequestInit extends RequestInit {
+  timeoutMs?: number;
+}
 
 export async function getBase(): Promise<string> {
   if (!apiBasePromise) {
@@ -10,16 +14,32 @@ export async function getBase(): Promise<string> {
   return apiBasePromise;
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T>(path: string, options?: ApiRequestInit): Promise<T> {
   const base = await getBase();
-  const { headers: customHeaders, ...restOptions } = options ?? {};
-  const response = await fetch(`${base}${path}`, {
-    ...restOptions,
-    headers: {
-      'Content-Type': 'application/json',
-      ...customHeaders,
-    },
-  });
+  const { headers: customHeaders, timeoutMs, signal: callerSignal, ...restOptions } = options ?? {};
+  const timeoutController = timeoutMs && !callerSignal ? new AbortController() : null;
+  const timeoutId = timeoutController
+    ? window.setTimeout(() => timeoutController.abort(), timeoutMs)
+    : null;
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...restOptions,
+      signal: callerSignal ?? timeoutController?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...customHeaders,
+      },
+    });
+  } catch (err) {
+    if (timeoutController?.signal.aborted) {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -32,8 +52,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, options?: Pick<ApiRequestInit, 'signal' | 'timeoutMs'>) =>
+    request<T>(path, { ...options, method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>

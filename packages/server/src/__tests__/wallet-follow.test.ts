@@ -69,7 +69,13 @@ describe('WalletFollowService', () => {
       resolvedPrice: 1,
     });
 
-    service.updateConfig({ enabled: true, requireUserConfirm: false, minLeaderSamples: 0, minLeaderWinRate: 0 });
+    service.updateConfig({
+      enabled: true,
+      requireUserConfirm: false,
+      minLeaderSamples: 0,
+      minLeaderWinRate: 0,
+      minLeaderRoi: 0,
+    });
     const signal = repo.insertSignal({
       leaderAddress: '0xleader',
       leaderTxHash: `0x${randomUUID().replace(/-/g, '')}`,

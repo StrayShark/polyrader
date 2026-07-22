@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Key, Wifi, BarChart3, Eye, EyeOff, RefreshCw, Loader2 } from 'lucide-react';
 import { useLLMStore } from '../stores/llm-store';
-import { BackgroundTasksPanel } from '../components/background-tasks-panel';
-import { BackupPanel } from '../components/BackupPanel';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
 import { useI18n } from '../hooks/use-i18n';
-import type { ConnectivityResult } from '@polyrader/core';
+import type { ConnectivityResult } from '@polyrader/core/browser';
 import { Button, Card, CardHeader, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Badge, Progress } from '@/components/ui';
 
-export function AiConfigPage() {
+export function AiConfigPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const { configs, isLoading, error, fetchConfigs, setKey, testConnection } = useLLMStore();
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -38,9 +36,13 @@ export function AiConfigPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('aiConfig.title')}</h1>
+          {embedded ? (
+            <h2 className="text-lg font-semibold">{t('aiConfig.title')}</h2>
+          ) : (
+            <h1 className="text-2xl font-semibold tracking-tight">{t('aiConfig.title')}</h1>
+          )}
           <p className="text-sm text-muted-foreground">{t('aiConfig.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchConfigs()} disabled={isLoading}>
@@ -48,10 +50,6 @@ export function AiConfigPage() {
           {t('common.refresh')}
         </Button>
       </div>
-
-      <BackgroundTasksPanel />
-
-      <BackupPanel />
 
       <DataState
         isLoading={isLoading}

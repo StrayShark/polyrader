@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import type { MatchInfo, Team, LLMAnalysisResult, LLMProvider, Lineup, PromptVariant } from '../types/index';
+import type { MatchInfo, Team, LLMAnalysisResult, LLMProvider, Lineup, MatchResult, Player, PromptVariant } from '../types/index';
 
 /**
  * PromptEngine — 4-layer prompt architecture for LLM win rate analysis
@@ -167,7 +167,8 @@ function buildContextFromTemplate(
   context: PromptContext,
   formatters: {
     formatMapPool: (maps: Array<{ map: string; winRate: number; matchesPlayed: number }>) => string;
-    formatPlayers: (players: Array<{ nickname: string; rating: number; role: string }>) => string;
+    formatPlayers: (players: Player[]) => string;
+    formatRecentMatches: (matches: MatchResult[]) => string;
     formatLineupSection: (teamLabel: string, lineup: Lineup, rowTemplate: string, warnings: Record<string, string>) => string;
     formatHeadToHead: (teamA: Team, teamB: Team, tmpl: ContextTemplateYaml) => string;
   },
@@ -191,13 +192,14 @@ function buildContextFromTemplate(
 
   // Team A
   prompt += `\n${s.team.header_prefix} A: ${teamA.name}\n`;
-  prompt += `- HLTV Rank: #${teamA.rank}\n`;
+  prompt += `- HLTV Rank: ${formatRank(teamA.rank)}\n`;
   prompt += `- Region: ${teamA.region}\n`;
   prompt += `- Recent Form (Last 10): ${((teamA.recentForm.winRate ?? 0) * 100).toFixed(0)}% win rate\n`;
   prompt += `- Streak: ${(teamA.recentForm.streak ?? 0) > 0 ? `W${teamA.recentForm.streak}` : `L${Math.abs(teamA.recentForm.streak ?? 0)}`}\n`;
   prompt += `- Avg Rating: ${(teamA.recentForm.averageRating ?? 0).toFixed(2)}\n`;
+  prompt += `- Recent Match Records:\n${formatters.formatRecentMatches(teamA.recentForm.last10Matches)}\n`;
   prompt += `- Map Pool:\n${formatters.formatMapPool(teamA.mapPool?.maps ?? [])}\n`;
-  prompt += `- Key Players:\n${formatters.formatPlayers((teamA.players ?? []).slice(0, 3))}\n`;
+  prompt += `- Active Roster Profiles:\n${formatters.formatPlayers((teamA.players ?? []).slice(0, 5))}\n`;
 
   if (match.lineups) {
     prompt += formatters.formatLineupSection('Team A', match.lineups.teamA, s.lineup.row_template, s.lineup.warnings);
@@ -205,13 +207,14 @@ function buildContextFromTemplate(
 
   // Team B
   prompt += `\n${s.team.header_prefix} B: ${teamB.name}\n`;
-  prompt += `- HLTV Rank: #${teamB.rank}\n`;
+  prompt += `- HLTV Rank: ${formatRank(teamB.rank)}\n`;
   prompt += `- Region: ${teamB.region}\n`;
   prompt += `- Recent Form (Last 10): ${((teamB.recentForm.winRate ?? 0) * 100).toFixed(0)}% win rate\n`;
   prompt += `- Streak: ${(teamB.recentForm.streak ?? 0) > 0 ? `W${teamB.recentForm.streak}` : `L${Math.abs(teamB.recentForm.streak ?? 0)}`}\n`;
   prompt += `- Avg Rating: ${(teamB.recentForm.averageRating ?? 0).toFixed(2)}\n`;
+  prompt += `- Recent Match Records:\n${formatters.formatRecentMatches(teamB.recentForm.last10Matches)}\n`;
   prompt += `- Map Pool:\n${formatters.formatMapPool(teamB.mapPool?.maps ?? [])}\n`;
-  prompt += `- Key Players:\n${formatters.formatPlayers((teamB.players ?? []).slice(0, 3))}\n`;
+  prompt += `- Active Roster Profiles:\n${formatters.formatPlayers((teamB.players ?? []).slice(0, 5))}\n`;
 
   if (match.lineups) {
     prompt += formatters.formatLineupSection('Team B', match.lineups.teamB, s.lineup.row_template, s.lineup.warnings);
@@ -275,15 +278,17 @@ function buildDefaultContext(context: PromptContext): string {
 - Maps: ${match.maps?.join(', ') ?? 'TBD'}
 
 ## Team A: ${teamA.name}
-- HLTV Rank: #${teamA.rank}
+- HLTV Rank: ${formatRank(teamA.rank)}
 - Region: ${teamA.region}
 - Recent Form (Last 10): ${((teamA.recentForm.winRate ?? 0) * 100)}% win rate
 - Streak: ${(teamA.recentForm.streak ?? 0) > 0 ? `W${teamA.recentForm.streak}` : `L${Math.abs(teamA.recentForm.streak ?? 0)}`}
 - Avg Rating: ${(teamA.recentForm.averageRating ?? 0).toFixed(2)}
+- Recent Match Records:
+${formatRecentMatchesDefault(teamA.recentForm.last10Matches)}
 - Map Pool:
 ${formatMapPoolDefault(teamA.mapPool?.maps ?? [])}
-- Key Players:
-${formatPlayersDefault((teamA.players ?? []).slice(0, 3))}
+- Active Roster Profiles:
+${formatPlayersDefault((teamA.players ?? []).slice(0, 5))}
 `;
 
   if (match.lineups) {
@@ -292,15 +297,17 @@ ${formatPlayersDefault((teamA.players ?? []).slice(0, 3))}
 
   prompt += `
 ## Team B: ${teamB.name}
-- HLTV Rank: #${teamB.rank}
+- HLTV Rank: ${formatRank(teamB.rank)}
 - Region: ${teamB.region}
 - Recent Form (Last 10): ${((teamB.recentForm.winRate ?? 0) * 100)}% win rate
 - Streak: ${(teamB.recentForm.streak ?? 0) > 0 ? `W${teamB.recentForm.streak}` : `L${Math.abs(teamB.recentForm.streak ?? 0)}`}
 - Avg Rating: ${(teamB.recentForm.averageRating ?? 0).toFixed(2)}
+- Recent Match Records:
+${formatRecentMatchesDefault(teamB.recentForm.last10Matches)}
 - Map Pool:
 ${formatMapPoolDefault(teamB.mapPool?.maps ?? [])}
-- Key Players:
-${formatPlayersDefault((teamB.players ?? []).slice(0, 3))}
+- Active Roster Profiles:
+${formatPlayersDefault((teamB.players ?? []).slice(0, 5))}
 `;
 
   if (match.lineups) {
@@ -327,16 +334,43 @@ Please analyze this match and provide your win probability prediction.`;
 }
 
 function formatMapPoolDefault(maps: Array<{ map: string; winRate: number; matchesPlayed: number }>): string {
-  return maps
+  if (maps.length === 0) return '  - No verified map records available';
+  return [...maps]
     .sort((a, b) => (b.winRate ?? 0) - (a.winRate ?? 0))
     .map((m) => `  - ${m.map}: ${((m.winRate ?? 0) * 100).toFixed(0)}% (${m.matchesPlayed ?? 0} matches)`)
     .join('\n');
 }
 
-function formatPlayersDefault(players: Array<{ nickname: string; rating: number; role: string }>): string {
+function formatPlayersDefault(players: Player[]): string {
+  if (players.length === 0) return '  - No verified roster profiles available';
   return players
-    .map((p) => `  - ${p.nickname ?? 'Unknown'} (${p.role ?? ''}): ${(p.rating ?? 1.0).toFixed(2)} rating`)
+    .map((player) => [
+      `  - ${player.nickname || 'Unknown'}`,
+      `role ${player.role || 'N/A'}`,
+      `rating ${formatMetric(player.rating, 2)}`,
+      `K/D ${formatMetric(player.kdRatio, 2)}`,
+      `HS ${player.headshotPercent > 0 ? `${player.headshotPercent.toFixed(1)}%` : 'N/A'}`,
+      `maps ${player.mapsPlayed > 0 ? player.mapsPlayed : 'N/A'}`,
+    ].join(' | '))
     .join('\n');
+}
+
+function formatRecentMatchesDefault(matches: MatchResult[]): string {
+  if (matches.length === 0) return '  - No verified recent match records available';
+  return matches.slice(0, 10).map((match) => {
+    const date = match.date ? match.date.slice(0, 10) : 'date N/A';
+    const result = match.result === 'win' ? 'W' : match.result === 'loss' ? 'L' : 'D';
+    const event = match.event ? ` | ${match.event}` : '';
+    return `  - ${date} | ${result} ${match.score || '-'} vs ${match.opponent || 'Unknown'}${event}`;
+  }).join('\n');
+}
+
+function formatRank(rank: number): string {
+  return Number.isFinite(rank) && rank > 0 && rank < 999 ? `#${rank}` : 'N/A';
+}
+
+function formatMetric(value: number, fractionDigits: number): string {
+  return Number.isFinite(value) && value > 0 ? value.toFixed(fractionDigits) : 'N/A';
 }
 
 function formatLineupSectionDefault(teamLabel: string, lineup: Lineup): string {
@@ -355,7 +389,7 @@ function formatLineupSectionDefault(teamLabel: string, lineup: Lineup): string {
   section += `\n| Player | Role | Rating | Impact | Standin | Maps w/Team |\n`;
   section += `|--------|------|--------|--------|---------|-------------|\n`;
   for (const p of lineup.players) {
-    section += `| ${p.nickname} | ${p.role} | ${(p.rating ?? 1.0).toFixed(2)} | ${p.impactScore} | ${p.isStandin ? '⚠️ YES' : 'No'} | ${p.mapsOnRecord} |\n`;
+    section += `| ${p.nickname} | ${p.role} | ${formatMetric(p.rating, 2)} | ${p.impactScore} | ${p.isStandin ? '⚠️ YES' : 'No'} | ${p.mapsOnRecord} |\n`;
   }
 
   return section;
@@ -430,6 +464,7 @@ export class PromptEngine {
     return buildContextFromTemplate(this.contextTemplate, context, {
       formatMapPool: formatMapPoolDefault,
       formatPlayers: formatPlayersDefault,
+      formatRecentMatches: formatRecentMatchesDefault,
       formatLineupSection: (teamLabel, lineup, rowTemplate, warnings) => {
         let section = `\n### ${teamLabel} Starting Lineup\n`;
 
@@ -449,7 +484,7 @@ export class PromptEngine {
           section += `${rowTemplate
             .replace('{{nickname}}', p.nickname)
             .replace('{{role}}', p.role)
-            .replace('{{rating}}', (p.rating ?? 1.0).toFixed(2))
+            .replace('{{rating}}', formatMetric(p.rating, 2))
             .replace('{{impactScore}}', String(p.impactScore))
             .replace('{{standinMark}}', p.isStandin ? '⚠️ YES' : 'No')
             .replace('{{mapsOnRecord}}', String(p.mapsOnRecord))}\n`;

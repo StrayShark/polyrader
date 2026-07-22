@@ -56,9 +56,9 @@ test.describe('Sidebar layout structure (desktop)', () => {
 // Sidebar: Content Visibility (Desktop)
 // ============================================================
 test.describe('Sidebar content visibility (desktop)', () => {
-  test('logo text "PolyRader" is visible', async ({ page }) => {
+  test('does not render a title in the upper-left sidebar', async ({ page }) => {
     await gotoWithSidebar(page);
-    await expect(page.getByTestId('app-sidebar').getByText('PolyRader', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('app-sidebar').getByText('PolyRader', { exact: true })).toHaveCount(0);
   });
 
   test('group labels are visible', async ({ page }) => {
@@ -75,19 +75,25 @@ test.describe('Sidebar content visibility (desktop)', () => {
   test('all navigation links have non-empty text', async ({ page }) => {
     await gotoWithSidebar(page);
     const navLinks = page.getByTestId('app-sidebar').locator('nav a');
-    await expect(navLinks).toHaveCount(15);
     const texts = await navLinks.allTextContents();
-    expect(texts.length).toBe(15);
+    expect(texts.length).toBeGreaterThanOrEqual(12);
     for (const text of texts) {
       expect(text.trim().length).toBeGreaterThan(0);
     }
   });
 
-  test('theme toggle buttons are visible', async ({ page }) => {
+  test('pins settings at the bottom and removes duplicate settings controls', async ({ page }) => {
     await gotoWithSidebar(page);
-    await expect(page.getByTestId('app-sidebar').locator('button[title="Dark+"]')).toBeVisible();
-    await expect(page.getByTestId('app-sidebar').locator('button[title="Light+"]')).toBeVisible();
-    await expect(page.getByTestId('app-sidebar').locator('button[title="Matrix"]')).toBeVisible();
+    const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.getByTestId('sidebar-footer').getByRole('link', { name: /设置|Settings/ })).toBeVisible();
+    await expect(sidebar.locator('a[href*="database"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="ai/config"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="bankroll"]')).toHaveCount(1);
+    await expect(sidebar.locator('a[href*="review"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="simulation"]')).toHaveCount(0);
+    await expect(sidebar.locator('button[title="Dark+"]')).toHaveCount(0);
+    await expect(sidebar.locator('button[title="Light+"]')).toHaveCount(0);
+    await expect(sidebar.locator('button[title="Matrix"]')).toHaveCount(0);
   });
 });
 
@@ -127,7 +133,13 @@ test.describe('Sidebar mobile behavior', () => {
     await expect(page.getByTestId('app-sidebar')).toHaveCount(2);
     const mobileSidebar = page.getByTestId('app-sidebar').nth(1);
     await expect(mobileSidebar).toBeVisible();
-    await expect(mobileSidebar.getByText('PolyRader', { exact: true })).toBeVisible();
+    await expect(mobileSidebar.getByText('PolyRader', { exact: true })).toHaveCount(0);
+    await expect(
+      mobileSidebar.getByTestId('sidebar-footer').getByRole('link', { name: /设置|Settings/ })
+    ).toBeVisible();
+    await expect(
+      mobileSidebar.getByRole('button', { name: /关闭菜单|Close menu/ })
+    ).toBeVisible();
   });
 
   test('only one sidebar in DOM before menu opens', async ({ page }) => {

@@ -10,6 +10,7 @@ import { runMigrations } from '@polyrader/infra';
 import { checkHealth, setWsServer } from './health';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
+import { isAllowedSidecarOrigin } from './utils/cors-origin';
 import { sharedPolymarketStream } from './services/polymarket-stream-service';
 
 // Validate environment at startup
@@ -21,6 +22,9 @@ if (!envResult.valid) {
 for (const warning of envResult.warnings) {
   logger.warn(warning);
 }
+
+// Finish schema upgrades before controllers can receive traffic or background jobs start.
+runMigrations();
 
 // Parse --port from command line args (Tauri sidecar mode)
 function parsePort(): number {
@@ -53,9 +57,9 @@ if (!isSidecar) {
 
 app.use(cors({
   origin: isSidecar
-    ? ['http://localhost', /^http:\/\/localhost:\d+$/]
+    ? (origin, callback) => callback(null, isAllowedSidecarOrigin(origin))
     : (isDev ? true : (process.env.CORS_ORIGIN ?? 'http://localhost:5173')),
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
   maxAge: 86400,
 }));
@@ -142,8 +146,7 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   });
 });
 
-// Database migrations + background jobs
-runMigrations();
+// Background jobs start only after the server and database are ready.
 if (process.env.POLYRADER_SKIP_CRON !== '1') {
   startCronJobs();
 } else {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Clock, Database, ExternalLink, Link2, Loader2, RefreshCw, Save, ShieldCheck, Users } from 'lucide-react';
-import type { MatchLineups, TeamBrief } from '@polyrader/core';
+import type { MatchLineups, TeamBrief } from '@polyrader/core/browser';
 import { Button, Badge, Card, CardHeader, CardTitle, Input, Skeleton } from '@/components/ui';
 import { api } from '../utils/api';
 import { cn } from '../utils/cn';

@@ -34,17 +34,51 @@ const MOCK_REVIEW_DETAIL = {
   closingLineValue: -0.0314,
 };
 
+const MOCK_REVIEW_SUMMARY = {
+  totalSettled: 1,
+  winRate: 1,
+  totalPnl: 80,
+  avgBrier: 0.16,
+  avgClv: -0.0314,
+  avgRoi: 0.8,
+  maxDrawdown: 0,
+  errorTagStats: [],
+  byFormat: [{ key: 'BO3', count: 1, winRate: 1, totalPnl: 80 }],
+  byTier: [{ key: 'unknown', count: 1, winRate: 1, totalPnl: 80 }],
+  suggestions: [{
+    id: 'need_more_samples',
+    severity: 'info',
+    messageKey: 'review.suggestion_needMoreSamples',
+    params: { count: 1 },
+  }],
+};
+
 test.describe('Review page', () => {
   test.beforeEach(async ({ page }) => {
     await setupCommonMocks(page);
 
-    await page.route('**/api/sim/reviews**', (route) =>
+    await page.route('**/api/sim/reviews/summary**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [MOCK_REVIEW_DETAIL] }),
+        body: JSON.stringify({ data: MOCK_REVIEW_SUMMARY }),
       }),
     );
+
+    await page.route('**/api/sim/reviews**', (route) => {
+      if (route.request().url().includes('/reviews/summary')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: MOCK_REVIEW_SUMMARY }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [MOCK_REVIEW_DETAIL] }),
+      });
+    });
 
     await page.route('**/api/sim/bets/*/review', (route) => {
       if (route.request().method() === 'POST') {
@@ -75,9 +109,10 @@ test.describe('Review page', () => {
   });
 
   test('lists settled bets and opens review dialog', async ({ page }) => {
-    await page.goto('/#/review');
+    await page.goto('/#/bankroll?section=review');
 
-    await expect(page.getByRole('heading', { name: /复盘中心|Review Center/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /我的账本|My Ledger/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /复盘中心|Review Center/ })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('cell', { name: /spirit-vs-g2/ })).toBeVisible();
     await expect(page.getByText('$100.00').first()).toBeVisible();
 
@@ -88,7 +123,7 @@ test.describe('Review page', () => {
   });
 
   test('saves review with error tags and note', async ({ page }) => {
-    await page.goto('/#/review');
+    await page.goto('/#/bankroll?section=review');
     await page.getByRole('button', { name: /复盘|Review/ }).first().click();
 
     await page.getByPlaceholder(/收盘赔率|Closing Odds/).fill('1.75');
@@ -108,7 +143,7 @@ test.describe('Review page', () => {
   });
 
   test('has no real trading CTA', async ({ page }) => {
-    await page.goto('/#/review');
+    await page.goto('/#/bankroll?section=review');
     const main = page.locator('main');
     for (const keyword of ['实盘下单', '真实限价单', 'Deposit', 'market-orders']) {
       await expect(main).not.toContainText(keyword);

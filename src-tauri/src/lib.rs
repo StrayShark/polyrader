@@ -116,7 +116,15 @@ fn load_sidecar_env_vars() -> Vec<(String, String)> {
             continue;
         };
         let key = key.trim();
-        if key.starts_with("POLYMARKET_") || key == "GRID_API_KEY" || key.starts_with("GRID_") {
+        if key.starts_with("POLYMARKET_")
+            || key.starts_with("GRID_")
+            || key.starts_with("RIOT_")
+            || key.starts_with("LIQUIPEDIA_")
+            || key.starts_with("OPENDOTA_")
+            || key == "STEAM_WEB_API_KEY"
+            || key.starts_with("POLYRADER_ENABLE_")
+            || key.starts_with("POLYRADER_LIQUIPEDIA_")
+        {
             let cleaned = value.trim().trim_matches('"').trim_matches('\'').to_string();
             if !cleaned.is_empty() {
                 vars.push((key.to_string(), cleaned));

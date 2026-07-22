@@ -49,9 +49,20 @@ describe('MatchReconciliationService', () => {
       liquidity: 0, startDate: '2026-07-14T08:00:00Z', endDate: '2026-07-14T12:00:00Z',
       status: 'active', tags: ['local-sim'],
     });
+    marketRepo.upsert({
+      conditionId: 'local-hltv-2395534-map-2', canonicalMatchId: 'hltv:2395534', slug: 'local-hltv-2395534-map-2',
+      question: 'Counter-Strike: ENCE vs SPARTA (BO3) - European Pro League - Map 2 Winner', description: '',
+      outcomes: ['ENCE', 'SPARTA'], outcomePrices: ['0.5', '0.5'], volume: 0, volume24h: 0,
+      liquidity: 0, startDate: '2026-07-14T08:00:00Z', endDate: '2026-07-14T12:00:00Z',
+      status: 'active', tags: ['local-sim', 'map-winner'],
+    });
     const placed = new SimBetService().placeBet({
       betType: 'single', stake: 100,
       legs: [{ matchId: 'local-hltv-2395534', marketId: 'local-hltv-2395534', selection: 'SPARTA', odds: 2 }],
+    });
+    const mapBet = new SimBetService().placeBet({
+      betType: 'single', stake: 50,
+      legs: [{ matchId: 'local-hltv-2395534', marketId: 'local-hltv-2395534-map-2', selection: 'SPARTA', odds: 1.8 }],
     });
 
     const service = new MatchReconciliationService({
@@ -61,15 +72,22 @@ describe('MatchReconciliationService', () => {
           matchId: '2395534', available: true, status: 'finished', teamAId: '4869', teamBId: '13214',
           teamAName: 'ENCE', teamBName: 'SPARTA', teamAScore: 0, teamBScore: 2,
           winnerTeamId: '13214', winnerTeamName: 'SPARTA', url: '',
+          maps: [
+            { mapNumber: 1, winnerTeamName: 'ENCE', teamARounds: 13, teamBRounds: 10 },
+            { mapNumber: 2, winnerTeamName: 'SPARTA', teamARounds: 8, teamBRounds: 13 },
+            { mapNumber: 3, winnerTeamName: 'SPARTA', teamARounds: 11, teamBRounds: 13 },
+          ],
         }),
       },
     });
 
     const result = await service.reconcileMatch('local-hltv-2395534');
 
-    expect(result).toMatchObject({ status: 'finished', winnerTeamName: 'SPARTA', settledBets: 1, resolvedMarkets: 1 });
+    expect(result).toMatchObject({ status: 'finished', winnerTeamName: 'SPARTA', settledBets: 2, resolvedMarkets: 2 });
     expect(llmRepo.getMatch('local-hltv-2395534')).toMatchObject({ status: 'finished', winner_id: '13214' });
     expect(marketRepo.findByConditionId('local-hltv-2395534')).toMatchObject({ status: 'resolved', resolvedOutcome: 'SPARTA' });
+    expect(marketRepo.findByConditionId('local-hltv-2395534-map-2')).toMatchObject({ status: 'resolved', resolvedOutcome: 'SPARTA' });
     expect(new SimBetRepository().getById(placed.bet.id)).toMatchObject({ status: 'settled', result: 'won', pnl: 100 });
+    expect(new SimBetRepository().getById(mapBet.bet.id)).toMatchObject({ status: 'settled', result: 'won' });
   });
 });

@@ -7,20 +7,21 @@ export class WhaleRepository {
       `SELECT * FROM whales ORDER BY total_volume DESC LIMIT ?`,
       limit,
     );
-    return rows.map(this.mapRow);
+    return rows.map((row) => this.mapRow(row));
   }
 
-  findByWinRate(limit = 50, minSettledBets = 5, minWinRate = 0): Whale[] {
+  findByWinRate(limit = 50, minSettledBets = 5, minWinRate = 0, minRoi = 0): Whale[] {
     const rows = query<Record<string, unknown>>(
       `SELECT * FROM whales
-       WHERE settled_bets >= ? AND win_rate >= ?
+       WHERE settled_bets >= ? AND win_rate >= ? AND COALESCE(roi, 0) >= ?
        ORDER BY win_rate DESC, settled_bets DESC, pnl DESC
        LIMIT ?`,
       minSettledBets,
       minWinRate,
+      minRoi,
       limit,
     );
-    return rows.map(this.mapRow);
+    return rows.map((row) => this.mapRow(row));
   }
 
   findDistinctAddresses(): string[] {
@@ -109,6 +110,7 @@ export class WhaleRepository {
       `INSERT INTO whales (address, label, total_volume, total_positions, active_positions, win_rate, pnl, suspicious_score, recent_trades, last_active, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(address) DO UPDATE SET
+         label = COALESCE(excluded.label, whales.label),
          total_volume = excluded.total_volume,
          total_positions = excluded.total_positions,
          active_positions = excluded.active_positions,
@@ -133,7 +135,7 @@ export class WhaleRepository {
 
   getTrades(address: string, limit = 50): WhaleTrade[] {
     const rows = query<Record<string, unknown>>(
-      `SELECT * FROM whale_trades WHERE address = ? ORDER BY timestamp ASC LIMIT ?`,
+      `SELECT * FROM whale_trades WHERE address = ? ORDER BY timestamp DESC LIMIT ?`,
       address,
       limit,
     );

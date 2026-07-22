@@ -13,24 +13,39 @@ import { EmptyStateGuide } from '../components/EmptyStateGuide';
 import { useWebSocket } from '../hooks/use-websocket';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, CardTitle, Badge, Button, Progress, Tabs, TabsList, TabsTrigger } from '@/components/ui';
-import type { AddressGraph as AddressGraphData } from '@polyrader/core';
+import type { AddressGraph as AddressGraphData } from '@polyrader/core/browser';
 import { getAddressGraph, api } from '../utils/api';
 
 type PageTab = WhaleListMode | 'follow';
 
 const VOLUME_GRID = 'grid grid-cols-[1fr_repeat(5,minmax(0,1fr))] gap-0 px-6 py-3 text-sm items-center';
-const WIN_RATE_GRID = 'grid grid-cols-[1fr_repeat(5,minmax(0,1fr))] gap-0 px-6 py-3 text-sm items-center';
+const WIN_RATE_GRID = 'grid grid-cols-[1fr_repeat(6,minmax(0,1fr))] gap-0 px-6 py-3 text-sm items-center';
+
+function formatUpdatedAt(value: string | undefined): string {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString();
+}
 
 export function WhalesPage() {
-  const { whales, listMode, isLoading, error, fetchWhales, setListMode } = useWhaleStore();
+  const { whales, listMode, isLoading, error, fetchWhales, refreshWhales, setListMode } = useWhaleStore();
   const { fetchFollowed, fetchSignals, followed } = useWalletFollowStore();
   const { subscribe } = useWebSocket();
   const { t } = useI18n();
   const [pageTab, setPageTab] = useState<PageTab>('volume');
+  const [minWinRate, setMinWinRate] = useState(0.6);
+  const [minSamples, setMinSamples] = useState(10);
+  const [minRoi, setMinRoi] = useState(0.02);
 
   const loadWhales = useCallback((mode: WhaleListMode = listMode) => {
-    void fetchWhales({ sort: mode, minSamples: mode === 'win_rate' ? 10 : 0 });
-  }, [fetchWhales, listMode]);
+    void fetchWhales({
+      sort: mode,
+      minSamples: mode === 'win_rate' ? minSamples : 0,
+      minWinRate: mode === 'win_rate' ? minWinRate : 0,
+      minRoi: mode === 'win_rate' ? minRoi : 0,
+    });
+  }, [fetchWhales, listMode, minSamples, minWinRate, minRoi]);
 
   useEffect(() => {
     void fetchWhales({ sort: 'volume' });
@@ -57,7 +72,13 @@ export function WhalesPage() {
   useEffect(() => {
     void api.get<{
       dependencies?: {
-        whaleIngestion?: { status: string; lastScanAt?: string; lastIngestedCount?: number };
+        whaleIngestion?: {
+          status: string;
+          source?: string;
+          lastScanAt?: string;
+          lastIngestedCount?: number;
+          lastError?: string;
+        };
       };
     }>('/health').then((body) => {
       const whale = body.dependencies?.whaleIngestion;
@@ -66,6 +87,7 @@ export function WhalesPage() {
       setIngestionHint(
         t('whales.ingestionStatus', {
           status: whale.status,
+          source: whale.source ?? t('whales.sourceUnavailable'),
           time: when,
           count: whale.lastIngestedCount ?? 0,
         }),
@@ -101,8 +123,37 @@ export function WhalesPage() {
     loadWhales(nextMode);
   };
 
+  const handleRefresh = async () => {
+    if (isFollowTab) {
+      await fetchFollowed();
+      return;
+    }
+    const result = await refreshWhales({
+      sort: isWinRateMode ? 'win_rate' : 'volume',
+      minSamples: isWinRateMode ? minSamples : 0,
+      minWinRate: isWinRateMode ? minWinRate : 0,
+      minRoi: isWinRateMode ? minRoi : 0,
+    });
+    if (result) {
+      setIngestionHint(t('whales.refreshSummary', {
+        source: result.ingestion.source ?? t('whales.sourceUnavailable'),
+        trades: result.ingestedTrades,
+        wallets: result.discovered,
+        qualified: result.qualified,
+      }));
+      if (result.discoveryError) {
+        setIngestionHint((prev) => `${prev ?? ''} · ${t('whales.discoveryPartial', { error: result.discoveryError! })}`);
+      }
+      await fetchGraph();
+    }
+  };
+
   const highRiskCount = whales.filter((w) => w.suspiciousScore.total >= 50).length;
-  const highWinRateCount = whales.filter((w) => (w.settledBets ?? 0) >= 10 && w.winRate >= 0.6).length;
+  const highWinRateCount = whales.filter((w) => (
+    (w.settledBets ?? 0) >= minSamples
+    && w.winRate >= minWinRate
+    && (w.roi ?? 0) >= minRoi
+  )).length;
   const totalVolume = whales.reduce((s, w) => s + w.totalVolume, 0);
   const isWinRateMode = pageTab === 'win_rate';
   const isFollowTab = pageTab === 'follow';
@@ -117,7 +168,7 @@ export function WhalesPage() {
             <p className="mt-1 text-xs text-muted-foreground">{ingestionHint}</p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => (isFollowTab ? fetchFollowed() : loadWhales())} disabled={isLoading}>
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           {t('common.refresh')}
         </Button>
@@ -191,6 +242,61 @@ export function WhalesPage() {
                   <p className="text-xs text-muted-foreground">{t('whales.winRateLeaderboardHint')}</p>
                 )}
               </div>
+              {isWinRateMode && (
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <label className="flex items-center gap-2 text-muted-foreground">
+                    {t('whales.minWinRateFilter')}
+                    <select
+                      aria-label={t('whales.minWinRateFilter')}
+                      value={minWinRate}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setMinWinRate(value);
+                        void fetchWhales({ sort: 'win_rate', minSamples, minWinRate: value, minRoi });
+                      }}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
+                    >
+                      <option value={0.6}>60%</option>
+                      <option value={0.65}>65%</option>
+                      <option value={0.7}>70%</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-muted-foreground">
+                    {t('whales.minSamplesFilter')}
+                    <select
+                      aria-label={t('whales.minSamplesFilter')}
+                      value={minSamples}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setMinSamples(value);
+                        void fetchWhales({ sort: 'win_rate', minSamples: value, minWinRate, minRoi });
+                      }}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-muted-foreground">
+                    {t('whales.minRoiFilter')}
+                    <select
+                      aria-label={t('whales.minRoiFilter')}
+                      value={minRoi}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setMinRoi(value);
+                        void fetchWhales({ sort: 'win_rate', minSamples, minWinRate, minRoi: value });
+                      }}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
+                    >
+                      <option value={0.02}>2%</option>
+                      <option value={0.05}>5%</option>
+                      <option value={0.1}>10%</option>
+                    </select>
+                  </label>
+                </div>
+              )}
             </CardHeader>
             {whales.length > 0 && (
               <VirtualList
@@ -205,6 +311,7 @@ export function WhalesPage() {
                       <span className="text-right">{t('whales.settledBets')}</span>
                       <span className="text-right">{t('whales.roi')}</span>
                       <span className="text-right">{t('whales.pnl')}</span>
+                      <span className="text-right">{t('whales.updatedAt')}</span>
                       <span className="text-right">{t('whales.volume')}</span>
                     </div>
                   ) : (
@@ -240,6 +347,9 @@ export function WhalesPage() {
                         </span>
                         <span className={`text-right tabular-nums ${w.pnl >= 0 ? 'text-green' : 'text-red'}`}>
                           {w.pnl >= 0 ? '+' : ''}${w.pnl.toFixed(0)}
+                        </span>
+                        <span className="text-right text-[11px] text-muted-foreground tabular-nums">
+                          {formatUpdatedAt(w.performanceUpdatedAt ?? w.lastActive)}
                         </span>
                         <span className="text-right tabular-nums">
                           ${(w.totalVolume / 1000).toFixed(1)}K

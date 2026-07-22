@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PromptVariant } from '@polyrader/core';
+import type { PromptVariant } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface PromptVariantState {

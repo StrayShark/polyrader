@@ -7,8 +7,9 @@ import {
 } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
 import { ProductModeNotice } from '../components/ProductModeNotice';
+import { PaperPolicyPanel } from '../components/PaperPolicyPanel';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import type { LLMProvider, SimulationConfig } from '@polyrader/core';
+import type { LLMProvider, SimulationConfig } from '@polyrader/core/browser';
 
 const ALL_PROVIDERS: LLMProvider[] = ['openai', 'anthropic', 'google', 'deepseek', 'xai', 'groq', 'qwen', 'moonshot', 'zhipu', 'doubao', 'minimax', 'hunyuan'];
 
@@ -33,7 +34,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
-export function SimulationPage() {
+export function SimulationPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const { config, providerStats, equityCurves, isLoading, error, fetchConfig, updateConfig, fetchProviderStats, fetchEquityCurves, runBacktest, backtestResult } = useSimulationStore();
   const [formData, setFormData] = useState<Partial<SimulationConfig>>({});
@@ -90,11 +91,13 @@ export function SimulationPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('simulation.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('simulation.subtitle')}</p>
-        </div>
+      <div className={embedded ? 'flex justify-end' : 'flex items-center justify-between'}>
+        {!embedded && (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t('simulation.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('simulation.subtitle')}</p>
+          </div>
+        )}
         <Button variant="outline" onClick={runBacktest} disabled={isLoading}>
           <Rewind className="mr-2 h-4 w-4" />
           {t('simulation.backtest')}
@@ -102,6 +105,7 @@ export function SimulationPage() {
       </div>
 
       <ProductModeNotice mode="simulation" />
+      <PaperPolicyPanel />
 
       {/* Configuration Panel */}
       <Card>

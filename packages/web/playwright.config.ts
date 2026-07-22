@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const port = process.env.PLAYWRIGHT_PORT ?? '5174';
+const baseURL = `http://localhost:${port}`;
+
 export default defineConfig({
   testDir: './e2e-browser',
   // Single worker to avoid race conditions on shared dev server
@@ -14,7 +17,7 @@ export default defineConfig({
     threshold: 0.2,
   },
   use: {
-    baseURL: 'http://localhost:5174',
+    baseURL,
     trace: 'on-first-retry',
     viewport: { width: 1280, height: 720 },
   },
@@ -25,8 +28,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --port 5174',
-    url: 'http://localhost:5174',
+    command: `npm run dev -- --port ${port}`,
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },

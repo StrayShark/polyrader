@@ -6,7 +6,7 @@ import { useBankrollStore } from '../stores/bankroll-store';
 import { useTrainingSessionStore } from '../stores/training-session-store';
 import { RiskMeter } from '../components/RiskMeter';
 import { cn } from '../utils/cn';
-import type { EquityCurveGranularity, SimBet, TrainingSession, TrainingGoalType, TrainingSessionStatus } from '@polyrader/core';
+import type { EquityCurveGranularity, SimBet, TrainingSession, TrainingGoalType, TrainingSessionStatus } from '@polyrader/core/browser';
 
 const GRANULARITIES: EquityCurveGranularity[] = ['day', 'week', 'month', 'all'];
 
@@ -23,11 +23,11 @@ function BetStatusBadge({ status }: { status: SimBet['status'] }) {
   return <Badge variant={variant as never}>{status}</Badge>;
 }
 
-export function BankrollPage() {
+export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const { summary, granularity, isLoading, error, fetchSummary, setGranularity } = useBankrollStore();
   const { activeSessions, fetchSessions, createSession, updateSession, deleteSession, refreshProgress } = useTrainingSessionStore();
-  const [activeTab, setActiveTab] = useState<'open' | 'settled'>('open');
+  const [activeTab, setActiveTab] = useState<'open' | 'settled' | 'voided'>('open');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<TrainingSession | null>(null);
   const [formTitle, setFormTitle] = useState('');
@@ -47,10 +47,12 @@ export function BankrollPage() {
   if (error && !summary) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Wallet className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
-        </div>
+        {!embedded && (
+          <div className="flex items-center gap-2">
+            <Wallet className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
+          </div>
+        )}
         <div className="rounded-lg border border-red/20 bg-red/5 p-4 text-sm text-red">
           {error}
           <Button variant="outline" size="sm" className="ml-3" onClick={() => fetchSummary()}>
@@ -64,10 +66,12 @@ export function BankrollPage() {
   if (isLoading || !summary) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Wallet className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
-        </div>
+        {!embedded && (
+          <div className="flex items-center gap-2">
+            <Wallet className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton key={index} className="h-24 w-full" />
@@ -78,8 +82,8 @@ export function BankrollPage() {
     );
   }
 
-  const { account, todayPnl, openExposure, equityCurve, openBets, settledBets, riskMetrics } = summary;
-  const betsToShow = activeTab === 'open' ? openBets : settledBets;
+  const { account, todayPnl, openExposure, equityCurve, openBets, settledBets, voidedBets, riskMetrics } = summary;
+  const betsToShow = activeTab === 'open' ? openBets : activeTab === 'settled' ? settledBets : (voidedBets ?? []);
 
   function resetForm() {
     setFormTitle('');
@@ -153,10 +157,12 @@ export function BankrollPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Wallet className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
-      </div>
+      {!embedded && (
+        <div className="flex items-center gap-2">
+          <Wallet className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
+        </div>
+      )}
 
       {/* Balance cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -439,13 +445,16 @@ export function BankrollPage() {
             <Trophy className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-sm">{t('bankroll.bets')}</CardTitle>
           </div>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'settled')}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'settled' | 'voided')}>
             <TabsList>
               <TabsTrigger value="open" className="text-xs">
                 {t('bankroll.openBets')} ({openBets.length})
               </TabsTrigger>
               <TabsTrigger value="settled" className="text-xs">
                 {t('bankroll.settledBets')} ({settledBets.length})
+              </TabsTrigger>
+              <TabsTrigger value="voided" className="text-xs">
+                {t('bankroll.voidedBets')} ({(voidedBets ?? []).length})
               </TabsTrigger>
             </TabsList>
           </Tabs>

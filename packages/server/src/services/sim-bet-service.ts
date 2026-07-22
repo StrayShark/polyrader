@@ -3,6 +3,8 @@ import {
   SimBetRepository,
   SimAccountRepository,
   OddsSnapshotRepository,
+  LLMRepository,
+  Cs2MatchSnapshotRepository,
 } from '@polyrader/infra';
 import { oddsToImpliedProbability, calculateEdge, calculateEv } from '@polyrader/core';
 import { SettlementService } from './settlement-service';
@@ -12,10 +14,27 @@ export interface SimBetWithLegs {
   legs: SimBetLeg[];
 }
 
+function parseMaybeJson(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  try {
+    const parsed = JSON.parse(String(value)) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 export class SimBetService {
   private betRepo = new SimBetRepository();
   private accountRepo = new SimAccountRepository();
   private snapshotRepo = new OddsSnapshotRepository();
+  private matchSnapshotRepo = new Cs2MatchSnapshotRepository();
+  private llmRepo = new LLMRepository();
   private settlementService = new SettlementService();
 
   listBets(accountId: string, status?: 'open' | 'settled' | 'voided'): SimBet[] {
@@ -24,6 +43,12 @@ export class SimBetService {
 
   getBet(id: string): SimBetWithLegs | undefined {
     return this.betRepo.getWithLegs(id);
+  }
+
+  getBetByRunId(runId: string): SimBetWithLegs | undefined {
+    const bet = this.betRepo.getByRunId(runId);
+    if (!bet) return undefined;
+    return { bet, legs: this.betRepo.getLegs(bet.id) };
   }
 
   placeBet(input: PlaceSimBetInput): SimBetWithLegs {
@@ -39,7 +64,6 @@ export class SimBetService {
       throw new Error('At least one bet leg is required');
     }
 
-    // Calculate total odds (decimal product for parlays)
     const totalOdds = input.legs.reduce((product, leg) => product * Math.max(1.01, leg.odds), 1);
     const impliedProbability = oddsToImpliedProbability(totalOdds);
     const marketProbability = input.marketProbability ?? impliedProbability;
@@ -53,7 +77,6 @@ export class SimBetService {
       );
     }
 
-    // Risk checks
     const riskFraction = input.stake / account.currentBankroll;
     if (riskFraction > account.maxSingleRiskPct) {
       throw new Error(
@@ -70,7 +93,6 @@ export class SimBetService {
       );
     }
 
-    // Create bet + legs
     const { bet, legs } = this.betRepo.create({
       accountId: account.id,
       matchId: input.matchId,
@@ -82,11 +104,17 @@ export class SimBetService {
       userProbability,
       modelProbability: input.modelProbability,
       marketProbability,
-      edge,
+      edge: input.edgeAtEntry ?? edge,
       ev,
       reasoning: input.reasoning,
       matchFormat: input.matchFormat,
       matchTier: input.matchTier,
+      runId: input.runId,
+      reportId: input.reportId,
+      policyVersion: input.policyVersion,
+      game: input.game,
+      marketKind: input.marketKind,
+      edgeAtEntry: input.edgeAtEntry ?? edge,
       legs: input.legs.map((leg) => ({
         matchId: leg.matchId,
         marketId: leg.marketId,
@@ -97,19 +125,20 @@ export class SimBetService {
       })),
     });
 
-    // Capture odds snapshot for each leg
     for (const leg of legs) {
       this.snapshotRepo.create({
+        betId: bet.id,
         matchId: leg.matchId,
         marketId: leg.marketId,
         selection: leg.selection,
         odds: leg.odds,
         impliedProbability: leg.impliedProbability,
-        source: leg.source ?? 'user',
+        source: 'placement',
       });
     }
 
-    // Update account exposure
+    this.captureMatchSnapshot(bet.id, input);
+
     const newOpenExposure = this.betRepo.getOpenBetsTotalExposure(account.id);
     this.accountRepo.updateBankroll(
       account.id,
@@ -119,6 +148,47 @@ export class SimBetService {
     );
 
     return { bet, legs };
+  }
+
+  private captureMatchSnapshot(betId: string, input: PlaceSimBetInput): void {
+    const matchId = input.matchId;
+    if (!matchId) {
+      this.matchSnapshotRepo.create({
+        betId,
+        format: input.matchFormat ?? undefined,
+        tier: input.matchTier ?? undefined,
+        status: 'unknown',
+      });
+      return;
+    }
+
+    const match = this.llmRepo.getMatch(matchId);
+    const teamAId = match?.team_a_id ? String(match.team_a_id) : undefined;
+    const teamBId = match?.team_b_id ? String(match.team_b_id) : undefined;
+    const teamA = teamAId ? this.llmRepo.getTeam(teamAId) : null;
+    const teamB = teamBId ? this.llmRepo.getTeam(teamBId) : null;
+
+    this.matchSnapshotRepo.create({
+      betId,
+      matchId,
+      teamAName: match?.team_a_name ? String(match.team_a_name) : undefined,
+      teamBName: match?.team_b_name ? String(match.team_b_name) : undefined,
+      teamARank: teamA?.rank !== undefined && teamA?.rank !== null ? Number(teamA.rank) : undefined,
+      teamBRank: teamB?.rank !== undefined && teamB?.rank !== null ? Number(teamB.rank) : undefined,
+      format: input.matchFormat ?? (match?.format ? String(match.format) : undefined),
+      tier: input.matchTier ?? undefined,
+      eventName: match?.event_name ? String(match.event_name) : undefined,
+      status: match?.status ? String(match.status) : 'upcoming',
+      lineups: parseMaybeJson(match?.lineups),
+      mapPool: {
+        teamA: parseMaybeJson(teamA?.map_pool),
+        teamB: parseMaybeJson(teamB?.map_pool),
+      },
+      rankings: {
+        teamA: teamA?.rank ?? null,
+        teamB: teamB?.rank ?? null,
+      },
+    });
   }
 
   settleBet(id: string, result: SimBetResult, pnl?: number): SimBet {

@@ -1,5 +1,5 @@
 import { BookOpen, CheckCircle2, Clock3, FileText, LineChart, NotebookText } from 'lucide-react';
-import type { ReviewDetail } from '@polyrader/core';
+import type { ReviewDetail } from '@polyrader/core/browser';
 import { useI18n } from '../hooks/use-i18n';
 import { cn } from '../utils/cn';
 

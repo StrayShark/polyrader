@@ -5,6 +5,7 @@ export interface CopySignalRiskInput {
   leaderAmount: number;
   leaderPrice: number;
   leaderWinRate: number;
+  leaderRoi: number;
   leaderSettledBets: number;
   side: 'buy' | 'sell';
   isCs2Market: boolean;
@@ -62,6 +63,10 @@ export class CopySignalEngine {
 
     if (input.leaderWinRate < config.minLeaderWinRate) {
       return { allowed: false, reason: `Leader win rate ${(input.leaderWinRate * 100).toFixed(0)}% below threshold` };
+    }
+
+    if (input.leaderRoi < config.minLeaderRoi) {
+      return { allowed: false, reason: `Leader ROI ${(input.leaderRoi * 100).toFixed(1)}% below threshold` };
     }
 
     if (input.dailyCopiedUsd >= config.dailyCapUsd) {

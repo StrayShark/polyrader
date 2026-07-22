@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Market } from '@polyrader/core';
+import type { Market } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface MarketState {

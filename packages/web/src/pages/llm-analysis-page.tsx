@@ -7,7 +7,7 @@ import { CalibrationChart } from '../components/CalibrationChart';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, CardTitle, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Button } from '@/components/ui';
-import type { CalibrationPoint, SimulatedBet } from '@polyrader/core';
+import type { CalibrationPoint, SimulatedBet } from '@polyrader/core/browser';
 
 interface ProviderAnalysis {
   provider: string;

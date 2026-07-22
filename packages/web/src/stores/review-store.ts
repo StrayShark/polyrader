@@ -1,6 +1,12 @@
 import { create } from 'zustand';
-import type { ReviewDetail, BetReview, SimBet } from '@polyrader/core';
-import { calculateBrierScore, calculateClosingLineValue } from '@polyrader/core';
+import type {
+  ReviewDetail,
+  BetReview,
+  SimBet,
+  ReviewSummary,
+  ReviewListFilters,
+} from '@polyrader/core/browser';
+import { calculateBrierScore, calculateClosingLineValue } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 function computeReviewMetrics(bet: SimBet, closingOdds?: number) {
@@ -17,29 +23,56 @@ function computeReviewMetrics(bet: SimBet, closingOdds?: number) {
   return { brierScore, closingLineValue, roi };
 }
 
+function toQuery(filters: ReviewListFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.result && filters.result !== 'all') params.set('result', filters.result);
+  if (filters.betType && filters.betType !== 'all') params.set('betType', filters.betType);
+  if (filters.format && filters.format !== 'all') params.set('format', filters.format);
+  if (filters.tier && filters.tier !== 'all') params.set('tier', filters.tier);
+  if (filters.timing && filters.timing !== 'all') params.set('timing', filters.timing);
+  if (filters.hasNote && filters.hasNote !== 'all') params.set('hasNote', filters.hasNote);
+  if (filters.fromDate) params.set('fromDate', filters.fromDate);
+  if (filters.toDate) params.set('toDate', filters.toDate);
+  if (filters.tags && filters.tags.length > 0) params.set('tags', filters.tags.join(','));
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 interface ReviewState {
   reviews: ReviewDetail[];
+  summary: ReviewSummary | null;
   selectedReview: ReviewDetail | null;
   isLoading: boolean;
   error: string | null;
-  fetchReviews: () => Promise<void>;
+  fetchReviews: (filters?: ReviewListFilters) => Promise<void>;
+  fetchSummary: (filters?: ReviewListFilters) => Promise<void>;
   fetchReviewDetail: (betId: string) => Promise<void>;
   createOrUpdateReview: (betId: string, input: { errorTags?: string[]; note?: string; closingOdds?: number }) => Promise<void>;
 }
 
 export const useReviewStore = create<ReviewState>((set) => ({
   reviews: [],
+  summary: null,
   selectedReview: null,
   isLoading: false,
   error: null,
 
-  fetchReviews: async () => {
+  fetchReviews: async (filters = {}) => {
     set({ isLoading: true, error: null });
     try {
-      const res = await api.get<{ data: ReviewDetail[] }>('/sim/reviews');
+      const res = await api.get<{ data: ReviewDetail[] }>(`/sim/reviews${toQuery(filters)}`);
       set({ reviews: res.data, isLoading: false });
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
+    }
+  },
+
+  fetchSummary: async (filters = {}) => {
+    try {
+      const res = await api.get<{ data: ReviewSummary }>(`/sim/reviews/summary${toQuery(filters)}`);
+      set({ summary: res.data });
+    } catch (err) {
+      set({ error: (err as Error).message });
     }
   },
 
@@ -73,6 +106,7 @@ export const useReviewStore = create<ReviewState>((set) => ({
           note: input.note,
           brierScore: metrics.brierScore,
           closingLineValue: metrics.closingLineValue,
+          closingOdds,
           roi: metrics.roi,
           createdAt: r.review?.createdAt ?? now,
           updatedAt: now,
@@ -93,11 +127,15 @@ export const useReviewStore = create<ReviewState>((set) => ({
       const updatedReview = res.data;
       set((state) => ({
         reviews: state.reviews.map((r) =>
-          r.bet.id === betId ? { ...r, review: updatedReview } : r,
+          r.bet.id === betId ? { ...r, review: updatedReview, closingOdds: updatedReview.closingOdds ?? r.closingOdds } : r,
         ),
         selectedReview:
           state.selectedReview?.bet.id === betId
-            ? { ...state.selectedReview, review: updatedReview }
+            ? {
+                ...state.selectedReview,
+                review: updatedReview,
+                closingOdds: updatedReview.closingOdds ?? state.selectedReview.closingOdds,
+              }
             : state.selectedReview,
         isLoading: false,
       }));

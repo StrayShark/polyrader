@@ -11,6 +11,8 @@ import { broadcast } from '../websocket';
 import { logger } from '../utils/logger';
 import { envNumber, withTimeout } from '../utils/timeout';
 import { mergeCanonicalMarkets, withCanonicalMarketId } from './canonical-market-merge';
+import { buildLocalMapWinnerMarkets } from './local-simulation-market';
+import { parsePolymarketMatch } from '@polyrader/core';
 
 const CACHE_TTL = 60; // 1 minute
 const ORDERBOOK_CACHE_TTL = 10; // 10 seconds for orderbook
@@ -86,7 +88,8 @@ export class MarketService {
         }
         const localMarkets = (await Promise.resolve(this.marketRepo.findAll(200, 0)) ?? [])
           .filter((market) => isOpenMarket(market));
-        const merged = mergeCanonicalMarkets([...localMarkets, ...openMarkets]).slice(offset, offset + limit);
+        const withMaps = this.ensureLocalMapWinnerMarkets(localMarkets);
+        const merged = mergeCanonicalMarkets([...withMaps, ...openMarkets]).slice(offset, offset + limit);
         for (const market of merged) {
           if (market.canonicalMatchId && market.match) this.marketRepo.upsert(market);
         }
@@ -186,6 +189,15 @@ export class MarketService {
         return this.getDbOrSeedMarkets(100, 0);
       }
     }) as Promise<Market[]>;
+  }
+
+  async primeLocalMarketsCache(limit = 100): Promise<Market[]> {
+    const markets = await this.getDbOrSeedMarkets(limit, 0);
+    await Promise.all([
+      cacheSet('markets:50:0', markets.slice(0, 50), CACHE_TTL),
+      cacheSet(`markets:${limit}:0`, markets, CACHE_TTL),
+    ]);
+    return markets;
   }
 
   async getOrderBook(conditionId: string, tokenId?: string): Promise<OrderBookSummary | null> {
@@ -307,27 +319,66 @@ export class MarketService {
   }
 
   private async getDbOrSeedMarkets(limit: number, offset: number): Promise<Market[]> {
-    const dbMarkets = await Promise.resolve(this.marketRepo.findAll(limit, offset)) ?? [];
+    const dbMarkets = await Promise.resolve(this.marketRepo.findAll(200, 0)) ?? [];
     const openDbMarkets = dbMarkets.filter((market) => isOpenMarket(market));
     if (openDbMarkets.length > 0) {
-      const merged = mergeCanonicalMarkets(openDbMarkets);
-      const unchanged = merged.length === dbMarkets.length
-        && merged.every((market, index) => market === dbMarkets[index]);
-      return unchanged ? dbMarkets : merged;
+      const withMaps = this.ensureLocalMapWinnerMarkets(openDbMarkets);
+      const merged = mergeCanonicalMarkets(withMaps);
+      return merged.slice(offset, offset + limit);
     }
 
     const seeds = getLocalSeedMarkets(limit, offset);
     if (seeds.length === 0) return [];
 
+    const persisted: Market[] = [];
     for (const market of seeds) {
       try {
         this.marketRepo.upsert(market);
+        persisted.push(market);
+        if (!market.tags.includes('map-winner')) {
+          for (const mapMarket of buildLocalMapWinnerMarkets(market)) {
+            this.marketRepo.upsert(mapMarket);
+            persisted.push(mapMarket);
+          }
+        }
       } catch (err) {
         logger.warn('Failed to persist local seed market', { conditionId: market.conditionId, error: (err as Error).message });
       }
     }
-    await cacheSet(`markets:${limit}:${offset}`, seeds, CACHE_TTL);
-    return seeds;
+    await cacheSet(`markets:${limit}:${offset}`, persisted, CACHE_TTL);
+    return persisted;
+  }
+
+  /** Persist missing Map Winner markets for local practice series so lobby can expand +N. */
+  private ensureLocalMapWinnerMarkets(markets: Market[]): Market[] {
+    const extras: Market[] = [];
+    const seen = new Set(markets.map((market) => market.conditionId));
+    for (const market of markets) {
+      if (!isLocalPracticeSeriesMarket(market)) continue;
+      for (const mapMarket of buildLocalMapWinnerMarkets(market)) {
+        try {
+          const existing = this.marketRepo.findByConditionId(mapMarket.conditionId);
+          if (!existing) {
+            this.marketRepo.upsert(mapMarket);
+            if (!seen.has(mapMarket.conditionId)) {
+              extras.push(mapMarket);
+              seen.add(mapMarket.conditionId);
+            }
+            continue;
+          }
+          if (isOpenMarket(existing) && !seen.has(existing.conditionId)) {
+            extras.push(existing);
+            seen.add(existing.conditionId);
+          }
+        } catch (err) {
+          logger.warn('Failed to ensure map-winner market', {
+            conditionId: mapMarket.conditionId,
+            error: (err as Error).message,
+          });
+        }
+      }
+    }
+    return extras.length > 0 ? [...markets, ...extras] : markets;
   }
 
   /** Detect unusual price moves and volume spikes across active markets. */
@@ -380,4 +431,12 @@ export class MarketService {
 
 function marketTimeoutMs(): number {
   return envNumber('POLYRADER_MARKET_TIMEOUT_MS', envNumber('POLYRADER_EXTERNAL_TIMEOUT_MS', 8000, 250, 30000), 250, 30000);
+}
+
+function isLocalPracticeSeriesMarket(market: Market): boolean {
+  const tags = market.tags ?? [];
+  if (tags.includes('map-winner')) return false;
+  if (!tags.includes('local-sim') && !tags.includes('local-seed')) return false;
+  const parsed = parsePolymarketMatch(market.question);
+  return Boolean(parsed && !parsed.isMapMarket);
 }

@@ -45,7 +45,7 @@ test.describe('P1 UI audit fixes', () => {
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
 
     const spinbuttons = page.getByRole('spinbutton');
-    await expect(spinbuttons).toHaveCount(9);
+    await expect(spinbuttons).toHaveCount(10);
     expect(await page.locator('input:not([class*="flex"])').count()).toBe(0);
   });
 
@@ -57,7 +57,8 @@ test.describe('P1 UI audit fixes', () => {
     await expect(sidebar.getByRole('link', { name: /设置|Settings/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /Prompt|prompt-variants|提示词/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /资金分配|Allocation/i })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: /模拟盘|Simulation/i })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: /我的账本|Bankroll|My Ledger/i })).toBeVisible();
+    await expect(sidebar.locator('a[href*="simulation"]')).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: /Polymarket/i })).toHaveCount(0);
   });
 });

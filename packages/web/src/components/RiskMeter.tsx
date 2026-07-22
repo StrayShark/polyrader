@@ -6,7 +6,12 @@ export interface RiskMeterProps {
   stake: number;
   bankroll: number;
   openExposure: number;
+  /** Today's total open + settled stake at risk, in currency units. */
   dailyRisk?: number;
+  /** 0–1 estimate of portfolio correlation across slip legs. */
+  correlationRisk?: number;
+  /** Stake fraction minus suggested Kelly fraction (positive = oversized). */
+  kellyDeviation?: number;
   className?: string;
   showLabels?: boolean;
 }
@@ -28,6 +33,8 @@ export function RiskMeter({
   bankroll,
   openExposure,
   dailyRisk,
+  correlationRisk,
+  kellyDeviation,
   className,
   showLabels = true,
 }: RiskMeterProps) {
@@ -36,6 +43,8 @@ export function RiskMeter({
   const stakeFraction = bankroll > 0 ? stake / bankroll : 0;
   const exposureFraction = bankroll > 0 ? openExposure / bankroll : 0;
   const dailyFraction = bankroll > 0 && dailyRisk !== undefined ? dailyRisk / bankroll : 0;
+  const correlation = correlationRisk ?? 0;
+  const kellyDelta = kellyDeviation ?? 0;
 
   const stakeColor = riskLevelColor(stakeFraction);
   const stakeLabel = riskLevelLabel(stakeFraction, t);
@@ -50,7 +59,6 @@ export function RiskMeter({
       )}
 
       <div className="space-y-2">
-        {/* Single stake risk */}
         <div className="space-y-1">
           <div className="flex justify-between">
             <span className="text-muted-foreground">{t('risk.singleStake')}</span>
@@ -61,19 +69,17 @@ export function RiskMeter({
           <div className="h-1.5 w-full rounded-full bg-muted">
             <div
               className={cn('h-full rounded-full transition-all duration-300', stakeFraction > 0.05 ? 'bg-red' : stakeFraction > 0.02 ? 'bg-yellow' : 'bg-green')}
-              style={{ width: `${Math.min(stakeFraction * 100, 100)}%` }}
+              style={{ width: `${Math.min(stakeFraction * 100 * 5, 100)}%` }}
             />
           </div>
           <div className={cn('text-[10px]', stakeColor)}>{stakeLabel}</div>
         </div>
 
-        {/* Open exposure */}
         <div className="flex justify-between">
           <span className="text-muted-foreground">{t('risk.openExposure')}</span>
           <span className="tabular-nums font-medium">{(exposureFraction * 100).toFixed(1)}%</span>
         </div>
 
-        {/* Daily risk */}
         {dailyRisk !== undefined && (
           <div className="flex justify-between">
             <span className="text-muted-foreground">{t('risk.dailyRisk')}</span>
@@ -83,7 +89,27 @@ export function RiskMeter({
           </div>
         )}
 
-        {/* Warning when over limit */}
+        {correlationRisk !== undefined && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t('risk.correlation')}</span>
+            <span className={cn('tabular-nums font-medium', correlation >= 0.6 ? 'text-yellow' : 'text-foreground')}>
+              {(correlation * 100).toFixed(0)}%
+            </span>
+          </div>
+        )}
+
+        {kellyDeviation !== undefined && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t('risk.kellyDeviation')}</span>
+            <span className={cn(
+              'tabular-nums font-medium',
+              Math.abs(kellyDelta) >= 0.02 ? 'text-yellow' : 'text-foreground',
+            )}>
+              {kellyDelta >= 0 ? '+' : ''}{(kellyDelta * 100).toFixed(1)}pp
+            </span>
+          </div>
+        )}
+
         {stakeFraction > 0.05 && (
           <div className="flex items-start gap-1.5 rounded-md bg-red/5 p-2 text-[10px] text-red">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -95,6 +121,20 @@ export function RiskMeter({
           <div className="flex items-start gap-1.5 rounded-md bg-yellow/5 p-2 text-[10px] text-yellow">
             <TrendingDown className="mt-0.5 h-3 w-3 shrink-0" />
             <span>{t('risk.highExposure')}</span>
+          </div>
+        )}
+
+        {correlation >= 0.6 && (
+          <div className="flex items-start gap-1.5 rounded-md bg-yellow/5 p-2 text-[10px] text-yellow">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>{t('risk.highCorrelation')}</span>
+          </div>
+        )}
+
+        {kellyDelta >= 0.02 && (
+          <div className="flex items-start gap-1.5 rounded-md bg-yellow/5 p-2 text-[10px] text-yellow">
+            <TrendingDown className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>{t('risk.overKelly')}</span>
           </div>
         )}
       </div>

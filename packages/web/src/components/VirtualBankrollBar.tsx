@@ -1,11 +1,11 @@
-import { Wallet, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Wallet, TrendingUp, AlertTriangle, Database } from 'lucide-react';
 import { useBankrollStore } from '../stores/bankroll-store';
 import { useI18n } from '../hooks/use-i18n';
 import { Badge } from '@/components/ui';
 import { cn } from '../utils/cn';
 
 export function VirtualBankrollBar() {
-  const { summary, isLoading } = useBankrollStore();
+  const { summary, isLoading, error } = useBankrollStore();
   const { t } = useI18n();
 
   if (isLoading || !summary) {
@@ -18,17 +18,19 @@ export function VirtualBankrollBar() {
 
   const { account, todayPnl, openExposure } = summary;
   const pnlPositive = todayPnl >= 0;
+  const openRiskPct = account.currentBankroll > 0 ? openExposure / account.currentBankroll : 0;
+  const sqliteSynced = !error;
 
   return (
     <div className="flex h-10 items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border bg-muted/30 px-2 text-xs sm:gap-4 sm:px-4 sm:text-sm">
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Badge variant="secondary" className="rounded text-[10px]">
           {t('productMode.simulation.badge')}
         </Badge>
         <span className="hidden font-medium sm:inline">{t('bankroll.practiceAccount')}</span>
       </div>
 
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="hidden text-muted-foreground sm:inline">{t('bankroll.total')}:</span>
         <span className="tabular-nums font-medium">
@@ -36,12 +38,12 @@ export function VirtualBankrollBar() {
         </span>
       </div>
 
-      <div className="hidden items-center gap-1.5 md:flex">
+      <div className="hidden shrink-0 items-center gap-1.5 md:flex">
         <span className="text-muted-foreground">{t('bankroll.available')}:</span>
         <span className="tabular-nums">${account.availableBankroll.toFixed(2)}</span>
       </div>
 
-      <div className="ml-auto flex items-center gap-1 sm:ml-0 sm:gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-1.5">
         <TrendingUp className={cn('h-3.5 w-3.5', pnlPositive ? 'text-green' : 'text-red')} />
         <span className="hidden text-muted-foreground sm:inline">{t('bankroll.todayPnl')}:</span>
         <span className={cn('tabular-nums font-medium', pnlPositive ? 'text-green' : 'text-red')}>
@@ -50,12 +52,20 @@ export function VirtualBankrollBar() {
       </div>
 
       {openExposure > 0 && (
-        <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
           <AlertTriangle className="h-3.5 w-3.5" />
-          <span>{t('bankroll.openExposure')}:</span>
+          <span className="hidden sm:inline">{t('bankroll.openExposure')}:</span>
           <span className="tabular-nums">${openExposure.toFixed(2)}</span>
+          <span className="tabular-nums text-[10px]">
+            ({t('bankroll.openRiskPct')} {(openRiskPct * 100).toFixed(1)}%)
+          </span>
         </div>
       )}
+
+      <div className={cn('hidden shrink-0 items-center gap-1 text-[10px] lg:flex', sqliteSynced ? 'text-green' : 'text-yellow')}>
+        <Database className="h-3 w-3" />
+        <span>{sqliteSynced ? t('bankroll.sqliteSynced') : t('bankroll.sqlitePending')}</span>
+      </div>
     </div>
   );
 }

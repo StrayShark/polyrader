@@ -84,11 +84,7 @@ test.describe('Cursor design audit', () => {
       record('global', 'background', theme, isNearColor(background, expected.background) ? 'pass' : 'fail', `got ${background}`);
       record('global', 'foreground', theme, isNearColor(foreground, expected.foreground) ? 'pass' : 'fail', `got ${foreground}`);
 
-      if (expected.primaryException) {
-        record('global', 'primary', theme, 'exception', `Matrix green primary allowed: ${primary}`);
-      } else {
-        record('global', 'primary', theme, isNearColor(primary, expected.primary) ? 'pass' : 'fail', `got ${primary}`);
-      }
+      record('global', 'primary', theme, isNearColor(primary, expected.primary) ? 'pass' : 'fail', `got ${primary}`);
 
       record('global', 'border', theme, isNearColor(border, expected.border) ? 'pass' : 'partial', `got ${border}`);
     });

@@ -15,17 +15,20 @@ import { ProductModeNotice } from '../components/ProductModeNotice';
 import { RiskMeter } from '../components/RiskMeter';
 import { MatchSourcePanel } from '../components/SourceAlignmentPanel';
 import { TeamIntelligencePanel } from '../components/TeamIntelligencePanel';
+import { AnalysisDataSnapshotPanel } from '../components/AnalysisDataSnapshotPanel';
+import { MarketLiquidityWarning } from '../components/MarketLiquidityWarning';
+import { MultiMarketAnalysisPanel } from '../components/MultiMarketAnalysisPanel';
 import { useBankrollStore } from '../stores/bankroll-store';
 import { parsePolymarketMatch, type MarketCategory } from '../utils/match-parser';
 import { useMarketStore } from '../stores/market-store';
-import type { LLMAggregation, LLMAnalysisResult, MatchInfo, Market, TeamBrief } from '@polyrader/core';
+import type { LLMAggregation, LLMAnalysisResult, MatchInfo, Market, TeamBrief } from '@polyrader/core/browser';
 
 export function MatchDetailPage() {
   const { slug } = useParams();
   const { subscribe } = useWebSocket();
   const { t, locale } = useI18n();
   const { summary } = useBankrollStore();
-  const { markets } = useMarketStore();
+  const { markets, fetchMarkets } = useMarketStore();
   const [match, setMatch] = useState<MatchInfo | null>(null);
   const [matchLoading, setMatchLoading] = useState(true);
   const [aggregation, setAggregation] = useState<LLMAggregation | null>(null);
@@ -58,6 +61,10 @@ export function MatchDetailPage() {
   useEffect(() => {
     void loadMatch();
   }, [loadMatch]);
+
+  useEffect(() => {
+    if (markets.length === 0) void fetchMarkets(200, 0);
+  }, [fetchMarkets, markets.length]);
 
   useEffect(() => {
     if (!slug) return;
@@ -210,6 +217,12 @@ export function MatchDetailPage() {
     return map;
   }, [relatedMarkets]);
 
+  const primaryMarket = useMemo(
+    () => relatedMarkets.find((market) => market.conditionId === conditionId)
+      ?? marketsByCategory.get('match_winner')?.[0],
+    [conditionId, marketsByCategory, relatedMarkets],
+  );
+
   if (matchLoading) {
     return <MatchDetailSkeleton />;
   }
@@ -255,21 +268,24 @@ export function MatchDetailPage() {
     const parsed = parsePolymarketMatch(market.question);
     if (!parsed) return null;
     return (
-      <div key={market.conditionId} className="flex items-center gap-3">
-        {market.outcomePrices.map((p, idx) => {
-          const price = parseFloat(p);
-          const odds = price > 0 && price < 1 ? 1 / price : 0;
-          const selection = market.outcomes[idx] ?? (idx === 0 ? parsed.teamAName : parsed.teamBName);
-          return (
-            <OddsButton
-              key={idx}
-              odds={odds}
-              selection={selection}
-              disabled={odds < 1.01}
-              onClick={() => handleAddMarketLeg(market, idx)}
-            />
-          );
-        })}
+      <div key={market.conditionId} className="flex flex-col items-end gap-2">
+        <MarketLiquidityWarning liquidity={market.liquidity} tags={market.tags} compact />
+        <div className="flex items-center gap-3">
+          {market.outcomePrices.map((p, idx) => {
+            const price = parseFloat(p);
+            const odds = price > 0 && price < 1 ? 1 / price : 0;
+            const selection = market.outcomes[idx] ?? (idx === 0 ? parsed.teamAName : parsed.teamBName);
+            return (
+              <OddsButton
+                key={idx}
+                odds={odds}
+                selection={selection}
+                disabled={odds < 1.01}
+                onClick={() => handleAddMarketLeg(market, idx)}
+              />
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -369,6 +385,14 @@ export function MatchDetailPage() {
           <CardHeader className="flex-row items-center gap-2 mb-4">
             <Target className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-sm">{t('match.matchWinner')}</CardTitle>
+            {primaryMarket && (
+              <MarketLiquidityWarning
+                liquidity={primaryMarket.liquidity}
+                tags={primaryMarket.tags}
+                compact
+                className="ml-auto"
+              />
+            )}
           </CardHeader>
           <p className="mb-4 text-xs text-muted-foreground">{t('match.practiceHint')}</p>
           <div className="flex flex-wrap items-center gap-4">
@@ -552,6 +576,10 @@ export function MatchDetailPage() {
         <span>{t('match.aiReferenceHint')}</span>
       </div>
 
+      {aggregation?.analysisData && (
+        <AnalysisDataSnapshotPanel snapshot={aggregation.analysisData} />
+      )}
+
       {/* Probability comparison: market vs model vs user */}
       <Card className="p-4">
         <CardHeader className="flex-row items-center justify-between mb-4">
@@ -628,6 +656,10 @@ export function MatchDetailPage() {
         </div>
       </Card>
 
+      {aggregation?.marketAnalyses && aggregation.marketAnalyses.length > 0 && (
+        <MultiMarketAnalysisPanel analyses={aggregation.marketAnalyses} />
+      )}
+
       {/* LLM Consensus (collapsed detail) */}
       {results.length > 0 && (
         <Card className="p-4">
@@ -672,6 +704,28 @@ export function MatchDetailPage() {
                         <>
                           <span>{(r.confidence * 100).toFixed(0)}{t('match.confidence')}</span>
                           {!isStream && <span>{(r as LLMAnalysisResult).latency}ms</span>}
+                          {!isStream && (r as LLMAnalysisResult).paperDecisionAction && (
+                            <Badge
+                              variant={
+                                (r as LLMAnalysisResult).paperDecisionAction === 'paper_bet'
+                                  ? 'green'
+                                  : (r as LLMAnalysisResult).paperDecisionAction === 'rejected'
+                                    ? 'yellow'
+                                    : 'secondary'
+                              }
+                              className="text-[10px]"
+                            >
+                              {(r as LLMAnalysisResult).paperDecisionAction}
+                            </Badge>
+                          )}
+                          {!isStream && (r as LLMAnalysisResult).analysisRunId && (
+                            <Link
+                              to={`/analysis/report/${encodeURIComponent((r as LLMAnalysisResult).analysisRunId!)}`}
+                              className="text-primary hover:underline"
+                            >
+                              {t('match.openAnalysisReport')}
+                            </Link>
+                          )}
                         </>
                       )}
                     </div>

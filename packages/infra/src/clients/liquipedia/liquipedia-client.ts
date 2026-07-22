@@ -1,7 +1,15 @@
 import type { Player, PlayerRole } from '@polyrader/core';
+import { load } from 'cheerio';
 
-const DEFAULT_API_URL = 'https://liquipedia.net/counterstrike/api.php';
-const DEFAULT_USER_AGENT = 'PolyraderCS2/0.3 local-development (Liquipedia API; set LIQUIPEDIA_USER_AGENT)';
+export type LiquipediaGame = 'cs2' | 'lol' | 'dota2' | 'valorant';
+
+const LIQUIPEDIA_WIKIS: Record<LiquipediaGame, string> = {
+  cs2: 'counterstrike',
+  lol: 'leagueoflegends',
+  dota2: 'dota2',
+  valorant: 'valorant',
+};
+const DEFAULT_USER_AGENT = 'PolyRader/0.3 local-development (Liquipedia API; set LIQUIPEDIA_USER_AGENT)';
 
 export interface LiquipediaTeamSearchResult {
   pageId: number;
@@ -14,6 +22,7 @@ export interface LiquipediaTeamSearchResult {
 }
 
 export interface LiquipediaRosterPlayer extends Player {
+  position?: string;
   nationality?: string;
   status?: 'active' | 'inactive' | 'coach' | 'substitute';
   joinDate?: string;
@@ -30,6 +39,7 @@ export interface LiquipediaRosterSnapshot {
 }
 
 interface LiquipediaClientOptions {
+  game?: LiquipediaGame;
   apiUrl?: string;
   userAgent?: string;
   timeoutMs?: number;
@@ -39,13 +49,17 @@ interface LiquipediaClientOptions {
 let lastRequestAt = 0;
 
 export class LiquipediaClient {
+  private readonly game: LiquipediaGame;
+  private readonly wiki: string;
   private readonly apiUrl: string;
   private readonly userAgent: string;
   private readonly timeoutMs: number;
   private readonly minIntervalMs: number;
 
   constructor(options: LiquipediaClientOptions = {}) {
-    this.apiUrl = options.apiUrl ?? process.env.LIQUIPEDIA_API_URL ?? DEFAULT_API_URL;
+    this.game = options.game ?? 'cs2';
+    this.wiki = LIQUIPEDIA_WIKIS[this.game];
+    this.apiUrl = options.apiUrl ?? gameApiUrl(this.game);
     this.userAgent = options.userAgent ?? process.env.LIQUIPEDIA_USER_AGENT ?? DEFAULT_USER_AGENT;
     this.timeoutMs = options.timeoutMs ?? envNumber('LIQUIPEDIA_TIMEOUT_MS', 8000, 500, 30000);
     this.minIntervalMs = options.minIntervalMs ?? envNumber('LIQUIPEDIA_MIN_INTERVAL_MS', 2100, 0, 10000);
@@ -83,11 +97,17 @@ export class LiquipediaClient {
 
   async getCurrentRoster(title: string): Promise<LiquipediaRosterSnapshot> {
     const wikitext = await this.getPageWikitext(title);
+    let players = parseRosterFromWikitext(wikitext);
+    if (/\{\{\s*ActiveSquadAuto\b/i.test(wikitext)) {
+      const expanded = await this.expandTemplate(title, '{{ActiveSquadAuto}}');
+      const expandedPlayers = parseExpandedRosterTable(expanded);
+      if (expandedPlayers.length > 0) players = expandedPlayers;
+    }
     return {
       teamTitle: title,
       sourceId: title,
       sourceUrl: this.pageUrl(title),
-      players: parseRosterFromWikitext(wikitext),
+      players,
       fetchedAt: new Date().toISOString(),
       rawLength: wikitext.length,
     };
@@ -110,6 +130,17 @@ export class LiquipediaClient {
     const slots = revision?.slots as Record<string, unknown> | undefined;
     const main = slots?.main as Record<string, unknown> | undefined;
     return String(main?.content ?? main?.['*'] ?? revision?.content ?? revision?.['*'] ?? '');
+  }
+
+  private async expandTemplate(title: string, text: string): Promise<string> {
+    const data = await this.fetchApi<Record<string, unknown>>({
+      action: 'expandtemplates',
+      title,
+      text,
+      prop: 'wikitext',
+    });
+    const expanded = data.expandtemplates as Record<string, unknown> | undefined;
+    return String(expanded?.wikitext ?? '');
   }
 
   private async fetchApi<T>(params: Record<string, string>): Promise<T> {
@@ -155,8 +186,15 @@ export class LiquipediaClient {
   }
 
   private pageUrl(title: string): string {
-    return `https://liquipedia.net/counterstrike/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+    return `https://liquipedia.net/${this.wiki}/${encodeURIComponent(title.replace(/ /g, '_'))}`;
   }
+}
+
+function gameApiUrl(game: LiquipediaGame): string {
+  const suffix = game === 'cs2' ? 'CS2' : game.toUpperCase();
+  return process.env[`LIQUIPEDIA_API_URL_${suffix}`]
+    ?? process.env.LIQUIPEDIA_API_URL
+    ?? `https://liquipedia.net/${LIQUIPEDIA_WIKIS[game]}/api.php`;
 }
 
 export function parseRosterFromWikitext(wikitext: string): LiquipediaRosterPlayer[] {
@@ -204,6 +242,7 @@ export function parseRosterFromWikitext(wikitext: string): LiquipediaRosterPlaye
       headshotPercent: 0,
       mapsPlayed: 0,
       role,
+      position: cleanWikiText(parsed.params.position ?? parsed.params.pos ?? parsed.params.role ?? ''),
       nationality: cleanWikiText(parsed.params.nationality ?? parsed.params.country ?? ''),
       status: templateName.includes('coach') ? 'coach' : templateName.includes('sub') ? 'substitute' : 'active',
       joinDate: cleanWikiText(parsed.params.joindate ?? parsed.params.join_date ?? ''),
@@ -212,6 +251,49 @@ export function parseRosterFromWikitext(wikitext: string): LiquipediaRosterPlaye
   }
 
   return Array.from(players.values());
+}
+
+export function parseExpandedRosterTable(fragment: string): LiquipediaRosterPlayer[] {
+  const $ = load(fragment, null, false);
+  const players: LiquipediaRosterPlayer[] = [];
+
+  $('tr.table2__row--body').each((_index, row) => {
+    const cells = $(row).find('td');
+    if (cells.length < 2) return;
+    const identity = cells.eq(0).text();
+    const links = Array.from(identity.matchAll(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g));
+    const playerLink = links.filter((match) => !match[1].toLowerCase().startsWith('file:')).at(-1);
+    const nickname = cleanWikiText(playerLink?.[2] ?? playerLink?.[1] ?? identity);
+    const playerId = normalizePlayerId(nickname);
+    if (!playerId || players.some((player) => player.playerId === playerId)) return;
+
+    const position = cleanExpandedCell(cells.eq(2).text());
+    const dateText = cleanExpandedCell(cells.eq(3).text());
+    const nationality = identity.match(/\[\[File:([a-z]{2,5})(?:_hd)?\./i)?.[1] ?? '';
+    players.push({
+      playerId,
+      name: cleanExpandedCell(cells.eq(1).text()),
+      nickname,
+      rating: 1,
+      kdRatio: 1,
+      headshotPercent: 0,
+      mapsPlayed: 0,
+      role: parseRole(position),
+      position,
+      nationality,
+      status: 'active',
+      joinDate: dateText.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? '',
+    });
+  });
+
+  return players;
+}
+
+function cleanExpandedCell(value: string): string {
+  return cleanWikiText(value)
+    .replace(/\[[^\]]+\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function focusRosterSection(wikitext: string): string {

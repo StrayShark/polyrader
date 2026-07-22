@@ -48,7 +48,15 @@ export async function streamAnalysis(
   url: string,
   body: Record<string, unknown>,
   callbacks: {
-    onProgress?: (data: { provider: string; probability: number; confidence: number; reasoning: string }) => void;
+    onProgress?: (data: {
+      provider: string;
+      probability: number;
+      confidence: number;
+      reasoning: string;
+      error?: string;
+      analysisRunId?: string;
+      paperDecisionAction?: 'paper_bet' | 'pass' | 'rejected';
+    }) => void;
     onComplete?: (data: { aggregation: unknown; kelly: unknown }) => void;
     onError?: (message: string) => void;
   },

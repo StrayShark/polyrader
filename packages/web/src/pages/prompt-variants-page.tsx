@@ -5,7 +5,7 @@ import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
 import { useI18n } from '../hooks/use-i18n';
-import type { PromptVariant } from '@polyrader/core';
+import type { PromptVariant } from '@polyrader/core/browser';
 import {
   Button,
   Card,

@@ -3,7 +3,7 @@ import type {
   TrainingSession,
   CreateTrainingSessionInput,
   UpdateTrainingSessionInput,
-} from '@polyrader/core';
+} from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface TrainingSessionState {

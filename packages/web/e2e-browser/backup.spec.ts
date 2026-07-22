@@ -10,13 +10,13 @@ test.describe('Data backup panel', () => {
     await setTheme(page, 'dark');
   });
 
-  test('shows backup export/import on AI config page', async ({ page }) => {
-    await page.goto('/#/ai/config');
+  test('shows backup export/import in local database settings', async ({ page }) => {
+    await page.goto('/#/settings?section=database');
     await waitForMainHeading(page);
 
-    await expect(page.getByText(/数据备份|Data Backup/i).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /导出备份|Export backup/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /导入备份|Import backup/i })).toBeVisible();
-    await expect(page.getByText(/本地 SQLite|Local SQLite/i).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: /本地数据库|Local Database/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /导出备份|Export Backup/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /导入备份|Import Backup/i })).toBeVisible();
+    await expect(page.getByText('polyrader.db', { exact: true })).toBeVisible();
   });
 });

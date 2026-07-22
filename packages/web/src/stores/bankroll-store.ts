@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BankrollSummary, EquityCurveGranularity } from '@polyrader/core';
+import type { BankrollSummary, EquityCurveGranularity } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface BankrollState {

@@ -5,6 +5,7 @@ import { DailyController } from './controllers/daily-controller';
 import { WhaleController } from './controllers/whale-controller';
 import { WalletFollowController } from './controllers/wallet-follow-controller';
 import { EsportsController } from './controllers/esports-controller';
+import { EsportsSourceController } from './controllers/esports-source-controller';
 import { SignalController } from './controllers/signal-controller';
 import { AiConfigController } from './controllers/ai-config-controller';
 import { AiStatsController } from './controllers/ai-stats-controller';
@@ -16,6 +17,10 @@ import { PolymarketAccountController } from './controllers/polymarket-account-co
 import { createPromptVariantRouter } from './controllers/prompt-variant-controller';
 import { BackupController } from './controllers/backup-controller';
 import { SystemController } from './controllers/system-controller';
+import { AnalysisRunController } from './controllers/analysis-run-controller';
+import { ValidationLabController } from './controllers/validation-lab-controller';
+import { PaperPolicyController } from './controllers/paper-policy-controller';
+import { PerformanceController } from './controllers/performance-controller';
 import { LLMRepository } from '@polyrader/infra';
 import { validate } from './validation';
 import {
@@ -40,6 +45,10 @@ import {
   teamSourceParamsSchema,
   upsertTeamSourceBodySchema,
   matchParamsSchema,
+  esportsGameParamsSchema,
+  esportsSourceSnapshotsQuerySchema,
+  esportsTeamSearchQuerySchema,
+  esportsTeamRosterBodySchema,
   signalParamsSchema,
   signalBacktestQuerySchema,
   signalSnapshotQuerySchema,
@@ -49,6 +58,7 @@ import {
   placeSimBetBodySchema,
   settleSimBetBodySchema,
   createSimReviewBodySchema,
+  reviewListQuerySchema,
   placeMarketOrderBodySchema,
   cancelMarketOrderParamsSchema,
   createStrategyProfileBodySchema,
@@ -66,6 +76,12 @@ import {
   alertParamsSchema,
   alertQuerySchema,
   updateSimulationConfigSchema,
+  analysisRunParamsSchema,
+  createAnalysisRunBodySchema,
+  ingestAnalysisResponseBodySchema,
+  analysisRunListQuerySchema,
+  analysisFixtureBodySchema,
+  executeStandardAnalysisBodySchema,
 } from './validation';
 
 export function registerRoutes(app: Express): void {
@@ -75,6 +91,7 @@ export function registerRoutes(app: Express): void {
   const whaleCtrl = new WhaleController();
   const walletFollowCtrl = new WalletFollowController();
   const esportsCtrl = new EsportsController();
+  const esportsSourceCtrl = new EsportsSourceController();
   const signalCtrl = new SignalController();
   const aiConfigCtrl = new AiConfigController();
   const aiStatsCtrl = new AiStatsController();
@@ -85,11 +102,37 @@ export function registerRoutes(app: Express): void {
   const polymarketAccountCtrl = new PolymarketAccountController();
   const backupCtrl = new BackupController();
   const systemCtrl = new SystemController();
+  const analysisRunCtrl = new AnalysisRunController();
+  const validationLabCtrl = new ValidationLabController();
+  const paperPolicyCtrl = new PaperPolicyController();
+  const performanceCtrl = new PerformanceController();
 
   // System
   app.get('/api/system/tasks', (req, res) => systemCtrl.getTasks(req, res));
   app.get('/api/system/features', (req, res) => systemCtrl.getFeatures(req, res));
   app.get('/api/system/health', (req, res) => systemCtrl.getHealth(req, res));
+
+  // analysis.v1 runs (Phase 1)
+  app.get('/api/analysis/runs', validate(analysisRunListQuerySchema, 'query'), (req, res) => analysisRunCtrl.list(req, res));
+  app.post('/api/analysis/execute', validate(executeStandardAnalysisBodySchema), (req, res) => void analysisRunCtrl.execute(req, res));
+  app.post('/api/analysis/runs/fixture', validate(analysisFixtureBodySchema), (req, res) => analysisRunCtrl.runFixture(req, res));
+  app.post('/api/analysis/runs', validate(createAnalysisRunBodySchema), (req, res) => analysisRunCtrl.create(req, res));
+  app.get('/api/analysis/runs/:runId', validate(analysisRunParamsSchema, 'params'), (req, res) => analysisRunCtrl.get(req, res));
+  app.post('/api/analysis/runs/:runId/ingest', validate(analysisRunParamsSchema, 'params'), validate(ingestAnalysisResponseBodySchema), (req, res) => analysisRunCtrl.ingest(req, res));
+
+  // Validation Lab / normalized facts (Phase 2)
+  app.get('/api/validation-lab/boards', (req, res) => validationLabCtrl.listBoards(req, res));
+  app.get('/api/validation-lab/boards/:game', (req, res) => validationLabCtrl.getBoard(req, res));
+  app.post('/api/validation-lab/boards/:game/normalize', (req, res) => validationLabCtrl.normalize(req, res));
+  app.get('/api/validation-lab/boards/:game/facts', (req, res) => validationLabCtrl.listFacts(req, res));
+
+  // Paper policy + decision trace (Phase 3)
+  app.get('/api/paper-policy', (req, res) => paperPolicyCtrl.list(req, res));
+  app.get('/api/paper-policy/active', (req, res) => paperPolicyCtrl.getActive(req, res));
+  app.post('/api/paper-policy', (req, res) => paperPolicyCtrl.upsert(req, res));
+  app.post('/api/paper-policy/:id/activate', (req, res) => paperPolicyCtrl.activate(req, res));
+  app.get('/api/paper-decisions', (req, res) => paperPolicyCtrl.listDecisions(req, res));
+  app.get('/api/performance/summary', (req, res) => performanceCtrl.getSummary(req, res));
 
   // Markets
   app.get('/api/markets', validate(marketQuerySchema, 'query'), (req, res) => marketCtrl.getMarkets(req, res));
@@ -127,12 +170,11 @@ export function registerRoutes(app: Express): void {
   app.get('/api/whales', validate(whaleQuerySchema, 'query'), (req, res) => whaleCtrl.getWhales(req, res));
   app.get('/api/whales/leaderboard', validate(whaleLeaderboardQuerySchema, 'query'), (req, res) => whaleCtrl.getLeaderboard(req, res));
   app.get('/api/whales/graph', (req, res) => whaleCtrl.getAddressGraph(req, res));
+  app.post('/api/whales/refresh', (req, res) => whaleCtrl.refresh(req, res));
 
   // Wallet follow & copy trading
   app.get('/api/whale-follow', (req, res) => walletFollowCtrl.listFollowed(req, res));
   app.post('/api/whale-follow', validate(followWalletBodySchema), (req, res) => walletFollowCtrl.follow(req, res));
-  app.put('/api/whale-follow/:address', validate(walletFollowUnfollowParamsSchema, 'params'), validate(followWalletBodySchema.partial(), 'body'), (req, res) => walletFollowCtrl.updateFollow(req, res));
-  app.delete('/api/whale-follow/:address', validate(walletFollowUnfollowParamsSchema, 'params'), (req, res) => walletFollowCtrl.unfollow(req, res));
   app.get('/api/whale-follow/config', (req, res) => walletFollowCtrl.getConfig(req, res));
   app.put('/api/whale-follow/config', validate(walletCopyConfigBodySchema), (req, res) => walletFollowCtrl.updateConfig(req, res));
   app.get('/api/whale-follow/signals', validate(walletFollowQuerySchema, 'query'), (req, res) => walletFollowCtrl.listSignals(req, res));
@@ -140,10 +182,17 @@ export function registerRoutes(app: Express): void {
   app.get('/api/whale-follow/trading-status', (req, res) => walletFollowCtrl.getTradingStatus(req, res));
   app.get('/api/whale-follow/trades', validate(walletFollowQuerySchema, 'query'), (req, res) => walletFollowCtrl.listCopyTrades(req, res));
   app.post('/api/whale-follow/signals/:signalId/execute', validate(walletFollowSignalParamsSchema, 'params'), (req, res) => walletFollowCtrl.executeSignal(req, res));
+  app.put('/api/whale-follow/:address', validate(walletFollowUnfollowParamsSchema, 'params'), validate(followWalletBodySchema.partial(), 'body'), (req, res) => walletFollowCtrl.updateFollow(req, res));
+  app.delete('/api/whale-follow/:address', validate(walletFollowUnfollowParamsSchema, 'params'), (req, res) => walletFollowCtrl.unfollow(req, res));
 
   app.get('/api/whales/:address', validate(whaleParamsSchema, 'params'), (req, res) => whaleCtrl.getWhale(req, res));
 
   // Esports
+  app.get('/api/esports/sources', (req, res) => esportsSourceCtrl.getCatalog(req, res));
+  app.post('/api/esports/sources/:game/sync', validate(esportsGameParamsSchema, 'params'), (req, res) => esportsSourceCtrl.syncGame(req, res));
+  app.get('/api/esports/sources/:game/snapshots', validate(esportsGameParamsSchema, 'params'), validate(esportsSourceSnapshotsQuerySchema, 'query'), (req, res) => esportsSourceCtrl.listSnapshots(req, res));
+  app.get('/api/esports/sources/:game/teams/search', validate(esportsGameParamsSchema, 'params'), validate(esportsTeamSearchQuerySchema, 'query'), (req, res) => esportsSourceCtrl.searchTeams(req, res));
+  app.post('/api/esports/sources/:game/teams/roster', validate(esportsGameParamsSchema, 'params'), validate(esportsTeamRosterBodySchema), (req, res) => esportsSourceCtrl.syncTeamRoster(req, res));
   app.get('/api/esports/events', (req, res) => esportsCtrl.getEvents(req, res));
   app.get('/api/esports/rankings', (req, res) => esportsCtrl.getRankings(req, res));
   app.get('/api/esports/map-pool', (req, res) => esportsCtrl.getMapPool(req, res));
@@ -220,7 +269,8 @@ export function registerRoutes(app: Express): void {
   app.post('/api/sim/bets', validate(placeSimBetBodySchema), (req, res) => simCtrl.placeBet(req, res));
   app.get('/api/sim/bets/:id', (req, res) => simCtrl.getBet(req, res));
   app.patch('/api/sim/bets/:id/settle', validate(settleSimBetBodySchema), (req, res) => simCtrl.settleBet(req, res));
-  app.get('/api/sim/reviews', (req, res) => simCtrl.listReviews(req, res));
+  app.get('/api/sim/reviews', validate(reviewListQuerySchema, 'query'), (req, res) => simCtrl.listReviews(req, res));
+  app.get('/api/sim/reviews/summary', validate(reviewListQuerySchema, 'query'), (req, res) => simCtrl.getReviewSummary(req, res));
   app.get('/api/sim/bets/:id/review', (req, res) => simCtrl.getReview(req, res));
   app.post('/api/sim/bets/:id/review', validate(createSimReviewBodySchema), (req, res) => simCtrl.createOrUpdateReview(req, res));
   app.get('/api/sim/bets/:id/snapshots', (req, res) => simCtrl.getSnapshotsForBet(req, res));

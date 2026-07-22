@@ -14,7 +14,14 @@ function makeTeam(overrides: Partial<Team> = {}): Team {
       { playerId: 'p2', name: 'b1t', nickname: 'b1t', rating: 1.15, kdRatio: 1.2, headshotPercent: 55, mapsPlayed: 90, role: 'Rifler' },
       { playerId: 'p3', name: 'Aleksib', nickname: 'Aleksib', rating: 1.0, kdRatio: 0.95, headshotPercent: 35, mapsPlayed: 85, role: 'IGL' },
     ],
-    recentForm: { last10Matches: [], winRate: 0.8, streak: 5, averageRating: 1.13 },
+    recentForm: {
+      last10Matches: [
+        { opponent: 'Vitality', result: 'win', score: '2-1', date: '2026-07-18T10:00:00Z', event: 'IEM Cologne' },
+      ],
+      winRate: 0.8,
+      streak: 5,
+      averageRating: 1.13,
+    },
     mapPool: {
       maps: [
         { map: 'Inferno', winRate: 0.75, matchesPlayed: 20, roundsWon: 300, roundsLost: 200 },
@@ -111,6 +118,31 @@ describe('PromptEngine', () => {
       expect(prompt.context).toContain('60%');
     });
 
+    it('should include individual recent results and full roster metrics', () => {
+      const teamA = makeTeam();
+      const teamB = makeTeam({ teamId: 'team-2', name: 'FaZe Clan' });
+
+      const prompt = engine.buildPrompt({ match: makeMatch(), teamA, teamB });
+
+      expect(prompt.context).toContain('W 2-1 vs Vitality');
+      expect(prompt.context).toContain('rating 1.25');
+      expect(prompt.context).toContain('K/D 1.30');
+      expect(prompt.context).toContain('HS 45.0%');
+      expect(prompt.context).toContain('maps 100');
+    });
+
+    it('marks unavailable ranks and player metrics as N/A', () => {
+      const teamA = makeTeam({
+        rank: 999,
+        players: [{ playerId: 'p0', name: '', nickname: 'unknown', rating: 0, kdRatio: 0, headshotPercent: 0, mapsPlayed: 0, role: '' }],
+      });
+      const prompt = engine.buildPrompt({ match: makeMatch(), teamA, teamB: makeTeam({ teamId: 'team-2' }) });
+
+      expect(prompt.context).toContain('HLTV Rank: N/A');
+      expect(prompt.context).toContain('rating N/A');
+      expect(prompt.context).not.toContain('#999');
+    });
+
     it('should include market odds when provided', () => {
       const teamA = makeTeam();
       const teamB = makeTeam({ teamId: 'team-2', name: 'FaZe Clan' });
@@ -163,6 +195,24 @@ describe('PromptEngine', () => {
       const prompt = engine.buildPrompt({ match, teamA, teamB });
 
       expect(prompt.context).toContain('HAS STANDIN');
+    });
+
+    it('should not invent a default rating for lineup players', () => {
+      const player = { ...makeLineup().players[0], rating: 0 };
+      const match = makeMatch({
+        lineups: {
+          teamA: makeLineup({ players: [player] }),
+          teamB: makeLineup({ players: [] }),
+        },
+      });
+
+      const prompt = engine.buildPrompt({
+        match,
+        teamA: makeTeam(),
+        teamB: makeTeam({ teamId: 'team-2', name: 'FaZe Clan' }),
+      });
+
+      expect(prompt.context).toContain('| s1mple | AWPer | N/A |');
     });
 
     it('should warn about missing key players', () => {

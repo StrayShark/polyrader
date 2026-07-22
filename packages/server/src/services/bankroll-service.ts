@@ -15,6 +15,7 @@ export class BankrollService {
     const equityCurve = this.getEquityCurve(account.id, account.initialBankroll, granularity);
     const openBetsWithLegs = this.betRepo.getBetsWithLegs(account.id, 'open');
     const settledBetsWithLegs = this.betRepo.getBetsWithLegs(account.id, 'settled');
+    const voidedBetsWithLegs = this.betRepo.getBetsWithLegs(account.id, 'voided');
     const allBets = this.betRepo.getAllBets(account.id);
 
     return {
@@ -24,6 +25,7 @@ export class BankrollService {
       equityCurve,
       openBets: openBetsWithLegs.map((b) => b.bet),
       settledBets: settledBetsWithLegs.map((b) => b.bet),
+      voidedBets: voidedBetsWithLegs.map((b) => b.bet),
       riskMetrics: this.computeRiskMetrics(allBets, account.initialBankroll),
     };
   }

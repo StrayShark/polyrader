@@ -1,6 +1,12 @@
 import type { SimBet, SimBetLeg, SimBetResult } from '@polyrader/core';
-import { parsePolymarketMatch } from '@polyrader/core';
+import {
+  parsePolymarketMatch,
+  settleLegAgainstStructuredResult,
+  type StructuredMatchResult,
+  type StructuredLegResult,
+} from '@polyrader/core';
 import { SimBetRepository, SimAccountRepository, MarketRepository } from '@polyrader/infra';
+import { ReviewService } from './review-service';
 
 export interface SettledLeg {
   leg: SimBetLeg;
@@ -17,20 +23,15 @@ export interface SettlementResult {
  * SettlementService — settles user practice bets (`sim_bets`) and keeps the
  * virtual account balance/exposure in sync.
  *
- * This service is intentionally separate from the old LLM-provider
- * SettlementEngine, which still handles legacy `simulated_bets` records.
+ * Extended market adapters (map winner / handicap / total / correct score)
+ * only settle when structured result data is available; otherwise legs stay pending.
  */
 export class SettlementService {
   private betRepo = new SimBetRepository();
   private accountRepo = new SimAccountRepository();
   private marketRepo = new MarketRepository();
+  private reviewService = new ReviewService();
 
-  /**
-   * Settle a single bet by ID.
-   *
-   * For a single leg the caller supplies the result directly. For parlays the
-   * caller may instead use `settleMatch` which resolves each leg independently.
-   */
   settleBet(id: string, result: SimBetResult, pnl?: number): SimBet {
     const withLegs = this.betRepo.getWithLegs(id);
     if (!withLegs) throw new Error(`Bet ${id} not found`);
@@ -38,31 +39,59 @@ export class SettlementService {
 
     const finalPnl = this.calculatePnl(withLegs.bet, result, pnl);
     const settledBet = this.betRepo.settle(id, result, finalPnl);
-
     this.recalculateAccount(settledBet.accountId);
-
+    this.recordSettlementMetrics(settledBet);
     return settledBet;
   }
 
   /**
-   * Settle all open bets that touch a given match.
-   *
-   * Each leg whose `matchId` equals `matchId` is resolved to `won` when its
-   * selection matches `winnerSelection`; otherwise `lost`. A parlay only wins
-   * when every leg wins.
+   * Legacy helper: treat every open leg on the match as a series-winner selection.
+   * Prefer `settleStructuredMatch` for multi-market settlement.
    */
   settleMatch(matchId: string, winnerSelection: string, options: { strictMarketWinner?: boolean } = {}): SettlementResult[] {
+    const structured: StructuredMatchResult = { winnerTeamName: winnerSelection };
+    if (options.strictMarketWinner) {
+      return this.settleStructuredMatch(matchId, structured, { kinds: ['match_winner'] });
+    }
+    return this.settleStructuredMatch(matchId, structured);
+  }
+
+  /**
+   * Settle open legs for a match using structured map/series results and per-market adapters.
+   */
+  settleStructuredMatch(
+    matchId: string,
+    structured: StructuredMatchResult,
+    options: { kinds?: Array<'match_winner' | 'map_winner' | 'handicap' | 'total_maps' | 'correct_score'> } = {},
+  ): SettlementResult[] {
     const openBets = this.betRepo.getOpenBetsWithLegsForMatch(matchId);
     const results: SettlementResult[] = [];
+    const allowed = options.kinds ? new Set(options.kinds) : null;
 
     for (const withLegs of openBets) {
       let changed = false;
       for (const leg of withLegs.legs) {
         if (leg.matchId !== matchId || leg.result) continue;
-        if (options.strictMarketWinner && !this.isSeriesWinnerLeg(leg)) continue;
-        const won = normalizeSelection(leg.selection) === normalizeSelection(winnerSelection);
-        const result = won ? 'won' : ('lost' as SimBetResult);
-        this.betRepo.settleLeg(leg.id, result);
+        const market = leg.marketId ? this.marketRepo.findByConditionId(leg.marketId) : null;
+        const decision = settleLegAgainstStructuredResult({
+          selection: leg.selection,
+          marketQuestion: market?.question,
+          result: structured,
+        });
+
+        if (allowed && decision.kind !== 'unsupported' && !allowed.has(decision.kind)) {
+          continue;
+        }
+
+        // Back-compat: legs without market metadata still settle as series winner when provided.
+        let legResult: StructuredLegResult = decision.result;
+        if (decision.kind === 'unsupported' && structured.winnerTeamName) {
+          const won = normalizeSelection(leg.selection) === normalizeSelection(structured.winnerTeamName);
+          legResult = won ? 'won' : 'lost';
+        }
+
+        if (legResult === 'pending') continue;
+        this.betRepo.settleLeg(leg.id, legResult);
         changed = true;
       }
       if (!changed) continue;
@@ -89,10 +118,6 @@ export class SettlementService {
     return results;
   }
 
-  /**
-   * Recalculate a virtual account's available balance and open exposure after
-   * a settlement.
-   */
   recalculateAccount(accountId: string): void {
     const account = this.accountRepo.getById(accountId);
     if (!account) return;
@@ -116,13 +141,8 @@ export class SettlementService {
     if (overridePnl !== undefined && Number.isFinite(overridePnl)) {
       return overridePnl;
     }
-
-    if (result === 'won') {
-      return bet.stake * (bet.totalOdds - 1);
-    }
-    if (result === 'lost') {
-      return -bet.stake;
-    }
+    if (result === 'won') return bet.stake * (bet.totalOdds - 1);
+    if (result === 'lost') return -bet.stake;
     return 0;
   }
 
@@ -150,16 +170,26 @@ export class SettlementService {
     return { bet, legs: settledLegs, pnl: bet.pnl };
   }
 
-  private isSeriesWinnerLeg(leg: SimBetLeg): boolean {
-    if (!leg.marketId) return false;
-    const market = this.marketRepo.findByConditionId(leg.marketId);
-    if (!market || market.outcomes.length !== 2) return false;
-    const parsed = parsePolymarketMatch(market.question);
-    if (!parsed || parsed.isMapMarket) return false;
-    return !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(market.question);
+  private recordSettlementMetrics(bet: SimBet): void {
+    if (bet.result !== 'won' && bet.result !== 'lost') return;
+    if (bet.modelProbability == null && bet.userProbability == null) return;
+    try {
+      this.reviewService.createOrUpdate({
+        betId: bet.id,
+        note: bet.runId ? `auto metrics from ${bet.runId}` : 'auto settlement metrics',
+      });
+    } catch {
+      // Metrics must not block settlement.
+    }
   }
 }
 
 function normalizeSelection(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+export function isSeriesWinnerMarketQuestion(question: string): boolean {
+  const parsed = parsePolymarketMatch(question);
+  if (!parsed || parsed.isMapMarket) return false;
+  return !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(question);
 }

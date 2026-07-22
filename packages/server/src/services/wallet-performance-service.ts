@@ -13,6 +13,7 @@ export interface WhaleLeaderboardOptions {
   limit?: number;
   minSamples?: number;
   minWinRate?: number;
+  minRoi?: number;
 }
 
 export class WalletPerformanceService {
@@ -72,8 +73,9 @@ export class WalletPerformanceService {
     const limit = options.limit ?? 50;
     const minSamples = options.minSamples ?? 5;
     const minWinRate = options.minWinRate ?? 0;
+    const minRoi = options.minRoi ?? 0.02;
 
-    const whales = this.whaleRepo.findByWinRate(limit, minSamples, minWinRate);
+    const whales = this.whaleRepo.findByWinRate(limit, minSamples, minWinRate, minRoi);
     return whales.map((w) => this.rescoreSuspicious(w));
   }
 
@@ -154,7 +156,7 @@ export class WalletPerformanceService {
   private rescoreSuspicious(whale: Whale): Whale {
     const trades = this.whaleRepo.getTrades(whale.address, 100);
     const correlationData = this.whaleRepo.findCorrelationData(whale.address);
-    return this.scoringEngine.scoreWhale(
+    const rescored = this.scoringEngine.scoreWhale(
       whale.address,
       trades,
       whale.totalVolume,
@@ -163,5 +165,10 @@ export class WalletPerformanceService {
       whale.pnl,
       correlationData,
     );
+    return {
+      ...whale,
+      suspiciousScore: rescored.suspiciousScore,
+      recentTrades: trades.length > 0 ? trades.slice(0, 20) : whale.recentTrades,
+    };
   }
 }

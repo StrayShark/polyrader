@@ -5,3 +5,7 @@ export * from './esports-enricher';
 export * from './auto-tune';
 export * from './bet-math';
 export * from './canonical-match';
+export * from './analysis-data-snapshot';
+export * from './review-suggestions';
+export * from './market-settlement';
+export * from './performance-metrics';

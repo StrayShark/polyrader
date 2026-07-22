@@ -39,7 +39,21 @@ export const setKeyBodySchema = z.object({
 });
 
 export const providerParamsSchema = z.object({
-  providerId: z.enum(['openai', 'anthropic', 'google', 'deepseek', 'xai', 'groq', 'qwen', 'moonshot', 'zhipu', 'doubao', 'minimax', 'hunyuan', 'user']),
+  providerId: z.enum([
+    'openai',
+    'anthropic',
+    'google',
+    'deepseek',
+    'xai',
+    'groq',
+    'qwen',
+    'moonshot',
+    'zhipu',
+    'doubao',
+    'minimax',
+    'hunyuan',
+    'user',
+  ]),
 });
 
 // ============================================================
@@ -50,7 +64,20 @@ export const statsHistoryQuerySchema = z.object({
 });
 
 export const calibrationParamsSchema = z.object({
-  providerId: z.enum(['openai', 'anthropic', 'google', 'deepseek', 'xai', 'groq', 'qwen', 'moonshot', 'zhipu', 'doubao', 'minimax', 'hunyuan']),
+  providerId: z.enum([
+    'openai',
+    'anthropic',
+    'google',
+    'deepseek',
+    'xai',
+    'groq',
+    'qwen',
+    'moonshot',
+    'zhipu',
+    'doubao',
+    'minimax',
+    'hunyuan',
+  ]),
 });
 
 // ============================================================
@@ -62,12 +89,14 @@ export const whaleQuerySchema = z.object({
   sort: z.enum(['volume', 'win_rate']).default('volume'),
   minSamples: z.coerce.number().int().min(0).max(1000).default(5),
   minWinRate: z.coerce.number().min(0).max(1).optional(),
+  minRoi: z.coerce.number().min(-1).max(10).optional(),
 });
 
 export const whaleLeaderboardQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   minSamples: z.coerce.number().int().min(1).max(1000).default(20),
   minWinRate: z.coerce.number().min(0).max(1).default(0.5),
+  minRoi: z.coerce.number().min(-1).max(10).default(0.02),
 });
 
 export const followWalletBodySchema = z.object({
@@ -87,6 +116,7 @@ export const walletCopyConfigBodySchema = z.object({
   maxSlippage: z.coerce.number().min(0).max(1).optional(),
   cs2Only: z.boolean().optional(),
   minLeaderWinRate: z.coerce.number().min(0).max(1).optional(),
+  minLeaderRoi: z.coerce.number().min(-1).max(10).optional(),
   minLeaderSamples: z.coerce.number().int().min(0).max(10_000).optional(),
   dailyCapUsd: z.coerce.number().min(1).max(1_000_000).optional(),
   minMarketVolumeShare: z.coerce.number().min(0).max(1).optional(),
@@ -108,7 +138,10 @@ export const walletFollowUnfollowParamsSchema = z.object({
 });
 
 export const whaleParamsSchema = z.object({
-  address: z.string().min(1, 'address is required').regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
+  address: z
+    .string()
+    .min(1, 'address is required')
+    .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
 });
 
 // ============================================================
@@ -135,6 +168,23 @@ export const upsertTeamSourceBodySchema = z.object({
 
 export const matchParamsSchema = z.object({
   matchId: z.string().min(1, 'matchId is required'),
+});
+
+export const esportsGameParamsSchema = z.object({
+  game: z.enum(['cs2', 'lol', 'dota2', 'valorant']),
+});
+
+export const esportsSourceSnapshotsQuerySchema = z.object({
+  entityType: z.enum(['match', 'team', 'player', 'event', 'patch', 'content']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const esportsTeamSearchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(120),
+});
+
+export const esportsTeamRosterBodySchema = z.object({
+  title: z.string().trim().min(1).max(160),
 });
 
 // ============================================================
@@ -229,17 +279,21 @@ export const updateBankrollBodySchema = z.object({
 });
 
 export const createAllocationBodySchema = z.object({
-  opportunities: z.array(z.object({
-    matchId: z.string().min(1),
-    matchLabel: z.string().min(1),
-    team: z.string().min(1),
-    winProbability: z.number().min(0).max(1),
-    odds: z.number().min(1.01).max(100),
-    kellyFraction: z.number().min(0).max(1),
-    consensusLevel: z.enum(['strong', 'moderate', 'weak', 'divergent']),
-    confidence: z.number().min(0).max(1),
-    expectedValue: z.number(),
-  })).min(1),
+  opportunities: z
+    .array(
+      z.object({
+        matchId: z.string().min(1),
+        matchLabel: z.string().min(1),
+        team: z.string().min(1),
+        winProbability: z.number().min(0).max(1),
+        odds: z.number().min(1.01).max(100),
+        kellyFraction: z.number().min(0).max(1),
+        consensusLevel: z.enum(['strong', 'moderate', 'weak', 'divergent']),
+        confidence: z.number().min(0).max(1),
+        expectedValue: z.number(),
+      }),
+    )
+    .min(1),
   useLLM: z.boolean().optional(),
 });
 
@@ -335,13 +389,17 @@ export const placeSimBetBodySchema = z.object({
   marketId: z.string().optional(),
   betType: z.enum(['single', 'parlay']).default('single'),
   stake: z.number().min(1).max(1000000),
-  legs: z.array(z.object({
-    matchId: z.string().optional(),
-    marketId: z.string().optional(),
-    selection: z.string().min(1),
-    odds: z.number().min(1.01).max(1000),
-    source: z.string().optional(),
-  })).min(1),
+  legs: z
+    .array(
+      z.object({
+        matchId: z.string().optional(),
+        marketId: z.string().optional(),
+        selection: z.string().min(1),
+        odds: z.number().min(1.01).max(1000),
+        source: z.string().optional(),
+      }),
+    )
+    .min(1),
   userProbability: z.number().min(0).max(1).optional(),
   modelProbability: z.number().min(0).max(1).optional(),
   marketProbability: z.number().min(0).max(1).optional(),
@@ -361,9 +419,23 @@ export const createSimReviewBodySchema = z.object({
   closingOdds: z.number().min(1.01).optional(),
 });
 
+export const reviewListQuerySchema = z.object({
+  accountId: z.string().optional(),
+  result: z.enum(['all', 'won', 'lost', 'push']).optional(),
+  betType: z.enum(['all', 'single', 'parlay']).optional(),
+  format: z.enum(['all', 'BO1', 'BO3', 'BO5']).optional(),
+  tier: z.string().optional(),
+  timing: z.enum(['all', 'pre', 'live']).optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
+  hasNote: z.enum(['all', 'yes', 'no']).optional(),
+});
+
 export type PlaceSimBetBody = z.infer<typeof placeSimBetBodySchema>;
 export type SettleSimBetBody = z.infer<typeof settleSimBetBodySchema>;
 export type CreateSimReviewBody = z.infer<typeof createSimReviewBodySchema>;
+export type ReviewListQuery = z.infer<typeof reviewListQuerySchema>;
 
 export type CreateAlertBody = z.infer<typeof createAlertBodySchema>;
 export type UpdateAlertBody = z.infer<typeof updateAlertBodySchema>;
@@ -398,12 +470,14 @@ export const createStrategyProfileBodySchema = z.object({
   sourceWeights: signalSourceWeightsSchema,
   behaviorWeights: signalBehaviorWeightsSchema,
   recommendation: signalRecommendationSchema,
-  capitalParams: z.object({
-    initialBankroll: z.number().min(0).optional(),
-    maxSingleRiskPct: z.number().min(0).max(1).optional(),
-    maxDailyRiskPct: z.number().min(0).max(1).optional(),
-    betStrategy: z.enum(['fixed', 'kelly', 'proportional']).optional(),
-  }).optional(),
+  capitalParams: z
+    .object({
+      initialBankroll: z.number().min(0).optional(),
+      maxSingleRiskPct: z.number().min(0).max(1).optional(),
+      maxDailyRiskPct: z.number().min(0).max(1).optional(),
+      betStrategy: z.enum(['fixed', 'kelly', 'proportional']).optional(),
+    })
+    .optional(),
   lastBacktest: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -413,12 +487,15 @@ export const updateStrategyProfileBodySchema = z.object({
   sourceWeights: signalSourceWeightsSchema.optional(),
   behaviorWeights: signalBehaviorWeightsSchema.optional(),
   recommendation: signalRecommendationSchema.optional(),
-  capitalParams: z.object({
-    initialBankroll: z.number().min(0).optional(),
-    maxSingleRiskPct: z.number().min(0).max(1).optional(),
-    maxDailyRiskPct: z.number().min(0).max(1).optional(),
-    betStrategy: z.enum(['fixed', 'kelly', 'proportional']).optional(),
-  }).optional().nullable(),
+  capitalParams: z
+    .object({
+      initialBankroll: z.number().min(0).optional(),
+      maxSingleRiskPct: z.number().min(0).max(1).optional(),
+      maxDailyRiskPct: z.number().min(0).max(1).optional(),
+      betStrategy: z.enum(['fixed', 'kelly', 'proportional']).optional(),
+    })
+    .optional()
+    .nullable(),
   lastBacktest: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
@@ -432,24 +509,194 @@ export const createTrainingSessionBodySchema = z.object({
     minConfidence: z.number().min(0).max(1).optional(),
     consecutive: z.boolean().optional(),
   }),
-  startAt: z.string().refine((v) => !Number.isNaN(Date.parse(v))).optional(),
-  endAt: z.string().refine((v) => !Number.isNaN(Date.parse(v))).optional(),
+  startAt: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)))
+    .optional(),
+  endAt: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)))
+    .optional(),
 });
 
 export const updateTrainingSessionBodySchema = z.object({
   title: z.string().min(1).max(128).optional(),
-  target: z.object({
-    count: z.number().int().min(1).optional(),
-    maxRiskPct: z.number().min(0).max(1).optional(),
-    minEdge: z.number().min(0).max(1).optional(),
-    minConfidence: z.number().min(0).max(1).optional(),
-    consecutive: z.boolean().optional(),
-  }).optional(),
+  target: z
+    .object({
+      count: z.number().int().min(1).optional(),
+      maxRiskPct: z.number().min(0).max(1).optional(),
+      minEdge: z.number().min(0).max(1).optional(),
+      minConfidence: z.number().min(0).max(1).optional(),
+      consecutive: z.boolean().optional(),
+    })
+    .optional(),
   status: z.enum(['active', 'completed', 'abandoned']).optional(),
   progress: z.number().min(0).max(1).optional(),
-  endAt: z.string().refine((v) => !Number.isNaN(Date.parse(v))).optional().nullable(),
+  endAt: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)))
+    .optional()
+    .nullable(),
 });
 
 export const trainingSessionIdParamsSchema = z.object({
   id: z.string().min(1, 'Session id is required'),
 });
+
+// ============================================================
+// analysis.v1 run schemas
+// ============================================================
+export const analysisRunParamsSchema = z.object({
+  runId: z.string().min(1, 'runId is required'),
+});
+
+export const analysisRunListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  game: z.enum(['cs2', 'lol', 'dota2', 'valorant']).optional(),
+});
+
+const analysisParticipantSchema = z
+  .object({
+    participantId: z.string().min(1),
+    name: z.string().min(1).max(160),
+    side: z.enum(['a', 'b']),
+  })
+  .strict();
+
+const analysisMarketOutcomeSchema = z
+  .object({
+    outcomeId: z.string().min(1),
+    label: z.string().min(1).max(160),
+    marketProbability: z.number().min(0).max(1),
+  })
+  .strict();
+
+const analysisFactSchema = z
+  .object({
+    factId: z.string().min(1),
+    entityType: z.string().min(1),
+    source: z.string().min(1),
+    observedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value))),
+    field: z.string().min(1),
+    value: z.unknown(),
+  })
+  .strict();
+
+export const analysisEnvelopeSchema = z
+  .object({
+    contractVersion: z.literal('analysis.v1'),
+    runId: z.string().min(1),
+    promptVersion: z.string().min(1),
+    game: z.enum(['cs2', 'lol', 'dota2', 'valorant']),
+    locale: z.string().min(2).max(16),
+    generatedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value))),
+    match: z
+      .object({
+        matchId: z.string().min(1),
+        eventId: z.string().optional(),
+        eventName: z.string().min(1).max(200),
+        startsAt: z.string().refine((value) => !Number.isNaN(Date.parse(value))),
+        format: z.enum(['BO1', 'BO3', 'BO5']),
+        status: z.string().min(1),
+        participants: z.array(analysisParticipantSchema).length(2),
+      })
+      .strict(),
+    market: z
+      .object({
+        marketId: z.string().min(1),
+        kind: z.enum(['match_winner', 'map_winner', 'handicap', 'total_maps', 'correct_score']),
+        line: z.number().nullable(),
+        outcomes: z.array(analysisMarketOutcomeSchema).min(2).max(16),
+        liquidityUsd: z.number().min(0),
+        observedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value))),
+      })
+      .strict(),
+    dataSnapshot: z
+      .object({
+        dataSnapshotHash: z.string().startsWith('sha256:'),
+        completeness: z.number().min(0).max(1),
+        freshnessSeconds: z.number().min(0),
+        facts: z.array(analysisFactSchema).max(500),
+        missing: z.array(z.string()).max(100),
+      })
+      .strict(),
+    policy: z
+      .object({
+        minimumCompleteness: z.number().min(0).max(1),
+        maximumFreshnessSeconds: z.number().int().positive(),
+        minimumConfidence: z.number().min(0).max(1),
+        minimumEdge: z.number().min(0).max(1),
+        lowLiquidityThresholdUsd: z.number().min(0),
+        allowedActions: z.array(z.enum(['recommend_outcome', 'pass'])).min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const createAnalysisRunBodySchema = z.object({
+  envelope: analysisEnvelopeSchema,
+  provider: z.string().max(64).optional(),
+  model: z.string().max(128).optional(),
+  gameAdapterVersion: z.string().max(64).optional(),
+  marketAdapterVersion: z.string().max(64).optional(),
+});
+
+export const executeStandardAnalysisBodySchema = z
+  .object({
+    game: z.enum(['cs2', 'lol', 'dota2', 'valorant']),
+    matchId: z.string().min(1).optional(),
+    provider: z
+      .enum([
+        'openai',
+        'anthropic',
+        'google',
+        'deepseek',
+        'xai',
+        'groq',
+        'qwen',
+        'moonshot',
+        'zhipu',
+        'doubao',
+        'minimax',
+        'hunyuan',
+      ])
+      .optional(),
+    locale: z.string().min(2).max(16).optional(),
+    market: z
+      .object({
+        marketId: z.string().min(1).optional(),
+        kind: z
+          .enum(['match_winner', 'map_winner', 'handicap', 'total_maps', 'correct_score'])
+          .optional(),
+        line: z.number().nullable().optional(),
+        liquidityUsd: z.number().min(0).optional(),
+        observedAt: z
+          .string()
+          .refine((value) => !Number.isNaN(Date.parse(value)))
+          .optional(),
+        outcomes: z.array(analysisMarketOutcomeSchema).min(2).max(16).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const ingestAnalysisResponseBodySchema = z.object({
+  rawResponse: z.string().min(1, 'rawResponse is required'),
+  attempt: z.number().int().min(0).max(5).optional(),
+  latencyMs: z.number().int().min(0).optional(),
+  promptTokens: z.number().int().min(0).optional(),
+  completionTokens: z.number().int().min(0).optional(),
+  totalTokens: z.number().int().min(0).optional(),
+  policy: z.record(z.string(), z.unknown()).optional(),
+  settlementRulesAvailable: z.boolean().optional(),
+  bankroll: z.number().min(0).optional(),
+});
+
+export const analysisFixtureBodySchema = z
+  .object({
+    invalid: z.boolean().optional(),
+    provider: z.string().max(64).optional(),
+    model: z.string().max(128).optional(),
+  })
+  .default({});

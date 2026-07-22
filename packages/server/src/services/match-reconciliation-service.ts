@@ -1,4 +1,4 @@
-import { buildCanonicalMatchId } from '@polyrader/core';
+import { buildCanonicalMatchId, type StructuredMatchResult } from '@polyrader/core';
 import {
   HLTVCrawler,
   LLMRepository,
@@ -113,7 +113,28 @@ export class MatchReconciliationService {
       );
       if (outcome.winnerTeamName) {
         resolvedMarkets = this.marketRepo.resolveLocalMarkets(canonicalMatchId, outcome.winnerTeamName).length;
-        settledBets = this.settlementService.settleMatch(matchId, outcome.winnerTeamName, { strictMarketWinner: true }).length;
+        const mapWinners = (outcome.maps ?? [])
+          .filter((map): map is { mapNumber: number; winnerTeamName: string } => Boolean(map.winnerTeamName))
+          .map((map) => ({ mapNumber: map.mapNumber, winnerTeamName: map.winnerTeamName }));
+        if (mapWinners.length > 0) {
+          resolvedMarkets += this.marketRepo.resolveLocalMapMarkets(canonicalMatchId, mapWinners).length;
+        }
+        const structured: StructuredMatchResult = {
+          winnerTeamName: outcome.winnerTeamName,
+          teamAName: outcome.teamAName,
+          teamBName: outcome.teamBName,
+          teamAMapsWon: outcome.teamAScore,
+          teamBMapsWon: outcome.teamBScore,
+          maps: outcome.maps?.map((map) => ({
+            mapNumber: map.mapNumber,
+            mapName: map.mapName,
+            winnerTeamName: map.winnerTeamName,
+            teamARounds: map.teamARounds,
+            teamBRounds: map.teamBRounds,
+          })),
+        };
+        // Map / handicap / total stay pending until structured fields exist.
+        settledBets = this.settlementService.settleStructuredMatch(matchId, structured).length;
       }
     } else if (outcome.status === 'cancelled') {
       status = 'cancelled';

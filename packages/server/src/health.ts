@@ -25,6 +25,8 @@ interface HealthStatus {
       lastScanAt?: string;
       lastSuccessAt?: string;
       lastError?: string;
+      source?: string;
+      lastWarning?: string;
     };
     priceStream: {
       status: string;
@@ -104,6 +106,8 @@ export async function checkHealth(): Promise<HealthStatus> {
         lastScanAt: ingestion.lastScanAt ?? undefined,
         lastSuccessAt: ingestion.lastSuccessAt ?? undefined,
         lastError: ingestion.lastError ?? undefined,
+        source: ingestion.source ?? undefined,
+        lastWarning: ingestion.lastWarning ?? undefined,
       },
       priceStream: {
         status: streamStatus,

@@ -13,3 +13,8 @@ export * from './odds-snapshot-repository';
 export * from './bet-review-repository';
 export * from './training-session-repository';
 export * from './strategy-profile-repository';
+export * from './cs2-match-snapshot-repository';
+export * from './esports-source-repository';
+export * from './analysis-run-repository';
+export * from './fact-repository';
+export * from './paper-policy-repository';

@@ -1,5 +1,5 @@
 import { Activity, CheckCircle2, Map as MapIcon, Shield, Users } from 'lucide-react';
-import type { Lineup, MatchLineups, Player, Team } from '@polyrader/core';
+import type { Lineup, MatchLineups, Player, Team } from '@polyrader/core/browser';
 import { Badge } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
 import { cn } from '../utils/cn';

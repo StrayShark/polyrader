@@ -4,7 +4,7 @@ import { useToast } from '../components/ToastProvider';
 import { useNotificationStore } from '../stores/notification-store';
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
 import { useI18n } from './use-i18n';
-import type { WalletCopySignal } from '@polyrader/core';
+import type { WalletCopySignal } from '@polyrader/core/browser';
 
 interface CopySignalEvent {
   type: string;

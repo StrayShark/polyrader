@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../utils/api';
-import type { SimulationConfig, ProviderSimulationStats, EquityCurvePoint } from '@polyrader/core';
+import type { SimulationConfig, ProviderSimulationStats, EquityCurvePoint } from '@polyrader/core/browser';
 
 interface SimulationState {
   config: SimulationConfig | null;

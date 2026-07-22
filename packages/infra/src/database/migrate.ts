@@ -17,12 +17,50 @@ export function runMigrations(): void {
     )
   `);
 
-  const migrations = ['001_initial_schema.sql', '002_add_clob_token_ids.sql', '003_add_bet_allocation.sql', '004_add_risk_metrics.sql', '005_add_prompt_ab_testing.sql', '006_add_decision_journal.sql', '007_add_alerts.sql', '008_add_simulation_config.sql', '009_esports_data_normalization.sql', '010_tier_and_analysis_config.sql', '011_history_months_config.sql', '012_min_volume_usd_config.sql', '013_signal_snapshots.sql', '014_signal_tuning_config.sql', '015_market_resolution_fields.sql', '016_hltv_match_id.sql', '017_wallet_performance_fields.sql', '018_wallet_follow_copy.sql', '019_copy_cs2_volume_filters.sql', '020_copy_trade_settlement.sql', '021_sim_accounts.sql', '022_sim_bets.sql', '023_odds_snapshots.sql', '024_bet_reviews.sql', '025_sim_bets_match_meta.sql', '026_training_sessions.sql', '027_strategy_profiles.sql', '028_source_alignment.sql', '029_canonical_match_identity.sql'];
+  const migrations = [
+    '001_initial_schema.sql',
+    '002_add_clob_token_ids.sql',
+    '003_add_bet_allocation.sql',
+    '004_add_risk_metrics.sql',
+    '005_add_prompt_ab_testing.sql',
+    '006_add_decision_journal.sql',
+    '007_add_alerts.sql',
+    '008_add_simulation_config.sql',
+    '009_esports_data_normalization.sql',
+    '010_tier_and_analysis_config.sql',
+    '011_history_months_config.sql',
+    '012_min_volume_usd_config.sql',
+    '013_signal_snapshots.sql',
+    '014_signal_tuning_config.sql',
+    '015_market_resolution_fields.sql',
+    '016_hltv_match_id.sql',
+    '017_wallet_performance_fields.sql',
+    '018_wallet_follow_copy.sql',
+    '019_copy_cs2_volume_filters.sql',
+    '020_copy_trade_settlement.sql',
+    '021_sim_accounts.sql',
+    '022_sim_bets.sql',
+    '023_odds_snapshots.sql',
+    '024_bet_reviews.sql',
+    '025_sim_bets_match_meta.sql',
+    '026_training_sessions.sql',
+    '027_strategy_profiles.sql',
+    '028_source_alignment.sql',
+    '029_canonical_match_identity.sql',
+    '030_copy_leader_roi_filter.sql',
+    '031_review_sprint_b.sql',
+    '032_multigame_esports_sources.sql',
+    '033_analysis_runs.sql',
+    '034_normalized_facts.sql',
+    '035_paper_policy_profiles.sql',
+    '036_fact_adapter_version.sql',
+    '037_paper_policy_freshness.sql',
+  ];
 
   for (const name of migrations) {
-    const row = db
-      .prepare('SELECT id FROM _migrations WHERE name = ?')
-      .get(name) as { id: number } | undefined;
+    const row = db.prepare('SELECT id FROM _migrations WHERE name = ?').get(name) as
+      | { id: number }
+      | undefined;
 
     if (row) {
       console.log(`Migration ${name} already executed, skipping`);

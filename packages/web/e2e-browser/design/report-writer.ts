@@ -37,17 +37,17 @@ export function writeAuditReport(filename: string, entries: AuditEntry[], title:
   <meta charset="UTF-8" />
   <title>${title}</title>
   <style>
-    body { font-family: Inter, system-ui, sans-serif; background: #f7f7f4; color: #26251e; padding: 32px; }
+    body { font-family: Inter, system-ui, sans-serif; background: #f7f7f7; color: #1f1f1f; padding: 32px; }
     h1 { font-weight: 400; letter-spacing: -0.02em; }
     .summary { display: flex; gap: 16px; margin-bottom: 24px; }
-    .pill { padding: 8px 14px; border: 1px solid #e6e5e0; border-radius: 8px; background: #fff; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e6e5e0; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #efeee8; text-align: left; font-size: 14px; }
-    th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #807d72; }
-    .pass { color: #1f8a65; }
-    .fail { color: #cf2d56; }
-    .partial { color: #c08532; }
-    .exception { color: #807d72; }
+    .pill { padding: 8px 14px; border: 1px solid #d9d9d9; border-radius: 8px; background: #fff; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d9d9d9; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #ededed; text-align: left; font-size: 14px; }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #6f6f6f; }
+    .pass { color: #2f7d4f; }
+    .fail { color: #b83d43; }
+    .partial { color: #9a6f20; }
+    .exception { color: #6f6f6f; }
   </style>
 </head>
 <body>

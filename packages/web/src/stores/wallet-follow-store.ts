@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FollowedWallet, WalletCopyConfig, WalletCopySignal, CopyTrade } from '@polyrader/core';
+import type { FollowedWallet, WalletCopyConfig, WalletCopySignal, CopyTrade } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface WalletFollowState {
@@ -90,7 +90,7 @@ export const useWalletFollowStore = create<WalletFollowState>((set, get) => ({
         '/whale-follow/trading-status',
       );
       set({ tradingStatus: data });
-    } catch (err) {
+    } catch {
       set({ tradingStatus: null });
     }
   },

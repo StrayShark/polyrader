@@ -66,6 +66,12 @@ function setupTestDb() {
       reasoning TEXT,
       match_format TEXT,
       match_tier TEXT,
+      run_id TEXT,
+      report_id TEXT,
+      policy_version TEXT,
+      game TEXT,
+      market_kind TEXT,
+      edge_at_entry REAL,
       placed_at TEXT NOT NULL DEFAULT (datetime('now')),
       settled_at TEXT
     );
@@ -93,6 +99,7 @@ function setupTestDb() {
       liquidity REAL,
       volume_24h REAL,
       source TEXT NOT NULL,
+      bet_id TEXT,
       captured_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -103,8 +110,27 @@ function setupTestDb() {
       note TEXT,
       brier_score REAL,
       closing_line_value REAL,
+      closing_odds REAL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE cs2_match_snapshots (
+      id TEXT PRIMARY KEY,
+      bet_id TEXT NOT NULL REFERENCES sim_bets(id) ON DELETE CASCADE,
+      match_id TEXT,
+      team_a_name TEXT,
+      team_b_name TEXT,
+      team_a_rank INTEGER,
+      team_b_rank INTEGER,
+      format TEXT,
+      tier TEXT,
+      event_name TEXT,
+      status TEXT,
+      lineups_json TEXT NOT NULL DEFAULT '{}',
+      map_pool_json TEXT NOT NULL DEFAULT '{}',
+      rankings_json TEXT NOT NULL DEFAULT '{}',
+      captured_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
 }

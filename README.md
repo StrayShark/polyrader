@@ -1,13 +1,13 @@
 # PolyRader
 
-> Local-first CS2 sportsbook simulator and training database.
-> 本地优先的 CS2 模拟盘练习工具与复盘数据库。
+> Local-first four-game esports analysis, simulated betting, and review database.
+> 本地优先的四游戏电竞分析、模拟下注与复盘数据库。
 
 **No registration. No login. No deposits. No real-money wagering.**
 
-PolyRader is a Tauri desktop app for practicing CS2 betting decisions with virtual bankrolls. It presents CS2 markets in a sportsbook-style interface, lets users submit simulated bets, and stores match context, odds snapshots, model signals, decisions, results, and review notes in a local SQLite database.
+PolyRader is a Tauri desktop app for practicing esports probability and betting decisions with virtual bankrolls. The product targets Counter-Strike 2, League of Legends, Dota 2, and Valorant. It stores source snapshots, versioned LLM analyses, simulated orders, results, and review notes in local SQLite.
 
-`Simbook` remains a feature concept for the simulated odds desk. The product direction is simulation-first: Polymarket and other market feeds are data sources, not the main product promise.
+CS2 currently has the most complete event and analysis workflow. The other boards are released only after their data-to-settlement validation gates pass. `Simbook` remains the simulated odds desk; Polymarket and other market feeds are read-only inputs, not the main product promise.
 
 ---
 
@@ -15,12 +15,13 @@ PolyRader is a Tauri desktop app for practicing CS2 betting decisions with virtu
 
 | Area | Promise |
 | --- | --- |
-| **CS2 Event Lobby** | Browse live/upcoming CS2 matches, tournaments, formats, teams, and odds-like market prices |
+| **Four-Game Event Lobby** | Browse released CS2, LoL, Dota 2, and Valorant matches with explicit board readiness |
+| **Validation Lab** | Verify source sync, normalized facts, standard prompts, LLM responses, paper decisions, and settlement |
 | **Practice Bet Slip** | Build single or parlay-style simulated bets with stake, implied probability, model probability, edge, and risk checks |
-| **Virtual Bankroll** | Track virtual balance, open exposure, daily PnL, ROI, drawdown, and bankroll discipline |
+| **Virtual Bankroll** | Track virtual cash, equity, exposure, PnL, ROI, drawdown, and bankroll discipline |
 | **Review Center** | Review settled simulated bets with odds snapshots, model signals, CLV, Brier Score, PnL, and mistake tags |
 | **Local Database** | Keep matches, markets, odds snapshots, simulated bets, reviews, and strategy runs in SQLite |
-| **Strategy Lab** | Compare AI, behavioral finance, market pricing, and wallet/market signals as training aids |
+| **Model Performance** | Compare provider, prompt, game, market, data-quality, calibration, and asset performance |
 | **Read-only Market Sources** | Use Polymarket/Gamma/CLOB/Data API data only as observable market inputs by default |
 
 ## Safety Boundary
@@ -45,7 +46,7 @@ The main UI must stay simulation-first.
 | Database | SQLite via better-sqlite3, local file |
 | Cache | In-process LRU cache |
 | Charts | Recharts + Lightweight Charts |
-| Data Sources | CS2 match data, Polymarket public/read-only APIs, Polygon observations, LLM providers |
+| Data Sources | HLTV, Liquipedia, GRID, Riot, OpenDota, Polymarket public/read-only APIs, LLM providers |
 
 ## Quick Start
 
@@ -86,26 +87,22 @@ npm run tauri:build
 
 | Document | Purpose |
 | --- | --- |
-| [Product redesign](docs/cs2-simbook-product-redesign.md) | Product positioning, IA, page design, data model, and phased rollout |
-| [Product docs audit](docs/product-docs-audit.md) | Audit checklist for product docs and visual specs |
-| [.trae PRD](.trae/documents/PRD.md) | Canonical product requirements |
-| [.trae design spec](.trae/documents/design-spec.md) | Visual system and UI behavior rules |
-| [.trae overview](.trae/documents/overview.md) | Architecture and module overview |
-| [.trae roadmap](.trae/documents/DEVELOPMENT.md) | Phase plan for the simulation-first rebuild |
-| [Tauri guide](docs/tauri-guide.md) | Desktop development and packaging notes |
+| [Documentation index](docs/README.md) | Canonical document set, status, and source-of-truth order |
+| [Four-game product plan](docs/product/four-game-product-plan.md) | Product workflows, performance design, and completion boundaries |
+| [LLM analysis contract](docs/contracts/llm-analysis-contract.md) | Standard prompt, response, report, audit, and paper-order contract |
+| [Interactive UI prototype](docs/design/four-game-llm-simbook-prototype.html) | Validation, report, paper-order, and performance designs |
+| [Implementation roadmap](docs/roadmap/four-game-llm-simbook-roadmap.md) | Phases, dependencies, migrations, E2E matrix, and release gates |
 
 ## Target Information Architecture
 
 | Navigation | Job |
 | --- | --- |
-| Event Lobby | Browse CS2 matches and market prices |
-| Simbook | Open a match, select markets, and add simulated bets |
-| Bet Slip | Manage pending simulated selections and risk |
-| Bankroll | Track virtual balance, open exposure, PnL, ROI, and drawdown |
-| Review Center | Review settled decisions and model calibration |
-| Database | Inspect and export local data |
-| Strategy Lab | Tune AI/behavior/market signal weights |
-| Settings | Configure local storage, LLM keys, and read-only data sources |
+| Event Lobby | Browse matches and markets for boards that passed release gates |
+| Validation Lab | Run and inspect source-to-paper-order board verification |
+| Analysis Report | Inspect normalized report, prompt, response, and run timeline |
+| My Ledger | Track portfolio, paper orders, performance attribution, and review |
+| Strategy Lab | Tune deterministic paper policy and probability signals |
+| Settings | Configure local storage, LLM providers, and read-only data sources |
 
 ## Project Structure
 
@@ -117,8 +114,8 @@ polyrader/
 │   ├── server/        # Express sidecar, services, routes, websocket
 │   └── web/           # React app, pages, components, stores, styles
 ├── src-tauri/         # Tauri desktop shell
-├── docs/              # Product, release, and desktop docs
-└── .trae/documents/   # Canonical PRD/design/architecture/roadmap docs
+├── docs/              # Canonical product, contract, design, and roadmap docs
+└── .trae/rules/       # Persistent implementation and planning rules
 ```
 
 ## Development Commands
@@ -141,14 +138,14 @@ polyrader/
 
 PolyRader uses a dense sportsbook/workbench layout:
 
-- Left rail for CS2 filters and navigation.
+- Left rail for game context and task navigation.
 - Center workspace for event rows, odds grids, match detail, database views, and reviews.
 - Right persistent practice bet slip on desktop, bottom drawer on mobile.
-- Dark sportsbook theme as the primary design target, with light and matrix/terminal themes retained.
+- Cursor-like black/white/gray structure, with color reserved for status, risk, and PnL.
 - Cards are used for repeated items and panels only; page sections stay unframed or full-width.
 - Odds buttons have fixed dimensions, show price and implied probability, and flash on price movement.
 
-See [.trae/documents/design-spec.md](.trae/documents/design-spec.md) for the canonical visual rules.
+See the [interactive UI prototype](docs/design/four-game-llm-simbook-prototype.html) and [product plan](docs/product/four-game-product-plan.md) for current UI rules.
 
 ## License
 

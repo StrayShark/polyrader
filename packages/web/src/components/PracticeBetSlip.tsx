@@ -73,6 +73,15 @@ export function PracticeBetSlip() {
     : 1;
   const perComboStake = betType === 'round_robin' && comboCount > 1 ? Math.max(1, stake / comboCount) : stake;
   const displayTotalStake = betType === 'round_robin' && comboCount > 1 ? perComboStake * comboCount : stake;
+  const dailyRisk = (summary?.openExposure ?? 0) + displayTotalStake;
+  const matchIds = new Set(legs.map((leg) => leg.matchId).filter(Boolean));
+  const correlationRisk = legs.length <= 1
+    ? 0
+    : Math.min(1, 1 - (matchIds.size / legs.length));
+  const kellyFraction = Math.max(0, edge) / Math.max(totalOdds - 1, 0.01);
+  const kellyDeviation = bankroll > 0
+    ? (displayTotalStake / bankroll) - Math.min(kellyFraction, 0.05)
+    : 0;
 
   const handleSubmit = async () => {
     const ok = await submitBet(reasoning || undefined);
@@ -274,9 +283,12 @@ export function PracticeBetSlip() {
           </div>
 
           <RiskMeter
-            stake={stake}
+            stake={displayTotalStake}
             bankroll={bankroll}
-            openExposure={summary?.account.openExposure ?? 0}
+            openExposure={summary?.openExposure ?? summary?.account.openExposure ?? 0}
+            dailyRisk={dailyRisk}
+            correlationRisk={correlationRisk}
+            kellyDeviation={kellyDeviation}
           />
 
           {(exceedsSingleRisk || exceedsBankroll) && (

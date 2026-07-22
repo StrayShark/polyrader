@@ -21,3 +21,5 @@ export * from './signal-backtest-engine';
 export * from './wallet-performance-engine';
 export * from './copy-signal-engine';
 export * from './copy-trade-settlement-engine';
+export * from './copy-strategy-presets';
+export * from './multi-market-analysis-engine';

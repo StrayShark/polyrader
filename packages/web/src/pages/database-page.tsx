@@ -22,7 +22,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
 }
 
-export function DatabasePage() {
+export function DatabasePage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const { addToast } = useToast();
   const [info, setInfo] = useState<BackupInfo | null>(null);
@@ -129,12 +129,16 @@ export function DatabasePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3">
+        <div className="flex shrink-0 items-center gap-2">
           <Database className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">{t('database.title')}</h1>
+          {embedded ? (
+            <h2 className="text-lg font-semibold">{t('database.title')}</h2>
+          ) : (
+            <h1 className="text-2xl font-semibold tracking-tight">{t('database.title')}</h1>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => fetchInfo()} disabled={isLoading}>
             <RefreshCw className={cn('mr-1 h-3.5 w-3.5', isLoading && 'animate-spin')} />
             {t('common.refresh')}

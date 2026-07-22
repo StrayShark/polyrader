@@ -186,4 +186,43 @@ describe('SourceAlignmentService HLTV analysis enrichment', () => {
       hasTeamData: true,
     }));
   });
+
+  it('can persist discovery without blocking on detailed enrichment', async () => {
+    const summary = {
+      matchId: '2396001', teamAId: '300', teamBId: '400', teamAName: 'Gamma', teamBName: 'Delta',
+      event: 'Fast Refresh Cup', eventType: 'Online' as const, format: 'BO3' as const,
+      date: '2026-07-19T12:00:00.000Z', stars: 1,
+      url: 'https://www.hltv.org/matches/2396001/gamma-vs-delta-fast-refresh-cup',
+    };
+    const hltv = {
+      getMatchDetail: vi.fn(),
+      getTeam: vi.fn(),
+      getMatchLineups: vi.fn(),
+    };
+    const llmRepo = {
+      getMatch: vi.fn().mockReturnValue(null),
+      getTeam: vi.fn().mockReturnValue(null),
+      upsertMatch: vi.fn(),
+    };
+    const esportsRepo = {
+      upsertMatchSourceLink: vi.fn(),
+    };
+    const service = new SourceAlignmentService({
+      hltv: hltv as never,
+      llmRepo: llmRepo as never,
+      esportsRepo: esportsRepo as never,
+    });
+
+    const result = await service.syncDiscoveredHltvMatches([summary], { limit: 0 });
+
+    expect(result).toMatchObject({ discovered: 1, enriched: 0, lineupRefreshed: 0, reused: 0, failed: 0 });
+    expect(llmRepo.upsertMatch).toHaveBeenCalledWith(expect.objectContaining({
+      matchId: 'local-hltv-2396001',
+      teamAId: '300',
+      teamBId: '400',
+    }));
+    expect(esportsRepo.upsertMatchSourceLink).toHaveBeenCalledOnce();
+    expect(hltv.getMatchDetail).not.toHaveBeenCalled();
+    expect(hltv.getTeam).not.toHaveBeenCalled();
+  });
 });

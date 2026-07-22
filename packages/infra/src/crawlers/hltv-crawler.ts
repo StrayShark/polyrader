@@ -44,6 +44,14 @@ export interface HltvCommunityPrediction {
 
 export type HltvMatchLiveStatus = 'upcoming' | 'live' | 'finished' | 'postponed' | 'cancelled';
 
+export interface HltvMapResult {
+  mapNumber: number;
+  mapName?: string;
+  winnerTeamName?: string;
+  teamARounds?: number;
+  teamBRounds?: number;
+}
+
 export interface HltvMatchOutcome {
   matchId: string;
   available: boolean;
@@ -56,6 +64,7 @@ export interface HltvMatchOutcome {
   teamBScore?: number;
   winnerTeamId?: string;
   winnerTeamName?: string;
+  maps?: HltvMapResult[];
   url: string;
 }
 
@@ -274,6 +283,8 @@ export function parseHltvMatchOutcomeHtml(html: string, matchId: string, url = '
         : undefined
     : undefined;
 
+  const maps = parseHltvMapResults($, teamAName, teamBName);
+
   return {
     matchId,
     available: true,
@@ -288,8 +299,76 @@ export function parseHltvMatchOutcomeHtml(html: string, matchId: string, url = '
       ? parseTeamId(teamAAnchor.attr('href') ?? '')
       : winnerSide === 'b' ? parseTeamId(teamBAnchor.attr('href') ?? '') : undefined,
     winnerTeamName: winnerSide === 'a' ? teamAName : winnerSide === 'b' ? teamBName : undefined,
+    maps: maps.length > 0 ? maps : undefined,
     url,
   };
+}
+
+function parseHltvMapResults(
+  $: cheerio.CheerioAPI,
+  teamAName: string,
+  teamBName: string,
+): HltvMapResult[] {
+  const maps: HltvMapResult[] = [];
+  $('.mapholder').each((index, element) => {
+    const holder = $(element);
+    const mapName = holder.find('.mapname, .map-name').first().text().replace(/\s+/g, ' ').trim() || undefined;
+    const results = holder.find('.results').first();
+    if (results.length === 0 && holder.find('.won, .lost').length === 0) return;
+
+    const left = results.find('.results-left').first();
+    const right = results.find('.results-right').first();
+    let teamARounds: number | undefined;
+    let teamBRounds: number | undefined;
+    let winnerTeamName: string | undefined;
+
+    if (left.length && right.length) {
+      const leftScore = parseSeriesScore(left.find('.results-teamscore, .results-score').first().text() || left.text());
+      const rightScore = parseSeriesScore(right.find('.results-teamscore, .results-score').first().text() || right.text());
+      const leftName = left.find('.results-teamname').first().text().trim();
+      const rightName = right.find('.results-teamname').first().text().trim();
+      const leftIsA = namesRoughlyMatch(leftName, teamAName) || (!namesRoughlyMatch(leftName, teamBName) && !namesRoughlyMatch(rightName, teamAName));
+      teamARounds = leftIsA ? leftScore : rightScore;
+      teamBRounds = leftIsA ? rightScore : leftScore;
+      if (left.hasClass('won') || right.hasClass('lost')) {
+        winnerTeamName = leftIsA ? teamAName : teamBName;
+      } else if (right.hasClass('won') || left.hasClass('lost')) {
+        winnerTeamName = leftIsA ? teamBName : teamAName;
+      } else if (teamARounds !== undefined && teamBRounds !== undefined && teamARounds !== teamBRounds) {
+        winnerTeamName = teamARounds > teamBRounds ? teamAName : teamBName;
+      }
+    } else {
+      const scores = holder.find('.won, .lost');
+      if (scores.length >= 2) {
+        const first = scores.eq(0);
+        const second = scores.eq(1);
+        teamARounds = parseSeriesScore(first.text());
+        teamBRounds = parseSeriesScore(second.text());
+        if (first.hasClass('won')) winnerTeamName = teamAName;
+        else if (second.hasClass('won')) winnerTeamName = teamBName;
+        else if (teamARounds !== undefined && teamBRounds !== undefined && teamARounds !== teamBRounds) {
+          winnerTeamName = teamARounds > teamBRounds ? teamAName : teamBName;
+        }
+      }
+    }
+
+    if (!winnerTeamName && teamARounds === undefined && teamBRounds === undefined && !mapName) return;
+    maps.push({
+      mapNumber: index + 1,
+      mapName,
+      winnerTeamName,
+      teamARounds,
+      teamBRounds,
+    });
+  });
+  return maps.filter((map) => map.winnerTeamName || map.teamARounds !== undefined);
+}
+
+function namesRoughlyMatch(a: string, b: string): boolean {
+  const left = a.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const right = b.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
 }
 
 function parseSeriesScore(value: string): number | undefined {

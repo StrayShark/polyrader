@@ -5,36 +5,33 @@ export interface ThemeTokenExpectations {
   border: string;
   cardShadow: 'none';
   primaryButtonMinHeight: number;
-  primaryException?: boolean;
 }
 
 export const CURSOR_LIGHT: ThemeTokenExpectations = {
-  background: '#f7f7f4',
-  foreground: '#26251e',
-  primary: '#f54e00',
-  border: '#e6e5e0',
+  background: '#f7f7f7',
+  foreground: '#1f1f1f',
+  primary: '#202020',
+  border: '#d9d9d9',
   cardShadow: 'none',
   primaryButtonMinHeight: 40,
 };
 
 export const CURSOR_DARK: ThemeTokenExpectations = {
-  background: '#1a1916',
-  foreground: '#f7f7f4',
-  primary: '#f54e00',
-  border: '#3d3b34',
+  background: '#181818',
+  foreground: '#e8e8e8',
+  primary: '#e8e8e8',
+  border: '#333333',
   cardShadow: 'none',
   primaryButtonMinHeight: 40,
 };
 
 export const CURSOR_MATRIX: ThemeTokenExpectations = {
-  // Matrix keeps green primary as product exception (not Cursor Orange).
-  background: '#0d1117',
-  foreground: '#c9d1d9',
-  primary: '#00ff41',
-  border: '#30363d',
+  background: '#0a0a0a',
+  foreground: '#f2f2f2',
+  primary: '#f2f2f2',
+  border: '#484848',
   cardShadow: 'none',
   primaryButtonMinHeight: 40,
-  primaryException: true,
 };
 
 export function themeExpectations(theme: 'dark' | 'light' | 'matrix'): ThemeTokenExpectations {

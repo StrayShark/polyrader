@@ -43,6 +43,63 @@ export interface MatchInfo {
   teamDetails?: MatchTeamDetails;
 }
 
+export type EsportsGame = 'cs2' | 'lol' | 'dota2' | 'valorant';
+
+export type EsportsSourceId =
+  | 'hltv'
+  | 'liquipedia'
+  | 'grid'
+  | 'riot'
+  | 'riot-data-dragon'
+  | 'opendota'
+  | 'steam'
+  | 'stratz'
+  | 'vlr'
+  | 'oracles-elixir';
+
+export type EsportsSourceAccess = 'public' | 'api_key' | 'licensed' | 'reference_only';
+export type EsportsSourceState = 'ready' | 'unconfigured' | 'reference_only' | 'degraded' | 'error';
+export type EsportsSourceEntityType = 'match' | 'team' | 'player' | 'event' | 'patch' | 'content';
+
+export interface EsportsSourceDescriptor {
+  game: EsportsGame;
+  source: EsportsSourceId;
+  label: string;
+  access: EsportsSourceAccess;
+  state: EsportsSourceState;
+  configured: boolean;
+  capabilities: string[];
+  docsUrl: string;
+  note?: string;
+}
+
+export interface EsportsSourceSnapshot {
+  id?: number;
+  game: EsportsGame;
+  source: EsportsSourceId;
+  entityType: EsportsSourceEntityType;
+  externalId: string;
+  name: string;
+  startsAt?: string;
+  status?: string;
+  payload: Record<string, unknown>;
+  observedAt: string;
+}
+
+export interface EsportsSourceSyncResult {
+  game: EsportsGame;
+  status: 'success' | 'partial' | 'failed';
+  records: number;
+  sources: Array<{
+    source: EsportsSourceId;
+    status: 'success' | 'skipped' | 'failed';
+    records: number;
+    message?: string;
+  }>;
+  startedAt: string;
+  finishedAt: string;
+}
+
 export interface MatchTeamDetails {
   teamA: Team;
   teamB: Team;
@@ -276,6 +333,16 @@ export interface LLMAnalysisResult {
   variantId?: string;
   /** Optional chain-of-thought / reasoning trace returned by some models (e.g. Qwen, GLM, MiniMax). */
   thinkingProcess?: string;
+  /** Linked analysis.v1 run created by the paper-decision bridge. */
+  analysisRunId?: string;
+  paperDecisionAction?: 'paper_bet' | 'pass' | 'rejected';
+}
+
+export interface AnalysisV1BridgeSummary {
+  provider: string;
+  runId: string;
+  status: string;
+  decisionAction?: string;
 }
 
 export interface TokenUsage {
@@ -290,8 +357,80 @@ export interface LLMAggregation {
   consensus: ConsensusResult;
   kellyAllocation: KellyAllocation;
   aggregatedProbability: WinProbability;
+  /** Exact competitive data supplied to the models for this aggregation. */
+  analysisData?: AnalysisDataSnapshot;
+  /** Per-market scenarios derived from the match-level model probability. */
+  marketAnalyses?: MarketScenarioAnalysis[];
+  /** analysis.v1 runs bridged from this aggregation (one per successful provider). */
+  analysisRuns?: AnalysisV1BridgeSummary[];
   generatedAt: string;
   variantId?: string;
+}
+
+export type MarketAnalysisKind =
+  | 'match_winner'
+  | 'map_winner'
+  | 'handicap'
+  | 'total_maps'
+  | 'correct_score'
+  | 'unsupported';
+
+export type MarketLiquidityStatus = 'normal' | 'low' | 'synthetic' | 'unknown';
+
+export type MarketAnalysisWarning =
+  | 'low_liquidity'
+  | 'derived_from_series_probability'
+  | 'insufficient_market_definition';
+
+export type MarketAnalysisSignal = 'model_edge' | 'aligned' | 'observe_only' | 'model_limited';
+
+export interface MarketOutcomeAnalysis {
+  selection: string;
+  marketProbability: number | null;
+  modelProbability: number | null;
+  edge: number | null;
+}
+
+export interface MarketScenarioAnalysis {
+  conditionId: string;
+  question: string;
+  kind: MarketAnalysisKind;
+  line: number | null;
+  liquidity: number;
+  liquidityThreshold: number;
+  liquidityStatus: MarketLiquidityStatus;
+  confidence: number;
+  signal: MarketAnalysisSignal;
+  focusOutcome?: string;
+  outcomes: MarketOutcomeAnalysis[];
+  warnings: MarketAnalysisWarning[];
+}
+
+export type AnalysisDataSource = 'hltv' | 'database' | 'fallback';
+
+export type AnalysisDataMissingField =
+  | 'team_a_rank'
+  | 'team_b_rank'
+  | 'team_a_recent_matches'
+  | 'team_b_recent_matches'
+  | 'team_a_roster'
+  | 'team_b_roster'
+  | 'team_a_map_pool'
+  | 'team_b_map_pool'
+  | 'team_a_lineup'
+  | 'team_b_lineup';
+
+export interface AnalysisDataSnapshot {
+  capturedAt: string;
+  sourceUpdatedAt?: string;
+  source: AnalysisDataSource;
+  completeness: number;
+  isComplete: boolean;
+  missingFields: AnalysisDataMissingField[];
+  lineupConfirmed: boolean;
+  teamA: Team;
+  teamB: Team;
+  lineups?: MatchLineups;
 }
 
 export interface ConsensusResult {
@@ -407,6 +546,7 @@ export interface WalletCopyConfig {
   maxSlippage: number;
   cs2Only: boolean;
   minLeaderWinRate: number;
+  minLeaderRoi: number;
   minLeaderSamples: number;
   dailyCapUsd: number;
   requireUserConfirm: boolean;
@@ -587,6 +727,31 @@ export interface PolymarketUserTrade {
   status?: string;
   timestamp: string;
   txHash?: string;
+}
+
+export interface PolymarketPublicTrade {
+  address: string;
+  txHash: string;
+  tokenId: string;
+  conditionId?: string;
+  question?: string;
+  slug?: string;
+  outcome?: string;
+  side: 'buy' | 'sell';
+  price: number;
+  size: number;
+  value: number;
+  timestamp: string;
+  profileName?: string;
+}
+
+export interface PolymarketLeaderboardEntry {
+  rank: number;
+  address: string;
+  userName?: string;
+  volume: number;
+  pnl: number;
+  profileImage?: string;
 }
 
 export interface PolymarketOpenOrder {
@@ -1257,6 +1422,12 @@ export interface SimBet {
   reasoning?: string;
   matchFormat?: 'BO1' | 'BO3' | 'BO5' | null;
   matchTier?: string | null;
+  runId?: string;
+  reportId?: string;
+  policyVersion?: string;
+  game?: string;
+  marketKind?: string;
+  edgeAtEntry?: number;
   placedAt: string;
   settledAt?: string;
 }
@@ -1276,6 +1447,7 @@ export interface SimBetLeg {
 
 export interface OddsSnapshot {
   id: string;
+  betId?: string;
   matchId?: string;
   marketId?: string;
   selection: string;
@@ -1294,16 +1466,85 @@ export interface BetReview {
   note?: string;
   brierScore?: number;
   closingLineValue?: number;
+  closingOdds?: number;
   roi?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Cs2MatchSnapshot {
+  id: string;
+  betId: string;
+  matchId?: string;
+  teamAName?: string;
+  teamBName?: string;
+  teamARank?: number;
+  teamBRank?: number;
+  format?: string;
+  tier?: string;
+  eventName?: string;
+  status?: string;
+  lineups: Record<string, unknown>;
+  mapPool: Record<string, unknown>;
+  rankings: Record<string, unknown>;
+  capturedAt: string;
+}
+
+export interface ReviewErrorTagStat {
+  tag: string;
+  count: number;
+  totalPnl: number;
+  avgBrier?: number;
+}
+
+export interface ReviewDimensionStat {
+  key: string;
+  count: number;
+  winRate: number;
+  totalPnl: number;
+  avgBrier?: number;
+}
+
+export interface ReviewSuggestion {
+  id: string;
+  severity: 'info' | 'warning' | 'critical';
+  messageKey: string;
+  params?: Record<string, string | number>;
+}
+
+export interface ReviewSummary {
+  totalSettled: number;
+  winRate: number;
+  totalPnl: number;
+  avgBrier?: number;
+  avgClv?: number;
+  avgRoi?: number;
+  maxDrawdown: number;
+  errorTagStats: ReviewErrorTagStat[];
+  byFormat: ReviewDimensionStat[];
+  byTier: ReviewDimensionStat[];
+  suggestions: ReviewSuggestion[];
+}
+
+export interface ReviewListFilters {
+  result?: 'all' | 'won' | 'lost' | 'push';
+  betType?: 'all' | 'single' | 'parlay';
+  format?: 'all' | 'BO1' | 'BO3' | 'BO5';
+  tier?: string;
+  timing?: 'all' | 'pre' | 'live';
+  tags?: string[];
+  fromDate?: string;
+  toDate?: string;
+  hasNote?: 'all' | 'yes' | 'no';
 }
 
 export interface ReviewDetail {
   bet: SimBet;
   review?: BetReview;
   snapshots: OddsSnapshot[];
+  placementOdds?: number;
   matchName?: string;
+  matchSnapshot?: Cs2MatchSnapshot;
   closingOdds?: number;
   brierScore?: number;
   closingLineValue?: number;
@@ -1329,6 +1570,7 @@ export interface BankrollSummary {
   equityCurve: EquityCurvePoint[];
   openBets: SimBet[];
   settledBets: SimBet[];
+  voidedBets: SimBet[];
   riskMetrics: RiskMetrics;
 }
 
@@ -1345,6 +1587,12 @@ export interface PlaceSimBetInput {
   matchFormat?: 'BO1' | 'BO3' | 'BO5' | null;
   matchTier?: string | null;
   reasoning?: string;
+  runId?: string;
+  reportId?: string;
+  policyVersion?: string;
+  game?: string;
+  marketKind?: string;
+  edgeAtEntry?: number;
 }
 
 export interface PlaceSimBetLegInput {

@@ -88,12 +88,13 @@ describe('MarketService', () => {
       gammaClient.getMarkets.mockRejectedValue(new Error('API down'));
 
       const dbMarkets = [{ conditionId: 'c1', question: 'DB Market' }];
-      marketRepo.findAll.mockResolvedValue(dbMarkets);
+      marketRepo.findAll.mockReturnValue(dbMarkets);
+      marketRepo.findByConditionId.mockReturnValue(null);
 
       const result = await service.getMarkets(50, 0);
 
-      expect(result).toBe(dbMarkets);
-      expect(marketRepo.findAll).toHaveBeenCalledWith(50, 0);
+      expect(result).toEqual(dbMarkets);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(200, 0);
     });
 
     it('falls back to local DB when API succeeds with no open markets', async () => {
@@ -102,11 +103,12 @@ describe('MarketService', () => {
 
       const dbMarkets = [{ conditionId: 'local-hltv-1', question: 'Local CS2 practice market' }];
       marketRepo.findAll.mockReturnValue(dbMarkets);
+      marketRepo.findByConditionId.mockReturnValue(null);
 
       const result = await service.getMarkets(50, 0);
 
-      expect(result).toBe(dbMarkets);
-      expect(marketRepo.findAll).toHaveBeenCalledWith(50, 0);
+      expect(result).toEqual(dbMarkets);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(200, 0);
       expect(cacheSet).toHaveBeenCalledWith('markets:50:0', dbMarkets, 60);
     });
 
@@ -117,11 +119,12 @@ describe('MarketService', () => {
 
       const dbMarkets = [{ conditionId: 'c1', question: 'DB Market' }];
       marketRepo.findAll.mockReturnValue(dbMarkets);
+      marketRepo.findByConditionId.mockReturnValue(null);
 
       const result = await service.getMarkets(50, 0);
 
-      expect(result).toBe(dbMarkets);
-      expect(marketRepo.findAll).toHaveBeenCalledWith(50, 0);
+      expect(result).toEqual(dbMarkets);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(200, 0);
     });
 
     it('returns local seed markets when API and DB are unavailable', async () => {
@@ -241,12 +244,14 @@ describe('MarketService', () => {
       gammaClient.getMarkets.mockResolvedValue([]);
       const dbMarkets = [{ conditionId: 'local-db-1', question: 'Local practice market' }];
       marketRepo.findAll.mockReturnValue(dbMarkets);
+      marketRepo.findByConditionId.mockReturnValue(null);
 
       const result = await service.refreshMarkets();
 
-      expect(result).toBe(dbMarkets);
-      expect(marketRepo.findAll).toHaveBeenCalledWith(100, 0);
-      expect(cacheSet).toHaveBeenCalledWith('markets:50:0', dbMarkets, 60);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject(dbMarkets[0]);
+      expect(marketRepo.findAll).toHaveBeenCalledWith(200, 0);
+      expect(cacheSet).toHaveBeenCalledWith('markets:50:0', expect.arrayContaining([expect.objectContaining(dbMarkets[0])]), 60);
     });
   });
 

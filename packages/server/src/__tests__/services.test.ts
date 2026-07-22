@@ -73,7 +73,7 @@ describe('WhaleService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].address).toBe('0xdef');
-      expect(cacheSet).toHaveBeenCalledWith('whales:volume:10:5:0', expect.any(Array), 120);
+      expect(cacheSet).toHaveBeenCalledWith('whales:volume:10:5:0:0', expect.any(Array), 120);
     });
   });
 

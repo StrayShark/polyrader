@@ -1,6 +1,6 @@
-import { PolygonClient, WhaleRepository, MarketRepository } from '@polyrader/infra';
+import { PolygonClient, PolymarketDataClient, WhaleRepository, MarketRepository } from '@polyrader/infra';
 import type { LogEntry } from '@polyrader/infra';
-import { WhaleScoringEngine } from '@polyrader/core';
+import { WhaleScoringEngine, type PolymarketPublicTrade, type WhaleTrade } from '@polyrader/core';
 import { logger } from '../utils/logger';
 import type { WalletFollowService } from './wallet-follow-service';
 
@@ -26,10 +26,13 @@ export interface WhaleIngestionStatus {
   consecutiveFailures: number;
   lastError: string | null;
   lastIngestedCount: number;
+  source: 'data-api' | 'polygon' | null;
+  lastWarning: string | null;
 }
 
 export class WhaleIngestionService {
   private client = new PolygonClient();
+  private dataClient = new PolymarketDataClient();
   private repo = new WhaleRepository();
   private marketRepo = new MarketRepository();
   private scoringEngine = new WhaleScoringEngine();
@@ -42,6 +45,8 @@ export class WhaleIngestionService {
     consecutiveFailures: 0,
     lastError: null,
     lastIngestedCount: 0,
+    source: null,
+    lastWarning: null,
   };
 
   getStatus(): WhaleIngestionStatus {
@@ -58,75 +63,157 @@ export class WhaleIngestionService {
    */
   async scanRecentTrades(): Promise<number> {
     this.status.lastScanAt = new Date().toISOString();
+    let dataApiError: string | null = null;
+
     try {
-      const currentBlock = await this.client.getBlockNumber();
-      const fromBlock = '0x' + Math.max(0, currentBlock - 500).toString(16);
-      const toBlock = '0x' + currentBlock.toString(16);
-
-      const logs = await this.client.getLogs({
-        address: CTF_EXCHANGE,
-        topics: [ORDER_FILLED_TOPIC],
-        fromBlock,
-        toBlock,
+      const ingested = await this.scanDataApiTrades();
+      this.markSuccess('data-api', ingested);
+      return ingested;
+    } catch (err) {
+      dataApiError = (err as Error).message;
+      logger.warn('[WhaleIngestion] Data API scan failed, falling back to Polygon', {
+        error: dataApiError,
       });
+    }
 
-      let ingested = 0;
-      for (const log of logs) {
-        try {
-          const trade = this.parseTradeLog(log);
-          if (trade && trade.amount >= MIN_TRADE_VALUE) {
-            const inserted = this.repo.insertTrade({
-              address: trade.maker,
-              txHash: log.transactionHash,
-              marketId: trade.tokenId,
-              outcome: trade.outcome,
-              amount: trade.amount,
-              price: trade.price,
-              timestamp: new Date().toISOString(),
-              type: trade.side,
-            });
-
-            // Only count and aggregate when the trade was actually inserted
-            // (INSERT OR IGNORE returns changes === 0 for duplicate tx_hash)
-            if (inserted) {
-              await this.updateWhaleAggregate(trade.maker);
-              if (this.walletFollowService) {
-                const tradeRecord = {
-                  txHash: log.transactionHash,
-                  marketId: trade.tokenId,
-                  outcome: trade.outcome,
-                  amount: trade.amount,
-                  price: trade.price,
-                  timestamp: new Date().toISOString(),
-                  type: trade.side,
-                };
-                void this.walletFollowService.processNewWhaleTrade(trade.maker, tradeRecord).catch((err) => {
-                  logger.warn('Failed to process copy signal', { error: (err as Error).message });
-                });
-              }
-              ingested++;
-            }
-          }
-        } catch (err) {
-          logger.warn('Failed to ingest whale trade', { error: (err as Error).message });
-        }
-      }
-
-      this.status.lastSuccessAt = new Date().toISOString();
-      this.status.consecutiveFailures = 0;
-      this.status.lastError = null;
-      this.status.lastIngestedCount = ingested;
+    try {
+      const ingested = await this.scanPolygonTrades();
+      this.markSuccess('polygon', ingested, dataApiError);
       return ingested;
     } catch (err) {
       this.status.consecutiveFailures += 1;
-      this.status.lastError = (err as Error).message;
+      this.status.lastError = [dataApiError, (err as Error).message].filter(Boolean).join(' | ');
       this.status.lastIngestedCount = 0;
+      this.status.source = null;
+      this.status.lastWarning = null;
       logger.error('[WhaleIngestion] Scan failed', {
-        error: (err as Error).message,
+        error: this.status.lastError,
         consecutiveFailures: this.status.consecutiveFailures,
       });
       return 0;
     }
+  }
+
+  private async scanDataApiTrades(): Promise<number> {
+    const publicTrades = await this.dataClient.getPublicTrades(100, MIN_TRADE_VALUE);
+    const followedTrades: PolymarketPublicTrade[] = [];
+    const followed = this.walletFollowService?.listFollowed().slice(0, 30) ?? [];
+
+    await Promise.all(followed.map(async (wallet) => {
+      try {
+        const trades = await this.dataClient.getTrades(wallet.address, 100);
+        for (const trade of trades) {
+          if (!trade.assetId || !trade.txHash || !trade.side || trade.value < MIN_TRADE_VALUE) continue;
+          followedTrades.push({
+            address: wallet.address.toLowerCase(),
+            txHash: trade.txHash,
+            tokenId: trade.assetId,
+            conditionId: trade.marketId,
+            outcome: trade.outcome,
+            side: trade.side,
+            price: trade.price,
+            size: trade.size,
+            value: trade.value,
+            timestamp: trade.timestamp,
+            profileName: wallet.label,
+          });
+        }
+      } catch (err) {
+        logger.warn('[WhaleIngestion] Followed wallet refresh failed', {
+          address: wallet.address,
+          error: (err as Error).message,
+        });
+      }
+    }));
+
+    const unique = new Map<string, PolymarketPublicTrade>();
+    for (const trade of [...publicTrades, ...followedTrades]) {
+      unique.set(`${trade.address}:${trade.txHash}:${trade.tokenId}`, trade);
+    }
+    return this.ingestPublicTrades(Array.from(unique.values()));
+  }
+
+  private async ingestPublicTrades(trades: PolymarketPublicTrade[]): Promise<number> {
+    const affected = new Map<string, string | undefined>();
+    const insertedTrades: Array<{ address: string; trade: WhaleTrade }> = [];
+
+    for (const trade of trades) {
+      if (trade.value < MIN_TRADE_VALUE || !trade.address || !trade.txHash || !trade.tokenId) continue;
+      const record: WhaleTrade = {
+        txHash: trade.txHash,
+        marketId: trade.tokenId,
+        outcome: trade.outcome ?? this.lookupOutcome(trade.tokenId),
+        amount: trade.value,
+        price: trade.price,
+        timestamp: trade.timestamp || new Date().toISOString(),
+        type: trade.side,
+      };
+      if (this.repo.insertTrade({ address: trade.address.toLowerCase(), ...record })) {
+        affected.set(trade.address.toLowerCase(), trade.profileName);
+        insertedTrades.push({ address: trade.address.toLowerCase(), trade: record });
+      }
+    }
+
+    for (const [address, label] of affected) {
+      await this.updateWhaleAggregate(address, label);
+    }
+    for (const { address, trade } of insertedTrades) {
+      if (!this.walletFollowService) continue;
+      void this.walletFollowService.processNewWhaleTrade(address, trade).catch((err) => {
+        logger.warn('Failed to process copy signal', { error: (err as Error).message });
+      });
+    }
+    return insertedTrades.length;
+  }
+
+  private async scanPolygonTrades(): Promise<number> {
+    const currentBlock = await this.client.getBlockNumber();
+    const fromBlock = '0x' + Math.max(0, currentBlock - 500).toString(16);
+    const toBlock = '0x' + currentBlock.toString(16);
+    const logs = await this.client.getLogs({
+      address: CTF_EXCHANGE,
+      topics: [ORDER_FILLED_TOPIC],
+      fromBlock,
+      toBlock,
+    });
+
+    let ingested = 0;
+    for (const log of logs) {
+      try {
+        const trade = this.parseTradeLog(log);
+        if (!trade || trade.amount < MIN_TRADE_VALUE) continue;
+        const timestamp = new Date().toISOString();
+        const tradeRecord: WhaleTrade = {
+          txHash: log.transactionHash,
+          marketId: trade.tokenId,
+          outcome: trade.outcome,
+          amount: trade.amount,
+          price: trade.price,
+          timestamp,
+          type: trade.side,
+        };
+        if (!this.repo.insertTrade({ address: trade.maker.toLowerCase(), ...tradeRecord })) continue;
+        await this.updateWhaleAggregate(trade.maker.toLowerCase());
+        if (this.walletFollowService) {
+          void this.walletFollowService.processNewWhaleTrade(trade.maker, tradeRecord).catch((err) => {
+            logger.warn('Failed to process copy signal', { error: (err as Error).message });
+          });
+        }
+        ingested += 1;
+      } catch (err) {
+        logger.warn('Failed to ingest whale trade', { error: (err as Error).message });
+      }
+    }
+    return ingested;
+  }
+
+  private markSuccess(source: 'data-api' | 'polygon', ingested: number, warning: string | null = null): void {
+    this.status.lastSuccessAt = new Date().toISOString();
+    this.status.consecutiveFailures = 0;
+    this.status.lastError = null;
+    this.status.lastIngestedCount = ingested;
+    this.status.source = source;
+    this.status.lastWarning = warning;
   }
 
   /**
@@ -253,7 +340,7 @@ export class WhaleIngestionService {
   /**
    * Update the whale aggregate row after a new trade.
    */
-  private async updateWhaleAggregate(address: string): Promise<void> {
+  private async updateWhaleAggregate(address: string, label?: string): Promise<void> {
     const trades = this.repo.getTrades(address, 100);
     const existing = this.repo.findByAddress(address);
 
@@ -271,7 +358,7 @@ export class WhaleIngestionService {
 
     this.repo.upsert({
       address,
-      label: existing?.label,
+      label: label ?? existing?.label,
       totalVolume,
       totalPositions: trades.length,
       activePositions,

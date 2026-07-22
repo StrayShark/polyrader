@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-const SAMPLE_MARKET = {
+export const SAMPLE_MARKET = {
   conditionId: '0xcs2_1',
   slug: 'spirit-vs-g2-bo3',
   question: 'Counter-Strike: Spirit vs G2 (BO3) - IEM Cologne',
@@ -61,8 +61,126 @@ export const MOCK_AGGREGATION = {
     bankrollFraction: 0.05,
   },
   aggregatedProbability: { teamA: 0.62, teamB: 0.38 },
+  analysisData: {
+    capturedAt: '2026-06-25T10:00:00Z',
+    sourceUpdatedAt: '2026-06-25T09:55:00Z',
+    source: 'hltv' as const,
+    completeness: 1,
+    isComplete: true,
+    missingFields: [],
+    lineupConfirmed: true,
+    teamA: analysisTeam('spirit', 'Spirit', 1, ['W', 'W', 'L', 'W', 'W']),
+    teamB: analysisTeam('g2', 'G2', 5, ['L', 'W', 'W', 'L', 'W']),
+    lineups: {
+      teamA: analysisLineup('spirit'),
+      teamB: analysisLineup('g2'),
+    },
+  },
+  marketAnalyses: [
+    {
+      conditionId: '0xcs2_1',
+      question: 'Counter-Strike: Spirit vs G2 (BO3) - IEM Cologne',
+      kind: 'match_winner' as const,
+      line: null,
+      liquidity: 8000,
+      liquidityThreshold: 1000,
+      liquidityStatus: 'normal' as const,
+      confidence: 0.75,
+      signal: 'aligned' as const,
+      outcomes: [
+        { selection: 'Spirit', marketProbability: 0.65, modelProbability: 0.62, edge: -0.03 },
+        { selection: 'G2', marketProbability: 0.35, modelProbability: 0.38, edge: 0.03 },
+      ],
+      warnings: [],
+    },
+    {
+      conditionId: '0xcs2_handicap',
+      question: 'Counter-Strike: Spirit vs G2 (BO3) - Spirit Handicap -1.5',
+      kind: 'handicap' as const,
+      line: -1.5,
+      liquidity: 2400,
+      liquidityThreshold: 1000,
+      liquidityStatus: 'normal' as const,
+      confidence: 0.6,
+      signal: 'model_edge' as const,
+      focusOutcome: 'Yes',
+      outcomes: [
+        { selection: 'Yes', marketProbability: 0.36, modelProbability: 0.45, edge: 0.09 },
+        { selection: 'No', marketProbability: 0.64, modelProbability: 0.55, edge: -0.09 },
+      ],
+      warnings: ['derived_from_series_probability' as const],
+    },
+    {
+      conditionId: '0xcs2_total',
+      question: 'Counter-Strike: Spirit vs G2 (BO3) - Total Maps Over/Under 2.5',
+      kind: 'total_maps' as const,
+      line: 2.5,
+      liquidity: 650,
+      liquidityThreshold: 1000,
+      liquidityStatus: 'low' as const,
+      confidence: 0.35,
+      signal: 'observe_only' as const,
+      outcomes: [
+        { selection: 'Over 2.5', marketProbability: 0.48, modelProbability: 0.53, edge: 0.05 },
+        { selection: 'Under 2.5', marketProbability: 0.52, modelProbability: 0.47, edge: -0.05 },
+      ],
+      warnings: ['low_liquidity' as const, 'derived_from_series_probability' as const],
+    },
+  ],
   generatedAt: '2026-06-25T10:00:00Z',
 };
+
+function analysisTeam(teamId: string, name: string, rank: number, form: string[]) {
+  return {
+    teamId,
+    name,
+    logo: '',
+    rank,
+    region: 'EU',
+    players: Array.from({ length: 5 }, (_value, index) => ({
+      playerId: `${teamId}-p${index}`,
+      name: '',
+      nickname: `${name} P${index + 1}`,
+      rating: 1.05 + index / 100,
+      kdRatio: 1.02 + index / 100,
+      headshotPercent: 45 + index,
+      mapsPlayed: 30 + index,
+      role: index === 0 ? 'AWPer' : 'Rifler',
+    })),
+    recentForm: {
+      last10Matches: form.map((result, index) => ({
+        opponent: `Opponent ${index + 1}`,
+        result: result === 'W' ? 'win' : 'loss',
+        score: result === 'W' ? '2-0' : '1-2',
+        date: `2026-06-${20 - index}T10:00:00Z`,
+        event: 'IEM Cologne',
+      })),
+      winRate: form.filter((result) => result === 'W').length / form.length,
+      streak: form[0] === 'W' ? 2 : 0,
+      averageRating: 1.07,
+    },
+    mapPool: { maps: [{ map: 'Mirage', winRate: 0.6, matchesPlayed: 10, roundsWon: 0, roundsLost: 0 }] },
+    headToHead: [],
+  };
+}
+
+function analysisLineup(teamId: string) {
+  return {
+    players: Array.from({ length: 5 }, (_value, index) => ({
+      playerId: `${teamId}-p${index}`,
+      nickname: `${teamId.toUpperCase()} P${index + 1}`,
+      rating: 1.05 + index / 100,
+      role: index === 0 ? 'AWPer' as const : 'Rifler' as const,
+      isStandin: false,
+      impactScore: 80 + index,
+      mapsOnRecord: 30 + index,
+    })),
+    isConfirmed: true,
+    hasStandin: false,
+    standinCount: 0,
+    missingKeyPlayers: [],
+  };
+}
 
 const MOCK_BACKTEST = {
   sampleSize: 42,
@@ -116,6 +234,77 @@ const MOCK_BACKTEST = {
     recommendation: { minEdge: 0.05, bubbleMinEdge: 0.1, minConfidence: 0.6, bubbleRiskPenalty: 0.15 },
   },
 };
+
+const MOCK_PERFORMANCE_SUMMARY = {
+  settledCount: 2,
+  openCount: 1,
+  wins: 1,
+  losses: 1,
+  winRate: 0.5,
+  winRateInterval: { low: 0.095, high: 0.905 },
+  totalPnl: 25,
+  totalStake: 200,
+  roi: 0.125,
+  avgBrier: 0.205,
+  calibrationError: 0.08,
+  avgClv: null,
+  equity: 10025,
+  maxDrawdown: 35,
+  sampleStatus: 'insufficient',
+  equityCurve: [
+    { timestamp: '2026-06-25T10:00:00Z', equity: 10060, cumulativePnl: 60 },
+    { timestamp: '2026-06-26T10:00:00Z', equity: 10025, cumulativePnl: 25 },
+  ],
+  byGame: [
+    { key: 'cs2', dimension: 'game', settledCount: 2, wins: 1, losses: 1, winRate: 0.5, totalPnl: 25, totalStake: 200, roi: 0.125, avgBrier: 0.205 },
+  ],
+  byProvider: [
+    { key: 'minimax', dimension: 'provider', settledCount: 2, wins: 1, losses: 1, winRate: 0.5, totalPnl: 25, totalStake: 200, roi: 0.125, avgBrier: 0.205 },
+  ],
+  byMarketKind: [
+    { key: 'match_winner', dimension: 'market_kind', settledCount: 2, wins: 1, losses: 1, winRate: 0.5, totalPnl: 25, totalStake: 200, roi: 0.125, avgBrier: 0.205 },
+  ],
+};
+
+const MOCK_VALIDATION_BOARDS = ['cs2', 'lol', 'dota2', 'valorant'].map((game) => ({
+  game,
+  boardState: game === 'cs2' ? 'paper_ready' : 'needs_data',
+  completeness: game === 'cs2' ? 0.86 : game === 'dota2' ? 0.71 : 0,
+  freshnessSeconds: game === 'cs2' ? 900 : 7200,
+  missing: game === 'cs2' ? ['player_stats', 'head_to_head'] : ['normalized_match', 'market_alignment'],
+  conflictFlags: [],
+  sourceCount: game === 'cs2' ? 3 : 2,
+  matchCount: game === 'cs2' ? 60 : game === 'dota2' ? 50 : 0,
+  sampleMatch: game === 'cs2' ? {
+    id: 'fact-cs2-spirit-g2',
+    game: 'cs2',
+    externalMatchId: '2396006',
+    eventName: 'IEM Cologne',
+    startsAt: '2026-07-23T12:00:00.000Z',
+    format: 'BO3',
+    status: 'scheduled',
+    mapPool: ['Mirage', 'Dust2', 'Nuke'],
+    participants: [
+      { participantId: 'spirit', side: 'a', name: 'Spirit', rating: 1.18, source: 'hltv' },
+      { participantId: 'g2', side: 'b', name: 'G2', rating: 1.09, source: 'hltv' },
+    ],
+    players: [],
+    sourceLinks: [],
+    facts: [],
+    missing: ['player_stats', 'head_to_head'],
+    conflictFlags: [],
+    completeness: 0.86,
+    freshnessSeconds: 900,
+    dataSnapshotHash: 'sha256:fixture-cs2-validation',
+    adapterVersion: 'cs2.facts.v2',
+  } : undefined,
+  stages: [
+    { stage: 'source_sync', status: 'passed', detail: 'Fixture sources synchronized' },
+    { stage: 'fact_normalize', status: game === 'cs2' ? 'passed' : 'warning', detail: game === 'cs2' ? 'Normalized facts ready' : 'More facts required' },
+    { stage: 'market_align', status: game === 'cs2' ? 'passed' : 'waiting', detail: game === 'cs2' ? 'Practice market aligned' : 'No aligned market' },
+    { stage: 'paper_decision', status: game === 'cs2' ? 'passed' : 'waiting', detail: game === 'cs2' ? 'Policy eligible' : 'Blocked by preflight' },
+  ],
+}));
 
 export async function setupCommonMocks(page: Page): Promise<void> {
   await page.route('**/api/system/features**', (route) =>
@@ -175,6 +364,92 @@ export async function setupCommonMocks(page: Page): Promise<void> {
       }),
     }),
   );
+
+  await page.route('**/api/esports/fetch-upcoming', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { enrichmentQueued: true } }),
+    }),
+  );
+
+  const esportsSyncs = new Map<string, Record<string, unknown>>();
+  const esportsSources = [
+    {
+      game: 'cs2',
+      sources: [
+        sourceDescriptor('cs2', 'hltv', 'HLTV', 'public', true),
+        sourceDescriptor('cs2', 'liquipedia', 'Liquipedia', 'public', true),
+        sourceDescriptor('cs2', 'grid', 'GRID', 'licensed', false),
+      ],
+    },
+    {
+      game: 'lol',
+      sources: [
+        sourceDescriptor('lol', 'grid', 'GRID', 'licensed', false),
+        sourceDescriptor('lol', 'riot-data-dragon', 'Riot Data Dragon', 'public', true),
+        sourceDescriptor('lol', 'riot', 'Riot Developer API', 'api_key', false),
+        sourceDescriptor('lol', 'liquipedia', 'Liquipedia', 'public', true),
+      ],
+    },
+    {
+      game: 'dota2',
+      sources: [
+        sourceDescriptor('dota2', 'opendota', 'OpenDota', 'public', true),
+        sourceDescriptor('dota2', 'steam', 'Valve Steam Web API', 'api_key', false),
+        sourceDescriptor('dota2', 'liquipedia', 'Liquipedia', 'public', true),
+      ],
+    },
+    {
+      game: 'valorant',
+      sources: [
+        sourceDescriptor('valorant', 'grid', 'GRID', 'licensed', false),
+        sourceDescriptor('valorant', 'riot', 'Riot VAL API', 'api_key', false),
+        sourceDescriptor('valorant', 'liquipedia', 'Liquipedia', 'public', true),
+      ],
+    },
+  ];
+
+  await page.route('**/api/esports/sources**', (route) => {
+    const url = new URL(route.request().url());
+    const syncMatch = url.pathname.match(/\/api\/esports\/sources\/(cs2|lol|dota2|valorant)\/sync$/);
+    if (syncMatch && route.request().method() === 'POST') {
+      const game = syncMatch[1];
+      const records = game === 'dota2' ? 50 : game === 'lol' ? 1 : 0;
+      const result = {
+        game,
+        status: records > 0 ? 'success' : 'partial',
+        records,
+        sources: [{ source: game === 'dota2' ? 'opendota' : 'grid', status: records > 0 ? 'success' : 'skipped', records }],
+        startedAt: '2026-07-21T03:00:00.000Z',
+        finishedAt: '2026-07-21T03:00:01.000Z',
+      };
+      esportsSyncs.set(game, result);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: result }),
+      });
+    }
+
+    if (url.pathname.endsWith('/snapshots')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    }
+    if (url.pathname.endsWith('/teams/search')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    }
+
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: esportsSources.map((entry) => ({
+          ...entry,
+          latestSync: esportsSyncs.get(entry.game) ?? null,
+        })),
+      }),
+    });
+  });
 
   await page.route('**/api/markets**', (route) => {
     const url = route.request().url();
@@ -380,6 +655,7 @@ export async function setupCommonMocks(page: Page): Promise<void> {
               maxSlippage: 0.05,
               cs2Only: true,
               minLeaderWinRate: 0.55,
+              minLeaderRoi: 0.02,
               minLeaderSamples: 10,
               dailyCapUsd: 2000,
               minMarketVolumeShare: 0.02,
@@ -402,6 +678,7 @@ export async function setupCommonMocks(page: Page): Promise<void> {
             maxSlippage: 0.05,
             cs2Only: true,
             minLeaderWinRate: 0.55,
+            minLeaderRoi: 0.02,
             minLeaderSamples: 10,
             dailyCapUsd: 2000,
             minMarketVolumeShare: 0.02,
@@ -497,6 +774,27 @@ export async function setupCommonMocks(page: Page): Promise<void> {
 
   await page.route('**/api/whales**', (route) => {
     const url = route.request().url();
+    if (url.includes('/whales/refresh') && route.request().method() === 'POST') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            ingestedTrades: 8,
+            discovered: 12,
+            qualified: 5,
+            failedProfiles: 0,
+            performanceUpdated: 3,
+            ingestion: {
+              source: 'data-api',
+              lastScanAt: '2026-07-20T08:00:00Z',
+              lastIngestedCount: 8,
+              lastError: null,
+            },
+          },
+        }),
+      });
+    }
     if (url.includes('/whales/graph')) {
       return route.fulfill({
         status: 200,
@@ -516,6 +814,11 @@ export async function setupCommonMocks(page: Page): Promise<void> {
             totalPositions: 10,
             activePositions: 3,
             winRate: 0.65,
+            settledBets: 24,
+            wins: 16,
+            losses: 8,
+            roi: 0.18,
+            totalWagered: 7000,
             pnl: 1200,
             suspiciousScore: { total: 35, volumeAnomaly: 10, timingAnomaly: 10, patternAnomaly: 8, correlationAnomaly: 7 },
             recentTrades: [
@@ -556,7 +859,13 @@ export async function setupCommonMocks(page: Page): Promise<void> {
             totalPositions: 10,
             activePositions: 3,
             winRate: 0.65,
+            settledBets: 24,
+            wins: 16,
+            losses: 8,
+            roi: 0.18,
+            totalWagered: 7000,
             pnl: 1200,
+            performanceUpdatedAt: '2026-07-20T08:00:00Z',
             suspiciousScore: { total: 75, volumeAnomaly: 20, timingAnomaly: 25, patternAnomaly: 15, correlationAnomaly: 15 },
             recentTrades: [],
             lastActive: '2026-06-25T10:00:00Z',
@@ -1045,6 +1354,32 @@ export async function setupCommonMocks(page: Page): Promise<void> {
     });
   });
 
+  await page.route('**/api/performance/summary**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: MOCK_PERFORMANCE_SUMMARY }),
+    }),
+  );
+
+  await page.route('**/api/validation-lab/boards**', (route) => {
+    const url = new URL(route.request().url());
+    const normalized = url.pathname.match(/\/boards\/(cs2|lol|dota2|valorant)\/normalize$/);
+    if (normalized) {
+      const summary = MOCK_VALIDATION_BOARDS.find((board) => board.game === normalized[1]);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { summary } }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: MOCK_VALIDATION_BOARDS }),
+    });
+  });
+
   await page.route('**/api/sim/**', (route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -1080,6 +1415,7 @@ export async function setupCommonMocks(page: Page): Promise<void> {
             equityCurve: [],
             openBets: [],
             settledBets: [],
+            voidedBets: [],
             riskMetrics: {
               maxDrawdown: 0,
               maxDrawdownPct: 0,
@@ -1111,6 +1447,32 @@ export async function setupCommonMocks(page: Page): Promise<void> {
               placedAt: new Date().toISOString(),
             },
             legs: body?.legs ?? [],
+          },
+        }),
+      });
+    }
+    if (url.includes('/reviews/summary')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            totalSettled: 1,
+            winRate: 1,
+            totalPnl: 80,
+            avgBrier: 0.16,
+            avgClv: -0.0314,
+            avgRoi: 0.8,
+            maxDrawdown: 0,
+            errorTagStats: [],
+            byFormat: [{ key: 'BO3', count: 1, winRate: 1, totalPnl: 80 }],
+            byTier: [{ key: 'unknown', count: 1, winRate: 1, totalPnl: 80 }],
+            suggestions: [{
+              id: 'need_more_samples',
+              severity: 'info',
+              messageKey: 'review.suggestion_needMoreSamples',
+              params: { count: 1 },
+            }],
           },
         }),
       });
@@ -1147,9 +1509,11 @@ export async function setupCommonMocks(page: Page): Promise<void> {
                   marketId: 'm1',
                   selection: 'Spirit',
                   odds: 1.8,
+                  source: 'placement',
                   capturedAt: '2026-06-25T10:00:00Z',
                 },
               ],
+              placementOdds: 1.8,
               closingOdds: 1.7,
               brierScore: 0.16,
               closingLineValue: -0.0314,
@@ -1237,6 +1601,25 @@ export async function setupCommonMocks(page: Page): Promise<void> {
       }),
     }),
   );
+}
+
+function sourceDescriptor(
+  game: string,
+  source: string,
+  label: string,
+  access: string,
+  configured: boolean,
+) {
+  return {
+    game,
+    source,
+    label,
+    access,
+    state: configured ? 'ready' : 'unconfigured',
+    configured,
+    capabilities: ['matches', 'teams'],
+    docsUrl: 'https://example.com/source-docs',
+  };
 }
 
 export async function setupMatchDetailMocks(page: Page): Promise<void> {

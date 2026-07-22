@@ -11,16 +11,28 @@
  * Open Access tier: CS2 + Dota 2 historical data, 20 req/min Central Data.
  */
 
-import type { Team, HeadToHead } from '@polyrader/core';
-
-const GRID_CENTRAL_URL =
-  process.env.GRID_GRAPHQL_URL || 'https://api-op.grid.gg/central-data/graphql';
-const GRID_STATE_URL =
-  process.env.GRID_STATE_URL || 'https://api-op.grid.gg/live-data-feed/series-state/graphql';
-const GRID_API_KEY = process.env.GRID_API_KEY || '';
+import type { EsportsGame, Team, HeadToHead } from '@polyrader/core';
 
 /** CS:GO/CS2 title ID on GRID */
 const CS2_TITLE_ID = '1';
+
+function gridCentralUrl(): string {
+  return process.env.GRID_GRAPHQL_URL || 'https://api-op.grid.gg/central-data/graphql';
+}
+
+function gridStateUrl(): string {
+  return process.env.GRID_STATE_URL || 'https://api-op.grid.gg/live-data-feed/series-state/graphql';
+}
+
+export function getGridTitleId(game: EsportsGame): string | null {
+  if (game === 'cs2') return process.env.GRID_TITLE_ID_CS2 || CS2_TITLE_ID;
+  const key = game === 'lol'
+    ? 'GRID_TITLE_ID_LOL'
+    : game === 'dota2'
+      ? 'GRID_TITLE_ID_DOTA2'
+      : 'GRID_TITLE_ID_VALORANT';
+  return process.env[key] || null;
+}
 
 /** Rate limiter: 20 req/min for Open Access Central Data */
 const MIN_INTERVAL_MS = 3100; // ~19 req/min
@@ -40,7 +52,8 @@ async function graphql<T>(
   query: string,
   variables?: Record<string, unknown>,
 ): Promise<T> {
-  if (!GRID_API_KEY) {
+  const apiKey = process.env.GRID_API_KEY || '';
+  if (!apiKey) {
     throw new Error('GRID_API_KEY not configured');
   }
 
@@ -50,7 +63,7 @@ async function graphql<T>(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': GRID_API_KEY,
+      'x-api-key': apiKey,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -122,7 +135,7 @@ export class GridClient {
    * Search CS2 teams by name.
    * Returns teams sorted by name similarity to the query.
    */
-  async searchTeams(name: string): Promise<
+  async searchTeams(name: string, titleId = CS2_TITLE_ID): Promise<
     Array<{ teamId: string; name: string; rank: number }>
   > {
     const query = `
@@ -141,8 +154,8 @@ export class GridClient {
 
     const data = await graphql<{
       teams: { edges: Array<{ node: GridTeam }> };
-    }>(GRID_CENTRAL_URL, query, {
-      titleId: CS2_TITLE_ID,
+    }>(gridCentralUrl(), query, {
+      titleId,
       nameFilter: { contains: name },
     });
 
@@ -171,7 +184,7 @@ export class GridClient {
 
     try {
       const data = await graphql<{ team: GridTeam | null }>(
-        GRID_CENTRAL_URL,
+        gridCentralUrl(),
         query,
         { id: teamId },
       );
@@ -200,7 +213,11 @@ export class GridClient {
    *
    * @param historyMonths  Months to look back for recent series (default 3)
    */
-  async getUpcomingSeries(_historyMonths = 3): Promise<
+  async getUpcomingSeries(
+    _historyMonths = 3,
+    titleId = CS2_TITLE_ID,
+    throwOnError = false,
+  ): Promise<
     Array<{
       seriesId: string;
       teamAId: string;
@@ -237,7 +254,7 @@ export class GridClient {
     try {
       const data = await graphql<{
         allSeries: { edges: Array<{ node: GridSeries }> };
-      }>(GRID_CENTRAL_URL, query, { titleId: CS2_TITLE_ID, startTime: now });
+      }>(gridCentralUrl(), query, { titleId, startTime: now });
 
       return data.allSeries.edges.map((e) => {
         const node = e.node;
@@ -254,9 +271,20 @@ export class GridClient {
           format: this.normalizeFormat(node.format?.name),
         };
       });
-    } catch {
+    } catch (error) {
+      if (throwOnError) throw error;
       return [];
     }
+  }
+
+  async getUpcomingSeriesForGame(game: EsportsGame): ReturnType<GridClient['getUpcomingSeries']> {
+    const titleId = getGridTitleId(game);
+    if (!titleId) throw new Error(`GRID title ID is not configured for ${game}`);
+    return this.getUpcomingSeries(3, titleId, true);
+  }
+
+  isConfiguredForGame(game: EsportsGame): boolean {
+    return Boolean(process.env.GRID_API_KEY && getGridTitleId(game));
   }
 
   /**
@@ -268,6 +296,7 @@ export class GridClient {
   async getTeamSeries(
     teamId: string,
     historyMonths = 3,
+    titleId = CS2_TITLE_ID,
   ): Promise<
     Array<{
       seriesId: string;
@@ -311,8 +340,8 @@ export class GridClient {
     try {
       const data = await graphql<{
         allSeries: { edges: Array<{ node: GridSeries }> };
-      }>(GRID_CENTRAL_URL, query, {
-        titleId: CS2_TITLE_ID,
+      }>(gridCentralUrl(), query, {
+        titleId,
         teamIds: { in: [teamId] },
         cutoff: cutoffStr,
       });
@@ -377,7 +406,7 @@ export class GridClient {
 
     try {
       const data = await graphql<{ seriesState: GridSeriesState | null }>(
-        GRID_STATE_URL,
+        gridStateUrl(),
         query,
         { id: seriesId },
       );
@@ -483,10 +512,10 @@ export class GridClient {
 
   /** Check if GRID API is configured and accessible */
   async testConnection(): Promise<boolean> {
-    if (!GRID_API_KEY) return false;
+    if (!process.env.GRID_API_KEY) return false;
     try {
       const query = `{ titles { id name } }`;
-      await graphql(GRID_CENTRAL_URL, query);
+      await graphql(gridCentralUrl(), query);
       return true;
     } catch {
       return false;

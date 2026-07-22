@@ -1,11 +1,43 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Activity, Bot, Database, ExternalLink, KeyRound, RefreshCw, Save, Settings, Shield, Wallet, type LucideIcon } from 'lucide-react';
-import type { SimAccount } from '@polyrader/core';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Skeleton } from '@/components/ui';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Activity,
+  Bot,
+  Database,
+  KeyRound,
+  Languages,
+  Moon,
+  RefreshCw,
+  Save,
+  Settings,
+  Shield,
+  Sun,
+  Terminal,
+  Wallet,
+} from 'lucide-react';
+import type { SimAccount } from '@polyrader/core/browser';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { useToast } from '../components/ToastProvider';
+import { useTheme } from '../components/ThemeProvider';
+import { BackgroundTasksPanel } from '../components/background-tasks-panel';
+import { EsportsDataSourcesPanel } from '../components/EsportsDataSourcesPanel';
+import { AiConfigPage } from './ai-config-page';
+import { DatabasePage } from './database-page';
 import type { SystemFeatures } from '../stores/feature-flag-store';
 import { cn } from '../utils/cn';
 
@@ -29,6 +61,16 @@ interface SettingsForm {
   initialBankroll: string;
   maxSingleRiskPct: string;
   maxDailyRiskPct: string;
+}
+
+type SettingsSection = 'general' | 'llm' | 'database' | 'system';
+
+const SETTINGS_SECTIONS = new Set<SettingsSection>(['general', 'llm', 'database', 'system']);
+
+function parseSection(value: string | null): SettingsSection {
+  return value && SETTINGS_SECTIONS.has(value as SettingsSection)
+    ? value as SettingsSection
+    : 'general';
 }
 
 function statusVariant(status: string): 'green' | 'yellow' | 'red' | 'secondary' {
@@ -65,24 +107,79 @@ function DependencyRow({ label, status, detail }: { label: string; status: strin
   );
 }
 
-function SettingsLink({ to, label, icon: Icon }: { to: string; label: string; icon: LucideIcon }) {
+function AppearanceSettings() {
+  const { theme, setTheme } = useTheme();
+  const { locale, setLocale, t } = useI18n();
+  const themes = [
+    { value: 'dark' as const, label: t('settings.themeDark'), icon: Moon },
+    { value: 'light' as const, label: t('settings.themeLight'), icon: Sun },
+    { value: 'matrix' as const, label: t('settings.themeMatrix'), icon: Terminal },
+  ];
+
   return (
-    <Link
-      to={to}
-      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-accent/50"
-    >
-      <span className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        {label}
-      </span>
-      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-    </Link>
+    <Card>
+      <CardHeader className="flex-row items-center gap-2">
+        <Sun className="h-4 w-4 text-muted-foreground" />
+        <CardTitle className="text-sm">{t('settings.appearance')}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground">{t('settings.theme')}</div>
+          <div className="grid grid-cols-3 gap-1 rounded-md border border-border p-1">
+            {themes.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTheme(value)}
+                aria-pressed={theme === value}
+                className={cn(
+                  'flex h-9 items-center justify-center gap-2 rounded text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  theme === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Languages className="h-3.5 w-3.5" />
+            {t('settings.language')}
+          </div>
+          <div className="grid grid-cols-2 gap-1 rounded-md border border-border p-1">
+            {(['zh', 'en'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setLocale(value)}
+                aria-pressed={locale === value}
+                className={cn(
+                  'h-9 rounded text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  locale === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {value === 'zh' ? '中文' : 'English'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 export function SettingsPage() {
   const { t } = useI18n();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = parseSection(searchParams.get('section'));
   const [account, setAccount] = useState<SimAccount | null>(null);
   const [form, setForm] = useState<SettingsForm | null>(null);
   const [features, setFeatures] = useState<SystemFeatures | null>(null);
@@ -150,6 +247,11 @@ export function SettingsPage() {
     ];
   }, [health, t]);
 
+  const changeSection = (value: string) => {
+    const next = parseSection(value);
+    setSearchParams(next === 'general' ? {} : { section: next }, { replace: true });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -160,124 +262,148 @@ export function SettingsPage() {
             <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchSettings} disabled={isLoading}>
-          <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
-          {t('common.refresh')}
-        </Button>
+        {(section === 'general' || section === 'system') && (
+          <Button variant="outline" size="sm" onClick={fetchSettings} disabled={isLoading}>
+            <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+            {t('common.refresh')}
+          </Button>
+        )}
       </div>
 
       {error && <div className="rounded-md border border-red/20 bg-red/5 p-3 text-sm text-red">{error}</div>}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader className="flex-row items-center gap-2">
-            <Shield className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('settings.practiceRisk')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!form ? (
-              <div className="space-y-2">
-                <Skeleton className="h-9 w-full" />
-                <Skeleton className="h-9 w-full" />
-                <Skeleton className="h-9 w-full" />
-              </div>
-            ) : (
-              <>
-                <label className="block space-y-1">
-                  <span className="text-xs text-muted-foreground">{t('settings.accountName')}</span>
-                  <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="block space-y-1">
-                    <span className="text-xs text-muted-foreground">{t('settings.initialBankroll')}</span>
-                    <Input type="number" min="1" value={form.initialBankroll} onChange={(event) => setForm({ ...form, initialBankroll: event.target.value })} />
-                  </label>
-                  <label className="block space-y-1">
-                    <span className="text-xs text-muted-foreground">{t('settings.maxSingleRisk')}</span>
-                    <Input type="number" min="0.1" max="100" step="0.1" value={form.maxSingleRiskPct} onChange={(event) => setForm({ ...form, maxSingleRiskPct: event.target.value })} />
-                  </label>
-                  <label className="block space-y-1">
-                    <span className="text-xs text-muted-foreground">{t('settings.maxDailyRisk')}</span>
-                    <Input type="number" min="0.1" max="100" step="0.1" value={form.maxDailyRiskPct} onChange={(event) => setForm({ ...form, maxDailyRiskPct: event.target.value })} />
-                  </label>
-                </div>
-                <div className="flex items-center justify-between gap-3 pt-1">
-                  <p className="text-xs text-muted-foreground">{t('settings.riskHint')}</p>
-                  <Button size="sm" onClick={saveAccount} disabled={isSaving}>
-                    <Save className="h-3.5 w-3.5" />
-                    {isSaving ? t('common.saving') : t('common.save')}
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+      <Tabs value={section} onValueChange={changeSection} className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-md border border-border bg-transparent p-1">
+          <TabsTrigger value="general" className="gap-2">
+            <Settings className="h-3.5 w-3.5" />
+            {t('settings.sectionGeneral')}
+          </TabsTrigger>
+          <TabsTrigger value="llm" className="gap-2">
+            <Bot className="h-3.5 w-3.5" />
+            {t('settings.sectionLlm')}
+          </TabsTrigger>
+          <TabsTrigger value="database" className="gap-2">
+            <Database className="h-3.5 w-3.5" />
+            {t('settings.sectionDatabase')}
+          </TabsTrigger>
+          <TabsTrigger value="system" className="gap-2">
+            <Activity className="h-3.5 w-3.5" />
+            {t('settings.sectionSystem')}
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-sm">{t('settings.dataHealth')}</CardTitle>
-            </div>
-            {health && <Badge variant={statusVariant(health.status)}>{health.status}</Badge>}
-          </CardHeader>
-          <CardContent>
-            {!health ? (
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-              </div>
-            ) : (
-              <>
-                <div className="mb-2 text-xs text-muted-foreground">
-                  {t('settings.lastChecked')} {new Date(health.timestamp).toLocaleString()} · {t('settings.uptime')} {formatUptime(health.uptime)}
-                </div>
-                <div>
-                  {dependencyRows.map((row) => (
-                    <DependencyRow key={`${row.label}-${row.status}`} {...row} />
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <TabsContent value="general" className="mt-0">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <AppearanceSettings />
 
-        <Card>
-          <CardHeader className="flex-row items-center gap-2">
-            <KeyRound className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('settings.advancedAccess')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <DependencyRow label={t('settings.polymarketAccount')} status={features?.polymarketAccountEnabled ? t('settings.enabled') : t('settings.disabled')} detail={t('settings.polymarketAccountHint')} />
-            <DependencyRow label={t('settings.marketOrders')} status={features?.marketOrdersEnabled ? t('settings.enabled') : t('settings.disabled')} detail={t('settings.marketOrdersHint')} />
-            <DependencyRow label={t('settings.liveTrading')} status={features?.liveTradingEnabled ? t('settings.enabled') : t('settings.disabled')} detail={t('settings.liveTradingHint')} />
-            <div className="grid gap-2 pt-1 sm:grid-cols-2">
-              {features?.polymarketAccountEnabled ? (
-                <SettingsLink to="/polymarket/account" label={t('nav.polymarketAccount')} icon={Wallet} />
+            <Card>
+              <CardHeader className="flex-row items-center gap-2">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm">{t('settings.practiceRisk')}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {!form ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-9 w-full" />
+                    <Skeleton className="h-9 w-full" />
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                ) : (
+                  <>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted-foreground">{t('settings.accountName')}</span>
+                      <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="block space-y-1">
+                        <span className="text-xs text-muted-foreground">{t('settings.initialBankroll')}</span>
+                        <Input type="number" min="1" value={form.initialBankroll} onChange={(event) => setForm({ ...form, initialBankroll: event.target.value })} />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-muted-foreground">{t('settings.maxSingleRisk')}</span>
+                        <Input type="number" min="0.1" max="100" step="0.1" value={form.maxSingleRiskPct} onChange={(event) => setForm({ ...form, maxSingleRiskPct: event.target.value })} />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-muted-foreground">{t('settings.maxDailyRisk')}</span>
+                        <Input type="number" min="0.1" max="100" step="0.1" value={form.maxDailyRiskPct} onChange={(event) => setForm({ ...form, maxDailyRiskPct: event.target.value })} />
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <p className="text-xs text-muted-foreground">{t('settings.riskHint')}</p>
+                      <Button size="sm" onClick={saveAccount} disabled={isSaving}>
+                        <Save className="h-3.5 w-3.5" />
+                        {isSaving ? t('common.saving') : t('common.save')}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="xl:col-span-2">
+              <CardHeader className="flex-row items-center gap-2">
+                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm">{t('settings.advancedAccess')}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-x-6 gap-y-2 lg:grid-cols-3">
+                <DependencyRow label={t('settings.polymarketAccount')} status={features?.polymarketAccountEnabled ? t('settings.enabled') : t('settings.disabled')} detail={t('settings.polymarketAccountHint')} />
+                <DependencyRow label={t('settings.marketOrders')} status={features?.marketOrdersEnabled ? t('settings.enabled') : t('settings.disabled')} detail={t('settings.marketOrdersHint')} />
+                <DependencyRow label={t('settings.liveTrading')} status={features?.liveTradingEnabled ? t('settings.enabled') : t('settings.disabled')} detail={t('settings.liveTradingHint')} />
+                {features?.polymarketAccountEnabled ? (
+                  <Link to="/polymarket/account" className="mt-2 inline-flex items-center gap-2 text-sm text-primary hover:underline">
+                    <Wallet className="h-4 w-4" />
+                    {t('nav.polymarketAccount')}
+                  </Link>
+                ) : (
+                  <div className="mt-2 text-xs text-muted-foreground lg:col-span-3">{t('settings.enablePolymarketAccount')}</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="llm" className="mt-0">
+          <AiConfigPage embedded />
+        </TabsContent>
+
+        <TabsContent value="database" className="mt-0">
+          <DatabasePage embedded />
+        </TabsContent>
+
+        <TabsContent value="system" className="mt-0 space-y-4">
+          <EsportsDataSourcesPanel />
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm">{t('settings.dataHealth')}</CardTitle>
+              </div>
+              {health && <Badge variant={statusVariant(health.status)}>{health.status}</Badge>}
+            </CardHeader>
+            <CardContent>
+              {!health ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
               ) : (
-                <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
-                  {t('settings.enablePolymarketAccount')}
-                </div>
+                <>
+                  <div className="mb-2 text-xs text-muted-foreground">
+                    {t('settings.lastChecked')} {new Date(health.timestamp).toLocaleString()} · {t('settings.uptime')} {formatUptime(health.uptime)}
+                  </div>
+                  <div className="grid gap-x-6 lg:grid-cols-2">
+                    {dependencyRows.map((row) => (
+                      <DependencyRow key={`${row.label}-${row.status}`} {...row} />
+                    ))}
+                  </div>
+                </>
               )}
-              <SettingsLink to="/ai/config" label={t('nav.aiConfig')} icon={Bot} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center gap-2">
-            <Database className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('settings.localData')}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2">
-            <SettingsLink to="/database" label={t('nav.database')} icon={Database} />
-            <SettingsLink to="/strategy" label={t('nav.strategy')} icon={Activity} />
-            <SettingsLink to="/review" label={t('nav.review')} icon={Shield} />
-            <SettingsLink to="/bankroll" label={t('nav.bankroll')} icon={Wallet} />
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+          <BackgroundTasksPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

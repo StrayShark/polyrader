@@ -11,6 +11,7 @@ const baseConfig: WalletCopyConfig = {
   maxSlippage: 0.05,
   cs2Only: true,
   minLeaderWinRate: 0.55,
+  minLeaderRoi: 0.02,
   minLeaderSamples: 10,
   dailyCapUsd: 2000,
   requireUserConfirm: true,
@@ -26,6 +27,7 @@ describe('CopySignalEngine', () => {
     leaderAmount: 1000,
     leaderPrice: 0.55,
     leaderWinRate: 0.65,
+    leaderRoi: 0.1,
     leaderSettledBets: 20,
     side: 'buy' as const,
     isCs2Market: true,
@@ -47,6 +49,12 @@ describe('CopySignalEngine', () => {
   it('rejects when leader win rate is too low', () => {
     const result = engine.computeMirrorSize({ ...baseInput, leaderWinRate: 0.4 });
     expect(result.accepted).toBe(false);
+  });
+
+  it('rejects high-win leaders with negative ROI', () => {
+    const result = engine.computeMirrorSize({ ...baseInput, leaderWinRate: 0.7, leaderRoi: -0.05 });
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain('Leader ROI');
   });
 
   it('rejects when trade share of market volume is too low', () => {

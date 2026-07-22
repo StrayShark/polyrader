@@ -69,13 +69,13 @@ export function OrderBookChart({ bids, asks, height = 200 }: OrderBookChartProps
     const bidData: HistogramData[] = bids.map((b, i) => ({
       time: i as Time,
       value: b.size,
-      color: 'rgba(0, 255, 65, 0.5)',
+      color: 'rgba(98, 166, 124, 0.5)',
     }));
 
     const askData: HistogramData[] = asks.map((a, i) => ({
       time: (bids.length + i) as Time,
       value: a.size,
-      color: 'rgba(255, 51, 51, 0.5)',
+      color: 'rgba(211, 95, 99, 0.5)',
     }));
 
     bidSeriesRef.current = chartRef.current.addHistogramSeries({

@@ -10,7 +10,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
   Progress,
 } from '@/components/ui';
-import type { AllocationOpportunity, RiskTolerance } from '@polyrader/core';
+import type { AllocationOpportunity, RiskTolerance } from '@polyrader/core/browser';
 
 export function AllocationPage() {
   const { t } = useI18n();

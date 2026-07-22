@@ -5,7 +5,7 @@ import type {
   UpdateStrategyProfileInput,
   SignalTuningConfig,
   SignalBacktestSummary,
-} from '@polyrader/core';
+} from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface StrategyProfileState {

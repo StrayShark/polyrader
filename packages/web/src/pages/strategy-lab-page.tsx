@@ -23,7 +23,7 @@ import {
   Button,
   Input,
 } from '@/components/ui';
-import type { SignalBacktestSummary, SignalComparison, SignalTuningConfig, SignalSourceKind } from '@polyrader/core';
+import type { SignalBacktestSummary, SignalComparison, SignalTuningConfig, SignalSourceKind } from '@polyrader/core/browser';
 
 interface SignalStats {
   accuracy: number;

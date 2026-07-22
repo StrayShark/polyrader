@@ -220,6 +220,50 @@ describe('SettlementService', () => {
     expect(new BankrollService().getSummary('alternate').account.currentBankroll).toBe(10050);
   });
 
+  it('settles map-winner legs only when structured map results are present', () => {
+    const marketRepo = new MarketRepository();
+    marketRepo.upsert({
+      conditionId: 'series-market', canonicalMatchId: 'hltv:1', slug: 'series',
+      question: 'Counter-Strike: ENCE vs SPARTA (BO3) - Event', description: '',
+      outcomes: ['ENCE', 'SPARTA'], outcomePrices: ['0.45', '0.55'], volume: 0, volume24h: 0,
+      liquidity: 0, startDate: '2026-07-14T08:00:00Z', endDate: '2026-07-14T12:00:00Z',
+      status: 'active', tags: ['local-sim'],
+    });
+    marketRepo.upsert({
+      conditionId: 'map-2-market', canonicalMatchId: 'hltv:1', slug: 'map-2',
+      question: 'Counter-Strike: ENCE vs SPARTA (BO3) - Event - Map 2 Winner', description: '',
+      outcomes: ['ENCE', 'SPARTA'], outcomePrices: ['0.5', '0.5'], volume: 0, volume24h: 0,
+      liquidity: 0, startDate: '2026-07-14T08:00:00Z', endDate: '2026-07-14T12:00:00Z',
+      status: 'active', tags: ['local-sim', 'map-winner'],
+    });
+    const bets = new SimBetService();
+    const series = bets.placeBet({
+      betType: 'single', stake: 50,
+      legs: [{ matchId: 'match-1', marketId: 'series-market', selection: 'SPARTA', odds: 2 }],
+    });
+    const map = bets.placeBet({
+      betType: 'single', stake: 40,
+      legs: [{ matchId: 'match-1', marketId: 'map-2-market', selection: 'SPARTA', odds: 1.9 }],
+    });
+
+    const results = new SettlementService().settleStructuredMatch('match-1', {
+      winnerTeamName: 'SPARTA',
+      teamAName: 'ENCE',
+      teamBName: 'SPARTA',
+      teamAMapsWon: 1,
+      teamBMapsWon: 2,
+      maps: [
+        { mapNumber: 1, winnerTeamName: 'ENCE' },
+        { mapNumber: 2, winnerTeamName: 'SPARTA' },
+        { mapNumber: 3, winnerTeamName: 'SPARTA' },
+      ],
+    });
+
+    expect(results.map((result) => result.bet.id).sort()).toEqual([map.bet.id, series.bet.id].sort());
+    expect(bets.getBet(series.bet.id)?.bet).toMatchObject({ status: 'settled', result: 'won' });
+    expect(bets.getBet(map.bet.id)?.bet).toMatchObject({ status: 'settled', result: 'won' });
+  });
+
   it('voids a cancelled single and removes a cancelled parlay leg from effective odds', () => {
     const bets = new SimBetService();
     const single = bets.placeBet({

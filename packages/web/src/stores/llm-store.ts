@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LLMConfig, LLMStats, LLMAggregation, ConnectivityResult, LLMProvider } from '@polyrader/core';
+import type { LLMConfig, LLMStats, LLMAggregation, ConnectivityResult, LLMProvider } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface LLMState {

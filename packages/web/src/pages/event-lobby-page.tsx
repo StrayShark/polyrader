@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Trophy, RefreshCw, Loader2, ChevronDown, ChevronUp, Percent, Hash, DollarSign } from 'lucide-react';
 import { useI18n } from '../hooks/use-i18n';
-import { Card, CardHeader, CardTitle, Button, Badge, Skeleton } from '@/components/ui';
+import { Card, Button, Badge, Skeleton } from '@/components/ui';
 import { useMarketStore } from '../stores/market-store';
 import { MatchOddsRow } from '../components/MatchOddsRow';
 import { parsePolymarketMatch } from '../utils/match-parser';
 import { CS2Rail, type CS2RailFilters } from '../components/CS2Rail';
-import type { Market } from '@polyrader/core';
-import { classifyEventTier } from '@polyrader/core';
+import { EmptyStateGuide } from '../components/EmptyStateGuide';
+import type { Market } from '@polyrader/core/browser';
+import { classifyEventTier } from '@polyrader/core/browser';
 import { cn } from '../utils/cn';
 import type { OddsFormat } from '../utils/bet-math';
 import { api } from '../utils/api';
@@ -25,6 +26,9 @@ type TimeFilter = CS2RailFilters['time'];
 const STARTING_SOON_MINUTES = 60;
 const INTEL_SYNC_KEY = 'polyrader-hltv-intel-synced-at';
 const INTEL_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+const INTEL_SYNC_TIMEOUT_MS = 15_000;
+
+type RefreshStatus = 'idle' | 'queued' | 'complete' | 'cached';
 
 function isCs2MatchMarket(market: Market): boolean {
   const q = market.question.toLowerCase();
@@ -93,6 +97,7 @@ function matchTimeFilter(market: Market, time: TimeFilter): boolean {
 }
 
 function getMatchKey(market: Market): string {
+  if (market.canonicalMatchId) return market.canonicalMatchId;
   const parsed = parsePolymarketMatch(market.question);
   if (!parsed) return market.conditionId;
   const base = `${parsed.teamAName} vs ${parsed.teamBName}`;
@@ -121,14 +126,22 @@ export function EventLobbyPage() {
   });
   const [expandedMatches, setExpandedMatches] = useState<Set<string>>(new Set());
   const [isSyncingIntel, setIsSyncingIntel] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
 
   const syncMatches = useCallback(async () => {
     setIsSyncingIntel(true);
+    setRefreshStatus('idle');
     try {
-      await api.post('/esports/fetch-upcoming');
+      const { data } = await api.post<{ data: { enrichmentQueued?: boolean } }>(
+        '/esports/fetch-upcoming',
+        undefined,
+        { timeoutMs: INTEL_SYNC_TIMEOUT_MS },
+      );
       sessionStorage.setItem(INTEL_SYNC_KEY, String(Date.now()));
+      setRefreshStatus(data?.enrichmentQueued ? 'queued' : 'complete');
     } catch {
       // Keep the local schedule usable while HLTV or GRID is temporarily unavailable.
+      setRefreshStatus('cached');
     } finally {
       await fetchMarkets(100);
       setIsSyncingIntel(false);
@@ -249,37 +262,65 @@ export function EventLobbyPage() {
           </div>
           <Button variant="outline" size="sm" className="gap-1" onClick={() => void syncMatches()} disabled={isLoading || isSyncingIntel}>
             {isSyncingIntel ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {t('lobby.refresh')}
+            {t(isSyncingIntel ? 'lobby.refreshing' : 'lobby.refresh')}
           </Button>
         </div>
       </div>
+
+      {(refreshStatus !== 'idle' || (error && markets.length > 0)) && (
+        <div className="text-xs text-muted-foreground" role="status" aria-live="polite">
+          {refreshStatus === 'queued'
+            ? t('lobby.refreshQueued')
+            : refreshStatus === 'complete'
+              ? t('lobby.refreshComplete')
+              : t('lobby.cachedDataNotice')}
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <CS2Rail
           filters={filters}
           onChange={setFilters}
           tournaments={tournaments}
+          onClear={() => setFilters({ time: 'all', format: 'all', tier: 'all' })}
         />
 
         {/* Content */}
         <div className="space-y-4">
-          {isLoading ? (
+          {isLoading && markets.length === 0 ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-28 w-full" />
               ))}
             </div>
-          ) : error ? (
+          ) : error && markets.length === 0 ? (
             <Card>
               <div className="p-6 text-sm text-red">{error}</div>
             </Card>
           ) : grouped.length === 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('lobby.upcomingMatches')}</CardTitle>
-              </CardHeader>
-              <div className="p-6 text-sm text-muted-foreground">{t('lobby.empty')}</div>
-            </Card>
+            <div className="space-y-3">
+              <EmptyStateGuide
+                icon={Trophy}
+                title={t('lobby.empty')}
+                description={t('lobby.emptyHint')}
+                steps={[
+                  t('lobby.emptyStep1'),
+                  t('lobby.emptyStep2'),
+                  t('lobby.emptyStep3'),
+                ]}
+              />
+              {(filters.time !== 'all' || filters.format !== 'all' || filters.tier !== 'all' || filters.tournament || filters.mapComplete) && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilters({ time: 'all', format: 'all', tier: 'all' })}
+                  >
+                    {t('rail.clearFilters')}
+                  </Button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-6">
               {grouped.map(([eventName, eventMarkets]) => (

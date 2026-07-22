@@ -89,23 +89,40 @@ describe('Layout: Sidebar uniqueness', () => {
   });
 });
 
+describe('Layout: Top bar', () => {
+  it('renders a visible bottom separator', () => {
+    const { getByTestId } = renderAppLayout('/');
+    const topbar = getByTestId('app-topbar');
+
+    expect(topbar.className).toContain('border-b');
+    expect(topbar.className).toContain('border-solid');
+    expect(topbar.style.borderBottomColor).toContain('color-mix');
+  });
+});
+
 // ============================================================
 // Layout: Sidebar Content
 // ============================================================
 describe('Layout: Sidebar content', () => {
-  it('renders all 15 navigation links (Polymarket account hidden by default)', () => {
+  it('renders 13 navigation links with one unified ledger entry and one settings entry', () => {
     const { container } = renderAppLayout('/');
     const links = container.querySelectorAll('aside nav a');
-    expect(links.length).toBe(15);
+    expect(links.length).toBe(13);
+    expect(Array.from(links).filter((link) => link.getAttribute('href')?.includes('/settings')).length).toBe(1);
+    expect(Array.from(links).filter((link) => link.getAttribute('href')?.includes('/bankroll')).length).toBe(1);
+    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/analysis/report'))).toBe(true);
+    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/validation-lab'))).toBe(true);
+    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/review'))).toBe(false);
+    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/simulation'))).toBe(false);
   });
 
-  it('renders theme toggle buttons (dark, light, matrix)', () => {
+  it('keeps appearance controls out of the sidebar', () => {
     const { container } = renderAppLayout('/');
     const buttons = container.querySelectorAll('aside button[title]');
     const titles = Array.from(buttons).map((b) => b.getAttribute('title'));
-    expect(titles).toContain('Dark+');
-    expect(titles).toContain('Light+');
-    expect(titles).toContain('Matrix');
+    expect(titles).not.toContain('Dark+');
+    expect(titles).not.toContain('Light+');
+    expect(titles).not.toContain('Matrix');
   });
 });
 

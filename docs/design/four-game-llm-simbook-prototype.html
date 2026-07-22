@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PolyRader Four-Game LLM Simbook Prototype</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #181818;
+      --sidebar: #151515;
+      --panel: #1f1f1f;
+      --panel-2: #242424;
+      --border: #343434;
+      --border-strong: #494949;
+      --text: #eeeeee;
+      --muted: #9c9c9c;
+      --subtle: #6f6f6f;
+      --active: #303030;
+      --green: #61b878;
+      --yellow: #d4a84f;
+      --red: #d36a6a;
+      --blue: #75a7d9;
+      --radius: 6px;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1180px; background: var(--bg); color: var(--text); }
+    button, select { font: inherit; }
+    button { color: inherit; }
+    .app { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar { position: sticky; top: 0; height: 100vh; border-right: 1px solid var(--border); background: var(--sidebar); padding: 10px; }
+    .brand { height: 42px; display: flex; align-items: center; padding: 0 9px; font-size: 13px; font-weight: 650; }
+    .nav-label { margin: 14px 9px 6px; color: var(--subtle); font-size: 10px; text-transform: uppercase; }
+    .nav-btn { width: 100%; height: 34px; display: flex; align-items: center; border: 0; border-radius: 4px; background: transparent; padding: 0 9px; color: var(--muted); cursor: pointer; text-align: left; }
+    .nav-btn:hover { background: #222; color: var(--text); }
+    .nav-btn.active { background: var(--active); color: var(--text); }
+    .sidebar-status { position: absolute; left: 10px; right: 10px; bottom: 10px; border-top: 1px solid var(--border); padding: 12px 8px 4px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; background: var(--green); }
+    .shell { min-width: 0; }
+    .topbar { position: sticky; top: 0; z-index: 4; height: 48px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: rgba(24,24,24,.96); padding: 0 18px; }
+    .topbar-left, .topbar-right, .inline { display: flex; align-items: center; gap: 8px; }
+    .mode { color: var(--muted); font-size: 11px; }
+    .mode strong { color: var(--text); font-weight: 600; }
+    .search { width: 260px; height: 30px; border: 1px solid var(--border); border-radius: 5px; background: #202020; color: var(--muted); padding: 0 10px; }
+    .balance { font-size: 12px; color: var(--muted); }
+    .balance strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    main { padding: 18px; max-width: 1540px; margin: 0 auto; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    h1 { margin: 0; font-size: 21px; line-height: 1.25; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 13px; letter-spacing: 0; }
+    p { margin: 5px 0 0; color: var(--muted); line-height: 1.5; }
+    .btn { height: 32px; border: 1px solid var(--border-strong); border-radius: 5px; background: #272727; padding: 0 11px; cursor: pointer; }
+    .btn:hover { background: #303030; }
+    .btn.primary { background: #e8e8e8; border-color: #e8e8e8; color: #171717; font-weight: 620; }
+    .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+    .segmented { display: inline-flex; min-height: 32px; border: 1px solid var(--border); border-radius: 5px; background: #1c1c1c; padding: 2px; }
+    .segmented button { min-width: 78px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); padding: 0 9px; cursor: pointer; }
+    .segmented button.active { background: #333; color: var(--text); }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .select { height: 32px; border: 1px solid var(--border); border-radius: 5px; background: #202020; color: var(--text); padding: 0 28px 0 9px; }
+    .grid-2 { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(330px, .75fr); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+    .panel-head { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--border); padding: 0 12px; }
+    .panel-body { padding: 12px; }
+    .metric { min-height: 86px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: var(--panel); }
+    .metric-label { color: var(--muted); font-size: 11px; }
+    .metric-value { margin-top: 9px; font-size: 23px; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .metric-meta { margin-top: 3px; color: var(--subtle); font-size: 10px; }
+    .good { color: var(--green); }
+    .warn { color: var(--yellow); }
+    .bad { color: var(--red); }
+    .info { color: var(--blue); }
+    .badge { display: inline-flex; align-items: center; min-height: 20px; border: 1px solid var(--border-strong); border-radius: 4px; padding: 1px 6px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .badge.good { border-color: rgba(97,184,120,.38); background: rgba(97,184,120,.08); color: var(--green); }
+    .badge.warn { border-color: rgba(212,168,79,.4); background: rgba(212,168,79,.08); color: var(--yellow); }
+    .badge.bad { border-color: rgba(211,106,106,.4); background: rgba(211,106,106,.08); color: var(--red); }
+    .muted { color: var(--muted); }
+    .mono { font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; }
+    .divider { height: 1px; background: var(--border); margin: 12px 0; }
+    .source-list, .stage-list, .event-list { display: grid; gap: 0; }
+    .source-row, .stage-row, .event-row { display: grid; align-items: center; gap: 10px; min-height: 43px; border-bottom: 1px solid #2d2d2d; }
+    .source-row { grid-template-columns: minmax(120px, 1fr) 110px 90px 90px; }
+    .stage-row { grid-template-columns: 20px minmax(160px, 1fr) 92px 94px; }
+    .event-row { grid-template-columns: 128px 94px minmax(0, 1fr) 92px; }
+    .source-row:last-child, .stage-row:last-child, .event-row:last-child { border-bottom: 0; }
+    .stage-mark { width: 16px; height: 16px; border: 1px solid var(--border-strong); border-radius: 50%; display: grid; place-items: center; font-size: 9px; }
+    .stage-mark.good { border-color: var(--green); color: var(--green); }
+    .stage-mark.warn { border-color: var(--yellow); color: var(--yellow); }
+    .progress { height: 4px; border-radius: 2px; background: #333; overflow: hidden; }
+    .progress > i { display: block; height: 100%; background: #bdbdbd; }
+    .facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .fact { border-left: 2px solid var(--border-strong); padding: 4px 8px; }
+    .fact b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+    .fact span { color: var(--muted); font-size: 10px; }
+    .match-line { display: grid; grid-template-columns: 90px minmax(220px, 1fr) 118px 118px 110px; align-items: center; gap: 10px; min-height: 52px; border-top: 1px solid var(--border); padding: 0 12px; }
+    .match-line:first-child { border-top: 0; }
+    .team { font-weight: 600; }
+    .odds { border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; background: #242424; font-variant-numeric: tabular-nums; }
+    .odds small { display: block; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; }
+    th { height: 34px; color: var(--muted); font-size: 10px; font-weight: 500; text-align: left; border-bottom: 1px solid var(--border); padding: 0 10px; }
+    td { height: 43px; border-bottom: 1px solid #2d2d2d; padding: 0 10px; font-size: 12px; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .right { text-align: right; }
+    .report-hero { display: grid; grid-template-columns: minmax(0, 1fr) 290px; border-bottom: 1px solid var(--border); }
+    .report-main { padding: 16px; }
+    .report-aside { border-left: 1px solid var(--border); padding: 14px; }
+    .prob-row { display: grid; grid-template-columns: 130px minmax(180px, 1fr) 64px 64px; align-items: center; gap: 8px; min-height: 38px; }
+    .bar { height: 7px; background: #333; border-radius: 3px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: #c9c9c9; }
+    .tabs { display: flex; gap: 16px; min-height: 40px; border-bottom: 1px solid var(--border); padding: 0 12px; }
+    .tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
+    .tabs button.active { border-bottom-color: #ddd; color: var(--text); }
+    .tab-pane { display: none; padding: 12px; }
+    .tab-pane.active { display: block; }
+    pre { margin: 0; max-height: 440px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: #171717; padding: 12px; color: #cfcfcf; font: 11px/1.55 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; }
+    .evidence { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .evidence-item { border: 1px solid var(--border); border-radius: 5px; padding: 10px; }
+    .evidence-item strong { font-size: 12px; }
+    .evidence-item p { font-size: 11px; }
+    .chart { height: 230px; padding: 10px 10px 0; }
+    .chart svg { width: 100%; height: 100%; }
+    .chart-grid { stroke: #333; stroke-width: 1; }
+    .equity-line { fill: none; stroke: #d4d4d4; stroke-width: 2; }
+    .exposure-line { fill: none; stroke: var(--yellow); stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .chart-label { fill: #777; font-size: 9px; }
+    .filter-row { display: flex; flex-wrap: wrap; gap: 7px; }
+    .callout { border-left: 3px solid var(--yellow); background: rgba(212,168,79,.06); padding: 9px 11px; color: #d6c49c; font-size: 11px; line-height: 1.45; }
+    .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 10px; }
+    .field input, .field select { width: 100%; height: 32px; border: 1px solid var(--border); border-radius: 4px; background: #1b1b1b; color: var(--text); padding: 0 8px; }
+    .legend { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 10px; }
+    .legend i { display: inline-block; width: 16px; height: 2px; margin-right: 5px; vertical-align: middle; background: #d4d4d4; }
+    .legend i.exposure { background: var(--yellow); }
+    .section-gap { margin-top: 12px; }
+
+    @media (max-width: 1260px) {
+      body { min-width: 1024px; }
+      .app { grid-template-columns: 184px minmax(0, 1fr); }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 900px) {
+      body { min-width: 0; }
+      .app { display: block; }
+      .sidebar { position: sticky; top: 0; z-index: 8; width: 100%; height: 46px; display: flex; align-items: center; gap: 3px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 6px; }
+      .brand { min-width: 104px; height: 32px; }
+      .nav-label, .sidebar-status, .nav-btn:not([data-view]) { display: none; }
+      .nav-btn { width: auto; min-width: max-content; height: 32px; flex: 0 0 auto; }
+      .topbar { top: 46px; height: 44px; padding: 0 10px; }
+      .search, .mode { display: none; }
+      .topbar-right { width: 100%; justify-content: space-between; }
+      main { padding: 12px; }
+      .page-head { align-items: stretch; flex-direction: column; }
+      .page-head > .inline { flex-wrap: wrap; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .segmented { overflow-x: auto; }
+      .segmented button { min-height: 30px; }
+      .grid-2, .grid-3, .grid-4, .form-grid { grid-template-columns: 1fr; }
+      .report-hero { grid-template-columns: 1fr; }
+      .report-aside { border-left: 0; border-top: 1px solid var(--border); }
+      .evidence { grid-template-columns: 1fr; }
+      .facts { grid-template-columns: repeat(5, minmax(58px, 1fr)); min-width: 360px; }
+      .panel { overflow-x: auto; }
+      .panel-head { min-width: 350px; }
+      .source-list, .stage-list { min-width: 520px; }
+      .match-line { min-width: 760px; }
+      table { min-width: 780px; }
+      .tabs { min-width: 350px; overflow-x: auto; }
+      .tab-pane { min-width: 350px; }
+      .chart { min-width: 540px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">PolyRader</div>
+      <div class="nav-label">Workspace</div>
+      <button class="nav-btn active" data-view="validation">四游戏验证台</button>
+      <button class="nav-btn" data-view="analysis">标准分析报告</button>
+      <button class="nav-btn" data-view="orders">LLM 模拟订单</button>
+      <button class="nav-btn" data-view="performance">绩效与资产</button>
+      <div class="nav-label">Product</div>
+      <button class="nav-btn">赛事大厅</button>
+      <button class="nav-btn">我的账本</button>
+      <button class="nav-btn">策略实验室</button>
+      <button class="nav-btn">设置</button>
+      <div class="sidebar-status">
+        <div><span class="dot"></span>Local sidecar connected</div>
+        <div>SQLite · analysis.v1</div>
+      </div>
+    </aside>
+
+    <div class="shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="mode"><strong>Practice Mode</strong> · local paper execution only</span>
+        </div>
+        <div class="topbar-right">
+          <input class="search" aria-label="Search" value="搜索比赛、报告、订单、run ID" readonly>
+          <span class="balance">总权益 <strong>$10,284.60</strong></span>
+          <span class="balance">未结算 <strong>$420.00</strong></span>
+        </div>
+      </header>
+
+      <main>
+        <section class="view active" id="view-validation">
+          <div class="page-head">
+            <div>
+              <h1>四游戏验证台</h1>
+              <p>验证每个板块从数据同步、标准分析到模拟订单的完整功能链。</p>
+            </div>
+            <div class="inline">
+              <button class="btn">查看验收矩阵</button>
+              <button class="btn primary">运行当前板块验证</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="segmented game-tabs">
+              <button class="active" data-game="CS2">CS2</button>
+              <button data-game="LoL">LoL</button>
+              <button data-game="Dota 2">Dota 2</button>
+              <button data-game="Valorant">Valorant</button>
+            </div>
+            <div class="inline">
+              <span class="badge good" id="board-state">paper_ready</span>
+              <span class="mono muted" id="last-run">last run · ar_cs2_2395534 · 18 min ago</span>
+            </div>
+          </div>
+
+          <div class="grid-4">
+            <div class="metric"><div class="metric-label">数据完整度</div><div class="metric-value">88%</div><div class="metric-meta">最低门槛 70%</div></div>
+            <div class="metric"><div class="metric-label">数据新鲜度</div><div class="metric-value">12m</div><div class="metric-meta">最长允许 60m</div></div>
+            <div class="metric"><div class="metric-label">有效市场</div><div class="metric-value">4</div><div class="metric-meta">1 个低流动性警告</div></div>
+            <div class="metric"><div class="metric-label">端到端通过率</div><div class="metric-value good">6 / 7</div><div class="metric-meta">结算等待比赛结果</div></div>
+          </div>
+
+          <div class="grid-2 section-gap">
+            <div class="panel">
+              <div class="panel-head"><h2>验收运行</h2><span class="mono muted">run ID · <span id="run-id">ar_cs2_2395534_20260721_a1b2</span></span></div>
+              <div class="panel-body stage-list">
+                <div class="stage-row"><span class="stage-mark good">✓</span><div><strong>数据源同步</strong><div class="muted">3 个源，0 个失败</div></div><span class="badge good">passed</span><span class="right mono muted">2.4s</span></div>
+                <div class="stage-row"><span class="stage-mark good">✓</span><div><strong>事实规范化</strong><div class="muted">match · teams · roster · context</div></div><span class="badge good">passed</span><span class="right mono muted">148ms</span></div>
+                <div class="stage-row"><span class="stage-mark good">✓</span><div><strong>市场对齐</strong><div class="muted">4 个盘口，settlement rules v1</div></div><span class="badge good">passed</span><span class="right mono muted">92ms</span></div>
+                <div class="stage-row"><span class="stage-mark good">✓</span><div><strong>标准 Prompt</strong><div class="muted">prompt v1.0.0 · hash verified</div></div><span class="badge good">passed</span><span class="right mono muted">31ms</span></div>
+                <div class="stage-row"><span class="stage-mark good">✓</span><div><strong>LLM 响应校验</strong><div class="muted">2 / 2 providers valid · 0 repairs</div></div><span class="badge good">passed</span><span class="right mono muted">5.8s</span></div>
+                <div class="stage-row"><span class="stage-mark warn">!</span><div><strong>模拟订单策略</strong><div class="muted">1 paper order · 1 low-liquidity pass</div></div><span class="badge warn">warning</span><span class="right mono muted">16ms</span></div>
+                <div class="stage-row"><span class="stage-mark">·</span><div><strong>权威结算与统计</strong><div class="muted">等待比赛结束</div></div><span class="badge">waiting</span><span class="right mono muted">--</span></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><h2>数据源与事实覆盖</h2><span class="badge good">ready</span></div>
+              <div class="panel-body">
+                <div class="facts">
+                  <div class="fact"><b>1</b><span>比赛</span></div>
+                  <div class="fact"><b>2</b><span>队伍</span></div>
+                  <div class="fact"><b>10</b><span>选手</span></div>
+                  <div class="fact"><b>7</b><span>近期赛</span></div>
+                  <div class="fact"><b>4</b><span>盘口</span></div>
+                </div>
+                <div class="divider"></div>
+                <div class="source-list" id="source-list">
+                  <div class="source-row"><strong>HLTV</strong><span class="muted">performance</span><span class="badge good">ready</span><span class="right mono">12m</span></div>
+                  <div class="source-row"><strong>Liquipedia</strong><span class="muted">identity</span><span class="badge good">ready</span><span class="right mono">34m</span></div>
+                  <div class="source-row"><strong>GRID</strong><span class="muted">official</span><span class="badge good">ready</span><span class="right mono">18m</span></div>
+                </div>
+                <div class="divider"></div>
+                <div class="callout">阵容已确认；地图 veto 尚未发布。报告必须降低地图盘口置信度。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel section-gap">
+            <div class="panel-head"><h2>本次测试比赛与盘口</h2><span class="muted">确定性本地市场用于功能验收</span></div>
+            <div class="match-line"><span class="badge">BO3</span><div><div class="team">Natus Vincere vs FaZe Clan</div><div class="muted">IEM Cologne · 2026-07-21 20:00</div></div><div class="odds">NAVI 1.79<small>market 56.0%</small></div><div class="odds">FaZe 2.27<small>market 44.0%</small></div><span class="badge good">aligned</span></div>
+            <div class="match-line"><span class="badge">HANDICAP</span><div><div class="team">NAVI -1.5 maps</div><div class="muted">liquidity $2,400</div></div><div class="odds">Yes 2.58<small>market 38.8%</small></div><div class="odds">No 1.63<small>market 61.2%</small></div><span class="badge good">supported</span></div>
+            <div class="match-line"><span class="badge">TOTAL</span><div><div class="team">Total maps 2.5</div><div class="muted">liquidity $650</div></div><div class="odds">Over 2.04<small>market 49.0%</small></div><div class="odds">Under 1.96<small>market 51.0%</small></div><span class="badge warn">low liquidity</span></div>
+          </div>
+        </section>
+
+        <section class="view" id="view-analysis">
+          <div class="page-head">
+            <div>
+              <h1>标准分析报告</h1>
+              <p>同一契约展示概率、证据、风险、Prompt、原始响应和确定性模拟决策。</p>
+            </div>
+            <div class="inline"><span class="badge good">schema valid</span><button class="btn">复制 report ID</button></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>Natus Vincere vs FaZe Clan · Match Winner</h2><span class="mono muted">report · rp_01J4X8A5</span></div>
+            <div class="report-hero">
+              <div class="report-main">
+                <div class="inline"><span class="badge">CS2</span><span class="badge">openai · gpt-4o</span><span class="badge">prompt v1.0.0</span><span class="badge warn">88% data</span></div>
+                <div class="divider"></div>
+                <div class="prob-row"><strong>Natus Vincere</strong><div class="bar"><i style="width:62%"></i></div><span class="right mono">62.0%</span><span class="right good mono">+6.0pp</span></div>
+                <div class="prob-row"><strong>FaZe Clan</strong><div class="bar"><i style="width:38%"></i></div><span class="right mono">38.0%</span><span class="right bad mono">-6.0pp</span></div>
+                <div class="divider"></div>
+                <p>NaVi 的近期队伍评分和 Mirage 表现提供中等优势；未发布 veto 限制了地图层面的确定性。</p>
+              </div>
+              <aside class="report-aside">
+                <div class="metric-label">模拟决策</div><div class="metric-value good" style="font-size:18px">PAPER BET · NAVI</div>
+                <div class="divider"></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span class="muted">模型概率</span><strong class="right mono">62.0%</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span class="muted">市场概率</span><strong class="right mono">56.0%</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span class="muted">置信度</span><strong class="right mono">68.0%</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span class="muted">策略金额</span><strong class="right mono">$75.00</strong></div>
+                <div style="margin-top:10px"><span class="badge good">POLICY_ACCEPTED</span></div>
+              </aside>
+            </div>
+
+            <div class="tabs report-tabs">
+              <button class="active" data-pane="report">报告</button>
+              <button data-pane="prompt">Prompt</button>
+              <button data-pane="response">Response</button>
+              <button data-pane="timeline">Timeline</button>
+            </div>
+            <div class="tab-pane active" id="pane-report">
+              <div class="evidence">
+                <div class="evidence-item"><div class="inline"><strong>队伍近期评分</strong><span class="badge good">supports</span></div><p>NaVi 在最近 10 场的综合评分领先。fact: team-a-rating · HLTV · 12m</p></div>
+                <div class="evidence-item"><div class="inline"><strong>地图表现</strong><span class="badge good">supports</span></div><p>Mirage 样本显示 NaVi 有可验证优势。fact: team-a-mirage · HLTV · 18m</p></div>
+                <div class="evidence-item"><div class="inline"><strong>阵容确认</strong><span class="badge good">supports</span></div><p>双方五人阵容无替补。fact: lineup-confirmed · Liquipedia · 34m</p></div>
+                <div class="evidence-item"><div class="inline"><strong>Veto 未发布</strong><span class="badge warn">risk</span></div><p>地图选择仍可能改变系列赛分布。code: VETO_UNAVAILABLE</p></div>
+              </div>
+            </div>
+            <div class="tab-pane" id="pane-prompt">
+              <pre>{
+  "contractVersion": "analysis.v1",
+  "runId": "ar_cs2_2395534_match-winner_20260721T120000Z_a1b2",
+  "promptVersion": "cs2.match-winner.v1.0.0",
+  "game": "cs2",
+  "match": { "matchId": "2395534", "format": "BO3" },
+  "market": { "marketId": "market-1", "kind": "match_winner" },
+  "dataSnapshot": {
+    "dataSnapshotHash": "sha256:64fa...a91c",
+    "completeness": 0.88,
+    "facts": ["... immutable fact objects ..."],
+    "missing": ["veto"]
+  },
+  "policy": { "minimumConfidence": 0.6, "minimumEdge": 0.05 }
+}</pre>
+            </div>
+            <div class="tab-pane" id="pane-response">
+              <pre>{
+  "contractVersion": "analysis-response.v1",
+  "runId": "ar_cs2_2395534_match-winner_20260721T120000Z_a1b2",
+  "prediction": {
+    "outcomes": [
+      { "outcomeId": "navi", "probability": 0.62 },
+      { "outcomeId": "faze", "probability": 0.38 }
+    ]
+  },
+  "confidence": { "score": 0.68, "grade": "medium" },
+  "recommendation": { "action": "recommend_outcome", "outcomeId": "navi" },
+  "evidence": ["... factId-linked evidence ..."],
+  "risks": [{ "code": "VETO_UNAVAILABLE", "severity": "medium" }],
+  "rationaleSummary": "NaVi has a modest evidence-backed advantage."
+}</pre>
+            </div>
+            <div class="tab-pane" id="pane-timeline">
+              <div class="event-list">
+                <div class="event-row"><span class="mono muted">12:00:00.031</span><span class="badge good">passed</span><strong>Prompt artifact frozen</strong><span class="right mono">31ms</span></div>
+                <div class="event-row"><span class="mono muted">12:00:05.812</span><span class="badge good">passed</span><strong>Provider response received</strong><span class="right mono">5.8s</span></div>
+                <div class="event-row"><span class="mono muted">12:00:05.826</span><span class="badge good">passed</span><strong>Schema and evidence validated</strong><span class="right mono">14ms</span></div>
+                <div class="event-row"><span class="mono muted">12:00:05.842</span><span class="badge good">passed</span><strong>Paper policy accepted · $75.00</strong><span class="right mono">16ms</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-orders">
+          <div class="page-head">
+            <div><h1>LLM 模拟订单</h1><p>标准报告通过确定性风控后创建本地订单；模型不能直接决定金额。</p></div>
+            <div class="inline"><button class="btn">策略配置</button><button class="btn primary">分析并执行模拟订单</button></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>模拟策略 · balanced-v1</h2><span class="badge good">enabled</span></div>
+            <div class="panel-body form-grid">
+              <div class="field"><label>游戏板块</label><select><option>全部已验证板块</option><option>CS2</option><option>LoL</option><option>Dota 2</option><option>Valorant</option></select></div>
+              <div class="field"><label>最小数据完整度</label><input value="70%" readonly></div>
+              <div class="field"><label>最大数据年龄</label><input value="60 minutes" readonly></div>
+              <div class="field"><label>最小置信度</label><input value="60%" readonly></div>
+              <div class="field"><label>最小 Edge</label><input value="5.0pp" readonly></div>
+              <div class="field"><label>单笔最大金额</label><input value="$100.00" readonly></div>
+            </div>
+          </div>
+
+          <div class="grid-4 section-gap">
+            <div class="metric"><div class="metric-label">开放订单</div><div class="metric-value">4</div><div class="metric-meta">暴露 $420.00</div></div>
+            <div class="metric"><div class="metric-label">今日模拟下注</div><div class="metric-value">7</div><div class="metric-meta">3 个 pass</div></div>
+            <div class="metric"><div class="metric-label">策略拒绝</div><div class="metric-value warn">2</div><div class="metric-meta">低完整度 · 低流动性</div></div>
+            <div class="metric"><div class="metric-label">无效响应</div><div class="metric-value">0</div><div class="metric-meta">最近 24h</div></div>
+          </div>
+
+          <div class="panel section-gap">
+            <div class="panel-head"><h2>分析决策与订单</h2><div class="filter-row"><span class="badge">全部游戏</span><span class="badge">全部状态</span><span class="badge">最近 7 天</span></div></div>
+            <table>
+              <thead><tr><th>时间 / Run</th><th>游戏与市场</th><th>Provider</th><th>选择</th><th class="right">模型 / 市场</th><th class="right">Edge</th><th class="right">金额</th><th>状态</th><th class="right">PnL</th></tr></thead>
+              <tbody>
+                <tr><td><div>12:00</div><div class="mono muted">ar_cs2_2395534</div></td><td><strong>NaVi vs FaZe</strong><div class="muted">match winner</div></td><td>openai</td><td>NaVi</td><td class="right mono">62% / 56%</td><td class="right good mono">+6.0pp</td><td class="right mono">$75</td><td><span class="badge good">open</span></td><td class="right mono">--</td></tr>
+                <tr><td><div>11:42</div><div class="mono muted">ar_dota2_8906069</div></td><td><strong>Liquid vs Falcons</strong><div class="muted">match winner</div></td><td>deepseek</td><td>Liquid</td><td class="right mono">58% / 51%</td><td class="right good mono">+7.0pp</td><td class="right mono">$90</td><td><span class="badge good">open</span></td><td class="right mono">--</td></tr>
+                <tr><td><div>10:18</div><div class="mono muted">ar_lol_lck_104</div></td><td><strong>T1 vs HLE</strong><div class="muted">match winner</div></td><td>openai</td><td>pass</td><td class="right mono">54% / 52%</td><td class="right mono">+2.0pp</td><td class="right mono">$0</td><td><span class="badge">edge too low</span></td><td class="right mono">--</td></tr>
+                <tr><td><div>09:33</div><div class="mono muted">ar_val_vct_82</div></td><td><strong>SEN vs G2</strong><div class="muted">map 1 winner</div></td><td>qwen</td><td>pass</td><td class="right mono">61% / 50%</td><td class="right good mono">+11.0pp</td><td class="right mono">$0</td><td><span class="badge warn">market unsupported</span></td><td class="right mono">--</td></tr>
+                <tr><td><div>Yesterday</div><div class="mono muted">ar_cs2_2395411</div></td><td><strong>Vitality vs Spirit</strong><div class="muted">match winner</div></td><td>anthropic</td><td>Vitality</td><td class="right mono">64% / 57%</td><td class="right good mono">+7.0pp</td><td class="right mono">$100</td><td><span class="badge good">won</span></td><td class="right good mono">+$75.40</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="view-performance">
+          <div class="page-head">
+            <div><h1>绩效与资产</h1><p>同时衡量模型校准、模拟下注结果、风险和样本可靠性。</p></div>
+            <div class="inline"><button class="btn">导出 CSV</button><button class="btn">刷新统计</button></div>
+          </div>
+
+          <div class="toolbar">
+            <div class="filter-row"><select class="select"><option>全部游戏</option><option>CS2</option><option>LoL</option><option>Dota 2</option><option>Valorant</option></select><select class="select"><option>全部 Providers</option><option>openai</option><option>deepseek</option></select><select class="select"><option>全部盘口</option><option>Match winner</option><option>Handicap</option><option>Total</option></select></div>
+            <div class="segmented"><button>日</button><button class="active">周</button><button>月</button><button>全部</button></div>
+          </div>
+
+          <div class="grid-4">
+            <div class="metric"><div class="metric-label">总权益</div><div class="metric-value">$10,284.60</div><div class="metric-meta good">+$284.60 · +2.85%</div></div>
+            <div class="metric"><div class="metric-label">胜率</div><div class="metric-value">58.3%</div><div class="metric-meta">95% CI · 49.8–66.3% · n=120</div></div>
+            <div class="metric"><div class="metric-label">Brier Score</div><div class="metric-value">0.196</div><div class="metric-meta good">优于市场 0.012</div></div>
+            <div class="metric"><div class="metric-label">最大回撤</div><div class="metric-value warn">4.8%</div><div class="metric-meta">峰值至谷值 -$492</div></div>
+          </div>
+
+          <div class="grid-2 section-gap">
+            <div class="panel">
+              <div class="panel-head"><h2>资产曲线</h2><div class="legend"><span><i></i>总权益</span><span><i class="exposure"></i>开放暴露</span></div></div>
+              <div class="chart">
+                <svg viewBox="0 0 760 220" preserveAspectRatio="none" aria-label="Equity curve">
+                  <line class="chart-grid" x1="40" y1="20" x2="740" y2="20"></line><line class="chart-grid" x1="40" y1="70" x2="740" y2="70"></line><line class="chart-grid" x1="40" y1="120" x2="740" y2="120"></line><line class="chart-grid" x1="40" y1="170" x2="740" y2="170"></line>
+                  <text class="chart-label" x="2" y="23">$10.5k</text><text class="chart-label" x="2" y="123">$10.0k</text><text class="chart-label" x="2" y="173">$9.75k</text>
+                  <polyline class="equity-line" points="40,120 90,112 140,126 190,91 240,98 290,72 340,80 390,64 440,86 490,52 540,44 590,58 640,38 690,47 740,32"></polyline>
+                  <polyline class="exposure-line" points="40,182 90,176 140,186 190,171 240,164 290,179 340,166 390,174 440,160 490,168 540,156 590,166 640,158 690,162 740,154"></polyline>
+                  <text class="chart-label" x="40" y="208">Jul 15</text><text class="chart-label" x="370" y="208">Jul 18</text><text class="chart-label" x="700" y="208">Jul 21</text>
+                </svg>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h2>质量与风险</h2><span class="badge warn">2 warnings</span></div>
+              <div class="panel-body">
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span>ROI</span><strong class="right good">+2.85%</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span>CLV</span><strong class="right good">+1.9pp</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span>Expected calibration error</span><strong class="right">0.041</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span>Settlement coverage</span><strong class="right">92.4%</strong></div>
+                <div class="source-row" style="grid-template-columns:1fr 90px"><span>Invalid response rate</span><strong class="right good">0.6%</strong></div>
+                <div class="divider"></div>
+                <div class="callout">Valorant 与 LoL 当前结算样本不足 30，不进入 Provider 排名。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel section-gap">
+            <div class="panel-head"><h2>按游戏 / Provider / 盘口归因</h2><span class="muted">全部指标显示已结算样本数</span></div>
+            <table>
+              <thead><tr><th>分组</th><th class="right">Settled</th><th class="right">Win rate</th><th class="right">Brier</th><th class="right">CLV</th><th class="right">ROI</th><th class="right">Max DD</th><th>可靠性</th></tr></thead>
+              <tbody>
+                <tr><td><strong>CS2 · openai</strong><div class="muted">match winner · prompt v1.0</div></td><td class="right">62</td><td class="right">61.3%</td><td class="right">0.184</td><td class="right good">+2.7pp</td><td class="right good">+5.8%</td><td class="right">3.2%</td><td><span class="badge good">sufficient</span></td></tr>
+                <tr><td><strong>Dota 2 · deepseek</strong><div class="muted">match winner · prompt v1.0</div></td><td class="right">34</td><td class="right">55.9%</td><td class="right">0.207</td><td class="right good">+1.1pp</td><td class="right good">+1.9%</td><td class="right">4.8%</td><td><span class="badge good">sufficient</span></td></tr>
+                <tr><td><strong>LoL · openai</strong><div class="muted">match winner · prompt v1.0</div></td><td class="right">17</td><td class="right">58.8%</td><td class="right">0.211</td><td class="right">+0.4pp</td><td class="right">+0.7%</td><td class="right">2.1%</td><td><span class="badge warn">small sample</span></td></tr>
+                <tr><td><strong>Valorant · qwen</strong><div class="muted">match winner · prompt v1.0</div></td><td class="right">7</td><td class="right">--</td><td class="right">0.229</td><td class="right">--</td><td class="right">--</td><td class="right">1.4%</td><td><span class="badge bad">ranking hidden</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const views = document.querySelectorAll('.view');
+    const navButtons = document.querySelectorAll('.nav-btn[data-view]');
+    const showView = (name) => {
+      views.forEach((view) => view.classList.toggle('active', view.id === `view-${name}`));
+      navButtons.forEach((button) => button.classList.toggle('active', button.dataset.view === name));
+      location.hash = name;
+    };
+    navButtons.forEach((button) => button.addEventListener('click', () => showView(button.dataset.view)));
+
+    const gameSources = {
+      'CS2': [['HLTV','performance','ready','12m'],['Liquipedia','identity','ready','34m'],['GRID','official','ready','18m']],
+      'LoL': [['Data Dragon','patch','ready','22m'],['Liquipedia','roster','ready','41m'],['GRID','official','unconfigured','--']],
+      'Dota 2': [['OpenDota','performance','ready','8m'],['Liquipedia','roster','ready','39m'],['Steam','verification','unconfigured','--']],
+      'Valorant': [['Liquipedia','roster','ready','31m'],['Riot VAL','content','unconfigured','--'],['GRID','official','unconfigured','--']]
+    };
+    const stateByGame = {'CS2':'paper_ready','LoL':'data_ready','Dota 2':'analysis_ready','Valorant':'data_ready'};
+    document.querySelectorAll('.game-tabs button').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('.game-tabs button').forEach((item) => item.classList.toggle('active', item === button));
+      const game = button.dataset.game;
+      document.getElementById('board-state').textContent = stateByGame[game];
+      document.getElementById('board-state').className = stateByGame[game] === 'paper_ready' ? 'badge good' : 'badge warn';
+      document.getElementById('last-run').textContent = `last run · ar_${game.toLowerCase().replace(/\s/g,'')}_sample · 18 min ago`;
+      document.getElementById('run-id').textContent = `ar_${game.toLowerCase().replace(/\s/g,'')}_sample_20260721_a1b2`;
+      document.getElementById('source-list').innerHTML = gameSources[game].map(([name,role,state,age]) =>
+        `<div class="source-row"><strong>${name}</strong><span class="muted">${role}</span><span class="badge ${state === 'ready' ? 'good' : 'warn'}">${state}</span><span class="right mono">${age}</span></div>`
+      ).join('');
+    }));
+
+    document.querySelectorAll('.report-tabs button').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('.report-tabs button').forEach((item) => item.classList.toggle('active', item === button));
+      document.querySelectorAll('.tab-pane').forEach((pane) => pane.classList.toggle('active', pane.id === `pane-${button.dataset.pane}`));
+    }));
+
+    const initialView = location.hash.replace('#','');
+    if (['validation','analysis','orders','performance'].includes(initialView)) showView(initialView);
+  </script>
+</body>
+</html>

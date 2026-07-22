@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import type { TaskMonitorSnapshot } from '@polyrader/core';
+import type { TaskMonitorSnapshot } from '@polyrader/core/browser';
 
 const mockSnapshot: TaskMonitorSnapshot = {
   running: [],

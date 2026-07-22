@@ -164,6 +164,7 @@ export class WalletFollowService {
     const marketVolumeUsd = this.marketRepo.getMarketVolumeUsd(market);
     const whale = this.whaleRepo.findByAddress(normalized);
     const leaderWinRate = whale?.winRate ?? 0;
+    const leaderRoi = whale?.roi ?? 0;
     const leaderSettledBets = whale?.settledBets ?? 0;
 
     let currentMid: number | undefined;
@@ -178,6 +179,7 @@ export class WalletFollowService {
       leaderAmount: trade.amount,
       leaderPrice: trade.price,
       leaderWinRate,
+      leaderRoi,
       leaderSettledBets,
       side: trade.type,
       isCs2Market: this.marketRepo.isCs2MarketRecord(market),
@@ -257,6 +259,7 @@ export class WalletFollowService {
       leaderAmount: signal.leaderAmount,
       leaderPrice: signal.leaderPrice,
       leaderWinRate: whale?.winRate ?? signal.leaderWinRate ?? 0,
+      leaderRoi: whale?.roi ?? 0,
       leaderSettledBets: whale?.settledBets ?? signal.leaderSettledBets ?? 0,
       side: signal.side,
       isCs2Market: market

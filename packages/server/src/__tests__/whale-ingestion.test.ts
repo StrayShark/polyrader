@@ -6,8 +6,12 @@ vi.mock('@polyrader/infra', () => ({
     getBlockNumber: vi.fn().mockResolvedValue(1000),
     getLogs: vi.fn().mockResolvedValue([]),
   })),
+  PolymarketDataClient: vi.fn().mockImplementation(() => ({
+    getPublicTrades: vi.fn().mockRejectedValue(new Error('Data API unavailable')),
+    getTrades: vi.fn().mockResolvedValue([]),
+  })),
   WhaleRepository: vi.fn().mockImplementation(() => ({
-    insertTrade: vi.fn(),
+    insertTrade: vi.fn().mockReturnValue(true),
     upsert: vi.fn(),
     findByAddress: vi.fn().mockReturnValue(null),
     getTrades: vi.fn().mockReturnValue([]),
@@ -25,11 +29,13 @@ import { WhaleIngestionService } from '../services/whale-ingestion-service';
 describe('P2-4: Whale Ingestion Fixes', () => {
   let service: WhaleIngestionService;
   let polygonClient: Record<string, ReturnType<typeof vi.fn>>;
+  let dataClient: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     service = new WhaleIngestionService();
     polygonClient = (service as unknown as { client: Record<string, ReturnType<typeof vi.fn>> }).client;
+    dataClient = (service as unknown as { dataClient: Record<string, ReturnType<typeof vi.fn>> }).dataClient;
   });
 
   describe('parseTradeLog — buy side (makerAssetId = 0)', () => {
@@ -139,6 +145,33 @@ describe('P2-4: Whale Ingestion Fixes', () => {
       polygonClient.getLogs.mockResolvedValue([]);
       const count = await service.scanRecentTrades();
       expect(count).toBe(0);
+    });
+
+    it('prefers public Data API trades and records the active source', async () => {
+      dataClient.getPublicTrades.mockResolvedValue([
+        {
+          address: '0x1234567890abcdef1234567890abcdef12345678',
+          txHash: '0xpublic-trade',
+          tokenId: 'token-1',
+          outcome: 'Yes',
+          side: 'buy',
+          price: 0.6,
+          size: 1000,
+          value: 600,
+          timestamp: '2026-07-20T00:00:00.000Z',
+          profileName: 'Smart Wallet',
+        },
+      ]);
+
+      const count = await service.scanRecentTrades();
+
+      expect(count).toBe(1);
+      expect(polygonClient.getBlockNumber).not.toHaveBeenCalled();
+      expect(service.getStatus()).toEqual(expect.objectContaining({
+        source: 'data-api',
+        consecutiveFailures: 0,
+        lastIngestedCount: 1,
+      }));
     });
   });
 });

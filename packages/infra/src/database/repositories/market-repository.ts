@@ -180,6 +180,37 @@ export class MarketRepository {
     return resolved;
   }
 
+  /** Resolve local map-winner markets from structured per-map winners. */
+  resolveLocalMapMarkets(
+    canonicalMatchId: string,
+    maps: Array<{ mapNumber: number; winnerTeamName: string }>,
+  ): Market[] {
+    const byMap = new Map(maps.map((map) => [map.mapNumber, map.winnerTeamName]));
+    const markets = this.findByCanonicalMatchId(canonicalMatchId)
+      .filter((market) => market.tags.includes('local-sim') && isMapWinnerMarket(market));
+    const resolved: Market[] = [];
+    for (const market of markets) {
+      const mapNumber = parsePolymarketMatch(market.question)?.mapNumber;
+      if (!mapNumber) continue;
+      const winnerSelection = byMap.get(mapNumber);
+      if (!winnerSelection) continue;
+      const normalizedWinner = normalizeSelection(winnerSelection);
+      const winnerIndex = market.outcomes.findIndex((outcome) => normalizeSelection(outcome) === normalizedWinner);
+      if (winnerIndex < 0) continue;
+      const next: Market = {
+        ...market,
+        outcomePrices: market.outcomes.map((_outcome, index) => index === winnerIndex ? '1.00' : '0.00'),
+        status: 'resolved',
+        resolvedOutcome: market.outcomes[winnerIndex],
+        resolvedPrice: 1,
+      };
+      this.upsert(next);
+      this.insertPriceHistoryIfChanged(next.conditionId, winnerIndex === 0 ? 1 : 0);
+      resolved.push(next);
+    }
+    return resolved;
+  }
+
   closeLocalMarkets(canonicalMatchId: string): Market[] {
     const markets = this.findByCanonicalMatchId(canonicalMatchId)
       .filter((market) => market.tags.includes('local-sim'));
@@ -258,6 +289,11 @@ function isSeriesWinnerMarket(market: Market): boolean {
   const parsed = parsePolymarketMatch(market.question);
   return !!parsed && !parsed.isMapMarket
     && !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(market.question);
+}
+
+function isMapWinnerMarket(market: Market): boolean {
+  if (market.tags.includes('map-winner')) return true;
+  return Boolean(parsePolymarketMatch(market.question)?.isMapMarket);
 }
 
 function isCs2Text(text: string): boolean {

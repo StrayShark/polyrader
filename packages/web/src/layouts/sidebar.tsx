@@ -1,11 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import {
-  Swords,
   Trophy,
   Ticket,
   Wallet,
-  BookOpen,
-  Database,
   FlaskConical,
   Settings,
   Fish,
@@ -15,17 +12,13 @@ import {
   PieChart,
   LineChart,
   CreditCard,
-  Sun,
-  Moon,
-  Terminal,
   Menu,
   X,
+  FileJson2,
+  ClipboardCheck,
 } from 'lucide-react';
-import { useTheme } from '../components/ThemeProvider';
 import { useI18n } from '../hooks/use-i18n';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { cn } from '../utils/cn';
-import { PRODUCT_NAME } from '../utils/brand';
 import { useFeatureFlagStore } from '../stores/feature-flag-store';
 
 const navigation = [
@@ -34,15 +27,14 @@ const navigation = [
     items: [
       { to: '/', icon: Trophy, labelKey: 'nav.lobby' },
       { to: '/bankroll', icon: Wallet, labelKey: 'nav.bankroll' },
-      { to: '/review', icon: BookOpen, labelKey: 'nav.review' },
     ],
   },
   {
     group: 'Data',
     items: [
-      { to: '/database', icon: Database, labelKey: 'nav.database' },
       { to: '/strategy', icon: FlaskConical, labelKey: 'nav.strategy' },
-      { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
+      { to: '/analysis/report', icon: FileJson2, labelKey: 'nav.analysisReport' },
+      { to: '/validation-lab', icon: ClipboardCheck, labelKey: 'nav.validationLab' },
     ],
   },
   {
@@ -52,11 +44,9 @@ const navigation = [
       { to: '/esports', icon: Activity, labelKey: 'nav.esports' },
       { to: '/signals', icon: BarChart3, labelKey: 'nav.signals' },
       { to: '/whales', icon: Fish, labelKey: 'nav.whales' },
-      { to: '/ai/config', icon: Settings, labelKey: 'nav.aiConfig' },
       { to: '/ai/stats', icon: LineChart, labelKey: 'nav.aiStats' },
       { to: '/prompt-variants', icon: Beaker, labelKey: 'nav.promptVariants' },
       { to: '/allocation', icon: PieChart, labelKey: 'nav.allocation' },
-      { to: '/simulation', icon: LineChart, labelKey: 'nav.simulation' },
       { to: '/polymarket/account', icon: CreditCard, labelKey: 'nav.polymarketAccount', featureFlag: 'polymarketAccountEnabled' as const },
     ],
   },
@@ -68,7 +58,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
-  const { theme, setTheme } = useTheme();
   const { t } = useI18n();
   const { polymarketAccountEnabled } = useFeatureFlagStore();
 
@@ -91,25 +80,20 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
           collapsed && '-translate-x-full lg:translate-x-0 lg:w-[64px]',
         )}
       >
-        {/* Logo */}
-        <div className={cn(
-          'flex h-14 items-center gap-2 border-b border-border px-4',
-          collapsed && 'lg:justify-center lg:px-2',
-        )}>
-          <Swords className="h-5 w-5 flex-shrink-0 text-primary" />
-          {!collapsed && <span className="text-sm font-semibold">{PRODUCT_NAME}</span>}
-          {onToggle && (
+        {onToggle && (
+          <div className="flex h-10 items-center justify-end border-b border-border px-2 lg:hidden">
             <button
               onClick={onToggle}
-              className="ml-auto rounded p-1 hover:bg-sidebar-hover lg:hidden"
+              className="rounded p-1.5 text-muted-foreground hover:bg-sidebar-hover hover:text-foreground"
+              aria-label={t('nav.closeMenu')}
             >
               <X className="h-4 w-4" />
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-auto py-2">
+        <nav className="flex-1 overflow-auto py-3" aria-label="Primary">
           {navigation.map((group) => (
             <div key={group.group} className="mb-2">
               {!collapsed && (
@@ -143,42 +127,23 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Theme Toggle + Language */}
-        <div className="border-t border-border p-2">
-          <div className={cn('flex gap-1', collapsed && 'lg:flex-col')}>
-            <button
-              onClick={() => setTheme('dark')}
-              className={cn(
-                'flex h-10 flex-1 items-center justify-center rounded-md text-xs transition-colors',
-                theme === 'dark' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-              title="Dark+"
-            >
-              <Moon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setTheme('light')}
-              className={cn(
-                'flex h-10 flex-1 items-center justify-center rounded-md text-xs transition-colors',
-                theme === 'light' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-              title="Light+"
-            >
-              <Sun className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setTheme('matrix')}
-              className={cn(
-                'flex h-10 flex-1 items-center justify-center rounded-md text-xs transition-colors',
-                theme === 'matrix' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-              title="Matrix"
-            >
-              <Terminal className="mx-auto h-3.5 w-3.5" />
-            </button>
-          </div>
-          {!collapsed && <LanguageSwitcher />}
-        </div>
+        <nav className="border-t border-border p-2" aria-label="Settings" data-testid="sidebar-footer">
+          <NavLink
+            to="/settings"
+            onClick={onToggle}
+            className={({ isActive }) => cn(
+              'flex h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors',
+              collapsed && 'lg:justify-center lg:px-2',
+              isActive
+                ? 'bg-sidebar-active text-foreground'
+                : 'text-sidebar-foreground hover:bg-sidebar-hover hover:text-foreground',
+            )}
+            title={collapsed ? t('nav.settings') : undefined}
+          >
+            <Settings className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && <span>{t('nav.settings')}</span>}
+          </NavLink>
+        </nav>
       </aside>
     </>
   );

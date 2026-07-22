@@ -13,13 +13,17 @@ export class MinimaxClient implements LLMClient {
     this.model = model;
   }
 
-  async analyze(prompt: { system: string; context: string; outputSchema: string }): Promise<LLMAnalysisResult> {
+  async analyze(prompt: {
+    system: string;
+    context: string;
+    outputSchema: string;
+  }): Promise<LLMAnalysisResult> {
     const startTime = Date.now();
     const response = await fetch(`${this.baseUrl}/text/chatcompletion_v2`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.model,
@@ -38,7 +42,7 @@ export class MinimaxClient implements LLMClient {
       throw new Error(`MiniMax API error: ${response.status} - ${err}`);
     }
 
-    const data = await response.json() as Record<string, unknown>;
+    const data = (await response.json()) as Record<string, unknown>;
     const latency = Date.now() - startTime;
     const choices = data.choices as Array<Record<string, unknown>> | undefined;
     const message = choices?.[0]?.message as Record<string, unknown> | undefined;
@@ -50,7 +54,9 @@ export class MinimaxClient implements LLMClient {
       completionTokens: Number((data.usage as Record<string, unknown>)?.completion_tokens ?? 0),
       totalTokens: Number((data.usage as Record<string, unknown>)?.total_tokens ?? 0),
     });
-    const reasoningDetails = message?.reasoning_details as Array<Record<string, unknown>> | undefined;
+    const reasoningDetails = message?.reasoning_details as
+      | Array<Record<string, unknown>>
+      | undefined;
     const thinkingProcess = reasoningDetails
       ?.map((item) => String(item.content ?? ''))
       .filter(Boolean)
@@ -61,7 +67,7 @@ export class MinimaxClient implements LLMClient {
   async testConnection(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/models`, {
-        headers: { 'Authorization': `Bearer ${this.apiKey}` },
+        headers: { Authorization: `Bearer ${this.apiKey}` },
       });
       return response.ok;
     } catch {
@@ -74,7 +80,7 @@ export class MinimaxClient implements LLMClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.model,
@@ -83,7 +89,7 @@ export class MinimaxClient implements LLMClient {
           { role: 'user', content: prompt.user },
         ],
         temperature: 0.3,
-        max_tokens: 2000,
+        max_tokens: 8192,
         reasoning_split: true,
       }),
     });
@@ -93,7 +99,7 @@ export class MinimaxClient implements LLMClient {
       throw new Error(`MiniMax API error: ${response.status} - ${err}`);
     }
 
-    const data = await response.json() as Record<string, unknown>;
+    const data = (await response.json()) as Record<string, unknown>;
     const choices = data.choices as Array<Record<string, unknown>> | undefined;
     const message = choices?.[0]?.message as Record<string, unknown> | undefined;
     return String(message?.content ?? '');

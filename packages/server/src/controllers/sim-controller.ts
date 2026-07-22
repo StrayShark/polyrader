@@ -94,8 +94,50 @@ export class SimController {
   listReviews(req: Request, res: Response): void {
     try {
       const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : 'default';
-      const reviews = this.reviewService.listSettledForReview(accountId);
+      const tagsRaw = req.query.tags;
+      const tags = Array.isArray(tagsRaw)
+        ? tagsRaw.map(String)
+        : typeof tagsRaw === 'string' && tagsRaw.length > 0
+          ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
+          : undefined;
+      const reviews = this.reviewService.listSettledForReview(accountId, {
+        result: req.query.result as 'all' | 'won' | 'lost' | 'push' | undefined,
+        betType: req.query.betType as 'all' | 'single' | 'parlay' | undefined,
+        format: req.query.format as 'all' | 'BO1' | 'BO3' | 'BO5' | undefined,
+        tier: typeof req.query.tier === 'string' ? req.query.tier : undefined,
+        timing: req.query.timing as 'all' | 'pre' | 'live' | undefined,
+        tags,
+        fromDate: typeof req.query.fromDate === 'string' ? req.query.fromDate : undefined,
+        toDate: typeof req.query.toDate === 'string' ? req.query.toDate : undefined,
+        hasNote: req.query.hasNote as 'all' | 'yes' | 'no' | undefined,
+      });
       res.json({ data: reviews });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  }
+
+  getReviewSummary(req: Request, res: Response): void {
+    try {
+      const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : 'default';
+      const tagsRaw = req.query.tags;
+      const tags = Array.isArray(tagsRaw)
+        ? tagsRaw.map(String)
+        : typeof tagsRaw === 'string' && tagsRaw.length > 0
+          ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
+          : undefined;
+      const summary = this.reviewService.getSummary(accountId, {
+        result: req.query.result as 'all' | 'won' | 'lost' | 'push' | undefined,
+        betType: req.query.betType as 'all' | 'single' | 'parlay' | undefined,
+        format: req.query.format as 'all' | 'BO1' | 'BO3' | 'BO5' | undefined,
+        tier: typeof req.query.tier === 'string' ? req.query.tier : undefined,
+        timing: req.query.timing as 'all' | 'pre' | 'live' | undefined,
+        tags,
+        fromDate: typeof req.query.fromDate === 'string' ? req.query.fromDate : undefined,
+        toDate: typeof req.query.toDate === 'string' ? req.query.toDate : undefined,
+        hasNote: req.query.hasNote as 'all' | 'yes' | 'no' | undefined,
+      });
+      res.json({ data: summary });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

@@ -24,7 +24,7 @@ import {
 import { useI18n } from '../hooks/use-i18n';
 import { ProductModeNotice } from '../components/ProductModeNotice';
 import { useFeatureFlagStore } from '../stores/feature-flag-store';
-import type { PolymarketAccountOverview } from '@polyrader/core';
+import type { PolymarketAccountOverview } from '@polyrader/core/browser';
 
 export function PolymarketAccountPage() {
   const { t } = useI18n();

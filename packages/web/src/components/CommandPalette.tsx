@@ -18,6 +18,8 @@ import {
   LineChart,
   CreditCard,
   Swords,
+  FileJson2,
+  ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { useMarketStore } from '../stores/market-store';
@@ -45,10 +47,12 @@ const NAV_PAGES: Array<{ to: string; icon: LucideIcon; labelKey: string; feature
   // Practice
   { to: '/', icon: Trophy, labelKey: 'nav.lobby' },
   { to: '/bankroll', icon: Wallet, labelKey: 'nav.bankroll' },
-  { to: '/review', icon: BookOpen, labelKey: 'nav.review' },
+  { to: '/bankroll?section=review', icon: BookOpen, labelKey: 'nav.review' },
   // Data
   { to: '/database', icon: Database, labelKey: 'nav.database' },
   { to: '/strategy', icon: FlaskConical, labelKey: 'nav.strategy' },
+  { to: '/analysis/report', icon: FileJson2, labelKey: 'nav.analysisReport' },
+  { to: '/validation-lab', icon: ClipboardCheck, labelKey: 'nav.validationLab' },
   { to: '/settings', icon: Settings2, labelKey: 'nav.settings' },
   // Advanced
   { to: '/daily', icon: CalendarDays, labelKey: 'nav.daily' },
@@ -59,7 +63,7 @@ const NAV_PAGES: Array<{ to: string; icon: LucideIcon; labelKey: string; feature
   { to: '/ai/stats', icon: BarChart3, labelKey: 'nav.aiStats' },
   { to: '/prompt-variants', icon: Beaker, labelKey: 'nav.promptVariants' },
   { to: '/allocation', icon: PieChart, labelKey: 'nav.allocation' },
-  { to: '/simulation', icon: LineChart, labelKey: 'nav.simulation' },
+  { to: '/bankroll?section=simulation', icon: LineChart, labelKey: 'nav.simulation' },
   { to: '/polymarket/account', icon: CreditCard, labelKey: 'nav.polymarketAccount', featureFlag: 'polymarketAccountEnabled' },
 ];
 

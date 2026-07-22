@@ -8,8 +8,11 @@ function mapReview(row: Record<string, unknown>): BetReview {
     betId: String(row.bet_id),
     errorTags: JSON.parse(String(row.error_tags ?? '[]')),
     note: row.note ? String(row.note) : undefined,
-    brierScore: row.brier_score ? Number(row.brier_score) : undefined,
-    closingLineValue: row.closing_line_value ? Number(row.closing_line_value) : undefined,
+    brierScore: row.brier_score !== null && row.brier_score !== undefined ? Number(row.brier_score) : undefined,
+    closingLineValue: row.closing_line_value !== null && row.closing_line_value !== undefined
+      ? Number(row.closing_line_value)
+      : undefined,
+    closingOdds: row.closing_odds !== null && row.closing_odds !== undefined ? Number(row.closing_odds) : undefined,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -21,6 +24,7 @@ export interface CreateBetReviewInput {
   note?: string;
   brierScore?: number;
   closingLineValue?: number;
+  closingOdds?: number;
 }
 
 export class BetReviewRepository {
@@ -43,20 +47,22 @@ export class BetReviewRepository {
       note: input.note,
       brierScore: input.brierScore,
       closingLineValue: input.closingLineValue,
+      closingOdds: input.closingOdds,
       createdAt: now,
       updatedAt: now,
     };
 
     query(
       `INSERT INTO bet_reviews (
-        id, bet_id, error_tags, note, brier_score, closing_line_value, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, bet_id, error_tags, note, brier_score, closing_line_value, closing_odds, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       review.id,
       review.betId,
       JSON.stringify(review.errorTags),
       review.note ?? null,
       review.brierScore ?? null,
       review.closingLineValue ?? null,
+      review.closingOdds ?? null,
       review.createdAt,
       review.updatedAt,
     );
@@ -80,12 +86,14 @@ export class BetReviewRepository {
         note = ?,
         brier_score = ?,
         closing_line_value = ?,
+        closing_odds = ?,
         updated_at = ?
       WHERE bet_id = ?`,
       JSON.stringify(updated.errorTags),
       updated.note ?? null,
       updated.brierScore ?? null,
       updated.closingLineValue ?? null,
+      updated.closingOdds ?? null,
       updated.updatedAt,
       betId,
     );

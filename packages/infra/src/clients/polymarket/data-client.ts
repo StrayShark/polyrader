@@ -1,6 +1,8 @@
 import type {
   PolymarketHolder,
+  PolymarketLeaderboardEntry,
   PolymarketMarketPosition,
+  PolymarketPublicTrade,
   PolymarketUserActivity,
   PolymarketUserPosition,
   PolymarketUserTrade,
@@ -8,8 +10,12 @@ import type {
 import { fetchJsonWithBrowser } from '../../crawlers/browser-fetch.js';
 
 const DATA_API_URL = process.env.POLYMARKET_DATA_API_URL ?? 'https://data-api.polymarket.com';
+let preferBrowserUntil = 0;
 
 async function fetchJson<T>(url: string, timeoutMs = envNumber('POLYMARKET_DATA_API_TIMEOUT_MS', 8000)): Promise<T> {
+  if (Date.now() < preferBrowserUntil && process.env.POLYMARKET_DISABLE_BROWSER_FETCH !== '1') {
+    return fetchJsonWithBrowser<T>(url, { timeoutMs });
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -17,11 +23,13 @@ async function fetchJson<T>(url: string, timeoutMs = envNumber('POLYMARKET_DATA_
     if (!response.ok) {
       throw new Error(`Polymarket Data API error: ${response.status} ${response.statusText}`);
     }
+    preferBrowserUntil = 0;
     return response.json() as Promise<T>;
   } catch (err) {
     if (process.env.POLYMARKET_DISABLE_BROWSER_FETCH === '1') {
       throw err;
     }
+    preferBrowserUntil = Date.now() + 5 * 60 * 1000;
     return fetchJsonWithBrowser<T>(url, { timeoutMs });
   } finally {
     clearTimeout(timer);
@@ -75,6 +83,8 @@ export class PolymarketDataClient {
     const data = await this.fetch<unknown[]>('/closed-positions', {
       user,
       limit,
+      sortBy: 'TIMESTAMP',
+      sortDirection: 'DESC',
     });
     return data.map((item) => this.mapUserPosition(item as Record<string, unknown>));
   }
@@ -93,6 +103,36 @@ export class PolymarketDataClient {
       limit,
     });
     return data.map((item) => this.mapTrade(item as Record<string, unknown>));
+  }
+
+  async getPublicTrades(limit = 100, minValue = 500): Promise<PolymarketPublicTrade[]> {
+    const data = await this.fetch<unknown[]>('/trades', {
+      limit,
+      filterType: 'CASH',
+      filterAmount: minValue,
+    });
+    return data
+      .map((item) => this.mapPublicTrade(item as Record<string, unknown>))
+      .filter((trade) => trade.address && trade.txHash && trade.tokenId && trade.value >= minValue);
+  }
+
+  async getLeaderboard(options: {
+    limit?: number;
+    offset?: number;
+    category?: 'OVERALL' | 'POLITICS' | 'SPORTS' | 'CRYPTO';
+    timePeriod?: 'DAY' | 'WEEK' | 'MONTH' | 'ALL';
+    orderBy?: 'PNL' | 'VOL';
+  } = {}): Promise<PolymarketLeaderboardEntry[]> {
+    const data = await this.fetch<unknown[]>('/v1/leaderboard', {
+      limit: options.limit ?? 20,
+      offset: options.offset ?? 0,
+      category: options.category ?? 'OVERALL',
+      timePeriod: options.timePeriod ?? 'ALL',
+      orderBy: options.orderBy ?? 'PNL',
+    });
+    return data
+      .map((item) => this.mapLeaderboardEntry(item as Record<string, unknown>))
+      .filter((entry) => entry.address);
   }
 
   async getTotalValue(user: string): Promise<number> {
@@ -129,6 +169,10 @@ export class PolymarketDataClient {
   }
 
   private mapUserPosition(row: Record<string, unknown>): PolymarketUserPosition {
+    const avgPrice = optionalNumber(row.avgPrice ?? row.averagePrice);
+    const totalBought = optionalNumber(row.totalBought);
+    const initialValue = optionalNumber(row.initialValue ?? row.costBasis)
+      ?? (avgPrice !== undefined && totalBought !== undefined ? avgPrice * totalBought : undefined);
     return {
       marketId: stringFrom(row.market ?? row.marketId ?? row.conditionId),
       conditionId: optionalString(row.conditionId),
@@ -137,10 +181,10 @@ export class PolymarketDataClient {
       tokenId: optionalString(row.tokenId ?? row.asset ?? row.assetId),
       shares: numberFrom(row.shares ?? row.size ?? row.amount),
       value: numberFrom(row.value ?? row.currentValue ?? row.usdcValue),
-      avgPrice: optionalNumber(row.avgPrice ?? row.averagePrice),
-      currentPrice: optionalNumber(row.currentPrice ?? row.price),
-      initialValue: optionalNumber(row.initialValue ?? row.costBasis),
-      cashPnl: optionalNumber(row.cashPnl ?? row.pnl),
+      avgPrice,
+      currentPrice: optionalNumber(row.currentPrice ?? row.curPrice ?? row.price),
+      initialValue,
+      cashPnl: optionalNumber(row.cashPnl ?? row.realizedPnl ?? row.pnl),
       percentPnl: optionalNumber(row.percentPnl ?? row.percentPnL),
       endDate: optionalString(row.endDate),
     };
@@ -157,7 +201,7 @@ export class PolymarketDataClient {
       price: optionalNumber(row.price),
       size: optionalNumber(row.size ?? row.shares ?? row.amount),
       value: optionalNumber(row.value ?? row.usdcValue),
-      timestamp: stringFrom(row.timestamp ?? row.createdAt ?? row.time),
+      timestamp: normalizeTimestamp(row.timestamp ?? row.createdAt ?? row.time),
       txHash: optionalString(row.transactionHash ?? row.txHash),
     };
   }
@@ -176,8 +220,39 @@ export class PolymarketDataClient {
       value: numberFrom(row.value ?? row.usdcValue) || price * size,
       fee: optionalNumber(row.fee),
       status: optionalString(row.status),
-      timestamp: stringFrom(row.timestamp ?? row.createdAt ?? row.time),
+      timestamp: normalizeTimestamp(row.timestamp ?? row.createdAt ?? row.time),
       txHash: optionalString(row.transactionHash ?? row.txHash),
+    };
+  }
+
+  private mapPublicTrade(row: Record<string, unknown>): PolymarketPublicTrade {
+    const price = numberFrom(row.price);
+    const size = numberFrom(row.size ?? row.shares ?? row.amount);
+    return {
+      address: stringFrom(row.proxyWallet ?? row.address ?? row.user ?? row.wallet).toLowerCase(),
+      txHash: stringFrom(row.transactionHash ?? row.txHash ?? row.id),
+      tokenId: stringFrom(row.asset ?? row.assetId ?? row.tokenId),
+      conditionId: optionalString(row.conditionId ?? row.market),
+      question: optionalString(row.title ?? row.question ?? row.marketQuestion),
+      slug: optionalString(row.slug),
+      outcome: optionalString(row.outcome ?? row.outcomeTitle),
+      side: normalizeSide(row.side ?? row.type) ?? 'buy',
+      price,
+      size,
+      value: numberFrom(row.value ?? row.usdcValue) || price * size,
+      timestamp: normalizeTimestamp(row.timestamp ?? row.createdAt ?? row.time),
+      profileName: optionalString(row.name ?? row.pseudonym ?? row.userName),
+    };
+  }
+
+  private mapLeaderboardEntry(row: Record<string, unknown>): PolymarketLeaderboardEntry {
+    return {
+      rank: numberFrom(row.rank),
+      address: stringFrom(row.proxyWallet ?? row.address ?? row.user).toLowerCase(),
+      userName: optionalString(row.userName ?? row.name ?? row.pseudonym),
+      volume: numberFrom(row.vol ?? row.volume),
+      pnl: numberFrom(row.pnl ?? row.profit),
+      profileImage: optionalString(row.profileImage),
     };
   }
 }
@@ -207,6 +282,15 @@ function numberFrom(value: unknown): number {
 function optionalNumber(value: unknown): number | undefined {
   const num = Number(value);
   return Number.isFinite(num) ? num : undefined;
+}
+
+function normalizeTimestamp(value: unknown): string {
+  if (typeof value === 'number' || /^\d{10,13}$/.test(String(value ?? ''))) {
+    const numeric = Number(value);
+    const millis = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+    return new Date(millis).toISOString();
+  }
+  return stringFrom(value);
 }
 
 function envNumber(name: string, fallback: number): number {

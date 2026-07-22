@@ -32,6 +32,9 @@ export function createSSEStream(res: Response): SSEStream {
     send(event: string, data: unknown) {
       const payload = JSON.stringify(data);
       res.write(`event: ${event}\ndata: ${payload}\n\n`);
+      // Some middleware (compression/proxies) buffers until flush.
+      const flushable = res as Response & { flush?: () => void };
+      flushable.flush?.();
     },
 
     done() {

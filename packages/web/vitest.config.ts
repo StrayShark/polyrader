@@ -13,6 +13,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/__tests__/setup.ts'],
-    exclude: ['node_modules', 'e2e-browser', 'e2e-integration'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/e2e-browser/**',
+      '**/e2e-integration/**',
+    ],
   },
 });

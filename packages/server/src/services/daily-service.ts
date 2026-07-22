@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import { envNumber, withTimeout } from '../utils/timeout';
 import { SourceAlignmentService } from './source-alignment-service';
 import { estimateLocalOdds } from './local-odds';
+import { buildLocalMapWinnerMarkets, buildLocalSimulationMarket } from './local-simulation-market';
 
 interface LightweightLLMResult {
   prob: number;
@@ -410,51 +411,7 @@ export class DailyService {
     index: number;
     hltvMatchId?: string;
   }): Market {
-    const sourceMatchId = input.matchId || `${input.today}-${input.index}`;
-    const conditionId = sourceMatchId.startsWith('local-') || sourceMatchId.startsWith('daily-')
-      ? sourceMatchId
-      : `local-${input.source}-${sourceMatchId}`;
-    const teamAId = input.teamAId || this.localTeamId(input.teamAName, 'a');
-    const teamBId = input.teamBId || this.localTeamId(input.teamBName, 'b');
-    const canonicalMatchId = buildCanonicalMatchId({
-      hltvMatchId: input.hltvMatchId,
-      teamAId,
-      teamBId,
-      teamAName: input.teamAName,
-      teamBName: input.teamBName,
-      eventName: input.eventName,
-      scheduledAt: input.scheduledAt,
-    });
-
-    return {
-      conditionId,
-      canonicalMatchId,
-      slug: conditionId,
-      question: `Counter-Strike: ${input.teamAName} vs ${input.teamBName} (${input.format}) - ${input.eventName}`,
-      description: `Local ${input.source.toUpperCase()} simulation market for CS2 practice analysis.`,
-      outcomes: [input.teamAName, input.teamBName],
-      outcomePrices: ['0.50', '0.50'],
-      clobTokenIds: [],
-      volume: 0,
-      volume24h: 0,
-      liquidity: 0,
-      startDate: input.scheduledAt,
-      endDate: this.addHours(input.scheduledAt, input.format === 'BO1' ? 2 : 4),
-      status: 'active',
-      tags: ['cs2', 'practice', 'local-sim', 'local-odds-v1', input.source],
-      match: {
-        matchId: conditionId,
-        canonicalMatchId,
-        teamA: { teamId: teamAId, name: input.teamAName, rank: 0, logo: '', region: '' },
-        teamB: { teamId: teamBId, name: input.teamBName, rank: 0, logo: '', region: '' },
-        eventName: input.eventName,
-        eventType: input.eventType,
-        format: input.format,
-        scheduledAt: input.scheduledAt,
-        status: 'scheduled',
-        maps: [],
-      },
-    };
+    return buildLocalSimulationMarket(input);
   }
 
   private persistDailyMarkets(markets: Market[]): void {
@@ -480,6 +437,24 @@ export class DailyService {
         }
       } catch (err) {
         logger.warn('Failed to persist daily market', { conditionId: market.conditionId, error: (err as Error).message });
+      }
+
+      if (
+        (persistentMarket.tags.includes('local-sim') || persistentMarket.tags.includes('local-seed'))
+        && !persistentMarket.tags.includes('map-winner')
+      ) {
+        for (const mapMarket of buildLocalMapWinnerMarkets(persistentMarket)) {
+          try {
+            this.marketRepo.upsert(mapMarket);
+            const price = Number(mapMarket.outcomePrices[0] ?? 0.5);
+            if (Number.isFinite(price)) this.marketRepo.insertPriceHistoryIfChanged(mapMarket.conditionId, price);
+          } catch (err) {
+            logger.warn('Failed to persist map-winner market', {
+              conditionId: mapMarket.conditionId,
+              error: (err as Error).message,
+            });
+          }
+        }
       }
 
       if (!persistentMarket.match) continue;

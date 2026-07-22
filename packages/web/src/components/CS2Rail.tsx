@@ -19,10 +19,26 @@ export interface CS2RailProps {
   onChange: (filters: CS2RailFilters) => void;
   tournaments?: string[];
   className?: string;
+  onClear?: () => void;
 }
 
-export function CS2Rail({ filters, onChange, tournaments = [], className }: CS2RailProps) {
+const DEFAULT_FILTERS: CS2RailFilters = {
+  time: 'all',
+  format: 'all',
+  tier: 'all',
+};
+
+function hasActiveFilters(filters: CS2RailFilters): boolean {
+  return filters.time !== 'all'
+    || filters.format !== 'all'
+    || filters.tier !== 'all'
+    || Boolean(filters.tournament)
+    || Boolean(filters.mapComplete);
+}
+
+export function CS2Rail({ filters, onChange, tournaments = [], className, onClear }: CS2RailProps) {
   const { t } = useI18n();
+  const active = hasActiveFilters(filters);
 
   const timeItems: { key: TimeFilter; label: string; icon: React.ReactNode }[] = [
     { key: 'all', label: t('rail.time_all'), icon: <Layers className="h-3.5 w-3.5" /> },
@@ -165,6 +181,21 @@ export function CS2Rail({ filters, onChange, tournaments = [], className }: CS2R
           {t('rail.map_complete')}
         </button>
       </div>
+
+      {active && (
+        <div className="col-span-2 pt-1 lg:pt-0">
+          <button
+            type="button"
+            onClick={() => {
+              onChange({ ...DEFAULT_FILTERS });
+              onClear?.();
+            }}
+            className="w-full rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            {t('rail.clearFilters')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

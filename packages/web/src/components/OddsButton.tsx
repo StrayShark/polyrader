@@ -1,5 +1,6 @@
 import { cn } from '../utils/cn';
 import { oddsToImpliedProbability, formatProbability, formatOdds, formatOddsByFormat, type OddsFormat } from '../utils/bet-math';
+import { usePriceFlash } from './PriceFlash';
 
 interface OddsButtonProps {
   odds: number;
@@ -11,6 +12,10 @@ interface OddsButtonProps {
   onClick?: () => void;
 }
 
+/**
+ * OddsButton — fixed-size practice odds control.
+ * Flashes green/red for 600ms on odds changes without changing layout size.
+ */
 export function OddsButton({
   odds,
   selection,
@@ -23,6 +28,7 @@ export function OddsButton({
   const implied = oddsToImpliedProbability(odds);
   const mainValue = formatOddsByFormat(odds, displayFormat);
   const subValue = displayFormat === 'decimal' ? formatProbability(implied) : formatOdds(odds);
+  const { flashDirection } = usePriceFlash(odds, 600);
 
   return (
     <button
@@ -30,16 +36,19 @@ export function OddsButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'flex h-12 w-[110px] flex-col items-center justify-center rounded-lg border text-sm transition-all',
+        'flex h-12 w-[110px] shrink-0 flex-col items-center justify-center rounded-lg border text-sm transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
         selected
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border bg-background text-foreground hover:bg-accent/50',
         disabled && 'cursor-not-allowed opacity-50',
+        flashDirection === 'up' && 'price-up',
+        flashDirection === 'down' && 'price-down',
         className,
       )}
       aria-pressed={selected}
       aria-label={`${selection} ${mainValue}`}
+      data-flash={flashDirection ?? undefined}
     >
       <span className="font-semibold tabular-nums leading-none">{mainValue}</span>
       <span className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">

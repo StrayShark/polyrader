@@ -55,7 +55,11 @@ export function AppLayout() {
 
       <div className="flex min-w-0 flex-col overflow-hidden">
         {/* Compact desk bar */}
-        <header className="flex h-14 items-center gap-2 border-b border-border bg-card/60 px-2 sm:gap-3 sm:px-4">
+        <header
+          data-testid="app-topbar"
+          className="flex h-14 items-center gap-2 border-b border-solid bg-card/60 px-2 sm:gap-3 sm:px-4"
+          style={{ borderBottomColor: 'color-mix(in srgb, var(--foreground) 28%, var(--background))' }}
+        >
           <div className="lg:hidden">
             <MobileMenuButton onClick={() => setSidebarOpen(true)} />
           </div>

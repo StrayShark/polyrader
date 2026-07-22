@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { BookOpen, BarChart3, Tag, FileText, Filter, X } from 'lucide-react';
+import { BookOpen, BarChart3, Tag, FileText, Filter, X, Lightbulb } from 'lucide-react';
 import { useI18n } from '../hooks/use-i18n';
 import {
   Card,
@@ -24,7 +25,7 @@ import {
 import { useReviewStore } from '../stores/review-store';
 import { useDebounce } from '../hooks/use-debounce';
 import { cn } from '../utils/cn';
-import type { ReviewDetail } from '@polyrader/core';
+import type { ReviewDetail, ReviewListFilters } from '@polyrader/core/browser';
 import { ReviewTimeline } from '../components/ReviewTimeline';
 
 const ERROR_TAGS = [
@@ -39,16 +40,32 @@ const ERROR_TAGS = [
 const RESULT_OPTIONS = ['all', 'won', 'lost'] as const;
 const TYPE_OPTIONS = ['all', 'single', 'parlay'] as const;
 const FORMAT_OPTIONS = ['all', 'BO1', 'BO3', 'BO5'] as const;
+const TIER_OPTIONS = ['all', 'S', 'A', 'B'] as const;
+const TIMING_OPTIONS = ['all', 'pre', 'live'] as const;
 
 interface ReviewFilters {
   result: (typeof RESULT_OPTIONS)[number];
   betType: (typeof TYPE_OPTIONS)[number];
   format: (typeof FORMAT_OPTIONS)[number];
+  tier: (typeof TIER_OPTIONS)[number];
+  timing: (typeof TIMING_OPTIONS)[number];
   fromDate: string;
   toDate: string;
   hasNote: 'all' | 'yes' | 'no';
   selectedTags: string[];
 }
+
+const DEFAULT_FILTERS: ReviewFilters = {
+  result: 'all',
+  betType: 'all',
+  format: 'all',
+  tier: 'all',
+  timing: 'all',
+  fromDate: '',
+  toDate: '',
+  hasNote: 'all',
+  selectedTags: [],
+};
 
 function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -62,42 +79,18 @@ function getTagLabel(tag: string, t: (key: string) => string): string {
   return t(`review.errorTag_${tag}`);
 }
 
-function parseDateInput(value: string): Date | undefined {
-  if (!value) return undefined;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-}
-
-function matchesFilters(detail: ReviewDetail, filters: ReviewFilters): boolean {
-  const { bet } = detail;
-
-  if (filters.result !== 'all' && bet.result !== filters.result) return false;
-  if (filters.betType !== 'all' && bet.betType !== filters.betType) return false;
-  if (filters.format !== 'all' && bet.matchFormat !== filters.format) return false;
-
-  const from = parseDateInput(filters.fromDate);
-  const to = parseDateInput(filters.toDate);
-  const placedAt = new Date(bet.placedAt);
-  if (from && placedAt < from) return false;
-  if (to) {
-    const toEnd = new Date(to);
-    toEnd.setHours(23, 59, 59, 999);
-    if (placedAt > toEnd) return false;
-  }
-
-  if (filters.hasNote !== 'all') {
-    const hasNote = Boolean(detail.review?.note);
-    if (filters.hasNote === 'yes' && !hasNote) return false;
-    if (filters.hasNote === 'no' && hasNote) return false;
-  }
-
-  if (filters.selectedTags.length > 0) {
-    const tags = detail.review?.errorTags ?? [];
-    const hasAny = filters.selectedTags.some((tag) => tags.includes(tag));
-    if (!hasAny) return false;
-  }
-
-  return true;
+function toListFilters(filters: ReviewFilters): ReviewListFilters {
+  return {
+    result: filters.result,
+    betType: filters.betType,
+    format: filters.format,
+    tier: filters.tier,
+    timing: filters.timing,
+    fromDate: filters.fromDate || undefined,
+    toDate: filters.toDate || undefined,
+    hasNote: filters.hasNote,
+    tags: filters.selectedTags,
+  };
 }
 
 function ReviewDetailDialog({
@@ -125,7 +118,7 @@ function ReviewDetailDialog({
 
   if (!detail) return null;
 
-  const { bet, snapshots, brierScore, closingLineValue } = detail;
+  const { bet, snapshots, brierScore, closingLineValue, placementOdds, matchSnapshot } = detail;
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -213,6 +206,47 @@ function ReviewDetailDialog({
           </div>
 
           <ReviewTimeline detail={detail} />
+
+          {/* Placement vs closing odds */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-md border border-border p-3 text-center">
+              <div className="text-xs text-muted-foreground">{t('review.placementOdds')}</div>
+              <div className="text-lg font-semibold tabular-nums">
+                {placementOdds?.toFixed(2) ?? bet.totalOdds.toFixed(2)}
+              </div>
+            </div>
+            <div className="rounded-md border border-border p-3 text-center">
+              <div className="text-xs text-muted-foreground">{t('review.closingOdds')}</div>
+              <div className="text-lg font-semibold tabular-nums">
+                {detail.closingOdds?.toFixed(2) ?? '-'}
+              </div>
+            </div>
+          </div>
+
+          {/* Match intel snapshot */}
+          <div>
+            <h4 className="mb-2 text-sm font-medium">{t('review.matchIntel')}</h4>
+            {!matchSnapshot ? (
+              <p className="text-xs text-muted-foreground">{t('review.noMatchIntel')}</p>
+            ) : (
+              <div className="space-y-1 rounded-md border border-border p-3 text-xs">
+                <div className="flex flex-wrap gap-2">
+                  <span className="font-medium">
+                    {matchSnapshot.teamAName ?? 'A'} vs {matchSnapshot.teamBName ?? 'B'}
+                  </span>
+                  {matchSnapshot.format && <Badge variant="outline" className="text-[10px]">{matchSnapshot.format}</Badge>}
+                  {matchSnapshot.tier && <Badge variant="outline" className="text-[10px]">Tier {matchSnapshot.tier}</Badge>}
+                  {matchSnapshot.status && <Badge variant="outline" className="text-[10px]">{matchSnapshot.status}</Badge>}
+                </div>
+                <div className="text-muted-foreground">
+                  {matchSnapshot.eventName ?? '-'} · ranks {matchSnapshot.teamARank ?? '-'} / {matchSnapshot.teamBRank ?? '-'}
+                </div>
+                <div className="text-muted-foreground">
+                  {new Date(matchSnapshot.capturedAt).toLocaleString()}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Probability comparison */}
           <div>
@@ -318,40 +352,49 @@ function ReviewDetailDialog({
   );
 }
 
-export function ReviewPage() {
+export function ReviewPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
-  const { reviews, isLoading, error, fetchReviews } = useReviewStore();
+  const [searchParams] = useSearchParams();
+  const { reviews, summary, isLoading, error, fetchReviews, fetchSummary, fetchReviewDetail } = useReviewStore();
   const [selected, setSelected] = useState<ReviewDetail | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [filters, setFilters] = useState<ReviewFilters>({
-    result: 'all',
-    betType: 'all',
-    format: 'all',
-    fromDate: '',
-    toDate: '',
-    hasNote: 'all',
-    selectedTags: [],
-  });
+  const [filters, setFilters] = useState<ReviewFilters>(DEFAULT_FILTERS);
   const debouncedFilters = useDebounce(filters, 300);
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
   useEffect(() => {
-    void fetchReviews();
-  }, [fetchReviews]);
+    const listFilters = toListFilters(debouncedFilters);
+    void fetchReviews(listFilters);
+    void fetchSummary(listFilters);
+  }, [debouncedFilters, fetchReviews, fetchSummary]);
 
   useEffect(() => {
     setPage(1);
   }, [debouncedFilters]);
 
-  const filteredReviews = useMemo(() => {
-    return reviews.filter((detail) => matchesFilters(detail, debouncedFilters));
-  }, [reviews, debouncedFilters]);
+  useEffect(() => {
+    const betId = searchParams.get('betId');
+    if (!betId) return;
+    let cancelled = false;
+    void (async () => {
+      await fetchReviewDetail(betId);
+      if (cancelled) return;
+      const detail = useReviewStore.getState().selectedReview;
+      if (detail) {
+        setSelected(detail);
+        setDialogOpen(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, fetchReviewDetail]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredReviews.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(reviews.length / pageSize));
   const paginatedReviews = useMemo(() => {
-    return filteredReviews.slice((page - 1) * pageSize, page * pageSize);
-  }, [filteredReviews, page]);
+    return reviews.slice((page - 1) * pageSize, page * pageSize);
+  }, [reviews, page]);
 
   const openDetail = (detail: ReviewDetail) => {
     setSelected(detail);
@@ -362,27 +405,19 @@ export function ReviewPage() {
     setFilters((prev) => ({
       ...prev,
       selectedTags: prev.selectedTags.includes(tag)
-        ? prev.selectedTags.filter((t) => t !== tag)
+        ? prev.selectedTags.filter((item) => item !== tag)
         : [...prev.selectedTags, tag],
     }));
   };
 
-  const clearFilters = () => {
-    setFilters({
-      result: 'all',
-      betType: 'all',
-      format: 'all',
-      fromDate: '',
-      toDate: '',
-      hasNote: 'all',
-      selectedTags: [],
-    });
-  };
+  const clearFilters = () => setFilters(DEFAULT_FILTERS);
 
   const hasActiveFilters =
     filters.result !== 'all' ||
     filters.betType !== 'all' ||
     filters.format !== 'all' ||
+    filters.tier !== 'all' ||
+    filters.timing !== 'all' ||
     filters.fromDate ||
     filters.toDate ||
     filters.hasNote !== 'all' ||
@@ -391,10 +426,12 @@ export function ReviewPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <BookOpen className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-semibold tracking-tight">{t('review.title')}</h1>
-      </div>
+      {!embedded && (
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-semibold tracking-tight">{t('review.title')}</h1>
+        </div>
+      )}
 
       {isInitialLoading && (
         <div className="space-y-3">
@@ -405,7 +442,11 @@ export function ReviewPage() {
       {error && (
         <div className="rounded-lg border border-red/20 bg-red/5 p-4 text-sm text-red">
           {error}
-          <Button variant="outline" size="sm" className="ml-3" onClick={() => fetchReviews()}>
+          <Button variant="outline" size="sm" className="ml-3" onClick={() => {
+            const listFilters = toListFilters(filters);
+            void fetchReviews(listFilters);
+            void fetchSummary(listFilters);
+          }}>
             {t('common.retry')}
           </Button>
         </div>
@@ -413,6 +454,82 @@ export function ReviewPage() {
 
       {!isInitialLoading && (
         <>
+      {summary && (
+        <div className="grid gap-3 lg:grid-cols-3">
+          <Card className="p-3 space-y-2" data-testid="review-tag-stats">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              {t('review.tagStats')}
+            </div>
+            {summary.errorTagStats.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('review.tagStatsEmpty')}</p>
+            ) : (
+              <div className="space-y-1">
+                {summary.errorTagStats.slice(0, 6).map((stat) => (
+                  <div key={stat.tag} className="flex items-center justify-between text-xs">
+                    <span>{getTagLabel(stat.tag, t)}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {stat.count} · {formatCurrency(stat.totalPnl)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-3 space-y-2" data-testid="review-suggestions">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Lightbulb className="h-4 w-4 text-muted-foreground" />
+              {t('review.suggestions')}
+            </div>
+            <div className="space-y-1.5">
+              {summary.suggestions.map((item) => (
+                <p
+                  key={item.id}
+                  className={cn(
+                    'rounded-md border px-2 py-1.5 text-xs',
+                    item.severity === 'critical' && 'border-red/30 bg-red/5 text-red',
+                    item.severity === 'warning' && 'border-yellow/30 bg-yellow/5 text-yellow',
+                    item.severity === 'info' && 'border-border text-muted-foreground',
+                  )}
+                >
+                  {t(item.messageKey, item.params)}
+                </p>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-3 space-y-3">
+            <div>
+              <div className="mb-1 text-[10px] uppercase text-muted-foreground">{t('review.dimensionFormat')}</div>
+              <div className="space-y-1">
+                {summary.byFormat.slice(0, 4).map((row) => (
+                  <div key={row.key} className="flex justify-between text-xs">
+                    <span>{row.key}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {row.count} · {formatPct(row.winRate)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-[10px] uppercase text-muted-foreground">{t('review.dimensionTier')}</div>
+              <div className="space-y-1">
+                {summary.byTier.slice(0, 4).map((row) => (
+                  <div key={row.key} className="flex justify-between text-xs">
+                    <span>{row.key}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {row.count} · {formatCurrency(row.totalPnl)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Filters */}
       <Card className="p-3">
         <div className="flex flex-col gap-3">
@@ -491,6 +608,46 @@ export function ReviewPage() {
             </div>
 
             <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground">{t('review.filterTier')}</label>
+              <div className="flex gap-1">
+                {TIER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => setFilters((p) => ({ ...p, tier: opt }))}
+                    className={cn(
+                      'rounded px-2 py-1 text-xs transition-colors',
+                      filters.tier === opt
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-border bg-background text-muted-foreground hover:bg-accent/50',
+                    )}
+                  >
+                    {opt === 'all' ? t('review.tier_all') : opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground">{t('review.filterTiming')}</label>
+              <div className="flex gap-1">
+                {TIMING_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => setFilters((p) => ({ ...p, timing: opt }))}
+                    className={cn(
+                      'rounded px-2 py-1 text-xs transition-colors',
+                      filters.timing === opt
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-border bg-background text-muted-foreground hover:bg-accent/50',
+                    )}
+                  >
+                    {t(`review.timing_${opt}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-[10px] text-muted-foreground">{t('review.filterNote')}</label>
               <div className="flex gap-1">
                 {(['all', 'yes', 'no'] as const).map((opt) => (
@@ -557,12 +714,21 @@ export function ReviewPage() {
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-sm">{t('review.settledBets')}</CardTitle>
           </div>
-          <Button variant="outline" size="sm" onClick={() => fetchReviews()} disabled={isLoading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const listFilters = toListFilters(filters);
+              void fetchReviews(listFilters);
+              void fetchSummary(listFilters);
+            }}
+            disabled={isLoading}
+          >
             {t('common.refresh')}
           </Button>
         </CardHeader>
         <div className="p-0">
-          {filteredReviews.length === 0 ? (
+          {reviews.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">
               {hasActiveFilters ? t('review.noFilterResults') : t('review.empty')}
             </div>
@@ -629,10 +795,10 @@ export function ReviewPage() {
               </TableBody>
             </Table>
           )}
-          {filteredReviews.length > pageSize && (
+          {reviews.length > pageSize && (
             <div className="flex items-center justify-between border-t border-border px-4 py-2">
               <div className="text-xs text-muted-foreground">
-                {t('common.page')} {page} / {pageCount} · {filteredReviews.length} {t('review.settledBets').toLowerCase()}
+                {t('common.page')} {page} / {pageCount} · {reviews.length} {t('review.settledBets').toLowerCase()}
               </div>
               <div className="flex items-center gap-1">
                 <Button variant="outline" size="icon" className="h-7 w-7" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>

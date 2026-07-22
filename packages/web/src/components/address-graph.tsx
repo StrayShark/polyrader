@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { AddressGraph, AddressGraphLink, AddressGraphNode } from '@polyrader/core';
+import type { AddressGraph, AddressGraphLink, AddressGraphNode } from '@polyrader/core/browser';
 import { useI18n } from '../hooks/use-i18n';
 
 interface SimNode extends AddressGraphNode {

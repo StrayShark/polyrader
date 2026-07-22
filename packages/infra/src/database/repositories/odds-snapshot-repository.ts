@@ -5,6 +5,7 @@ import type { OddsSnapshot } from '@polyrader/core';
 function mapSnapshot(row: Record<string, unknown>): OddsSnapshot {
   return {
     id: String(row.id),
+    betId: row.bet_id ? String(row.bet_id) : undefined,
     matchId: row.match_id ? String(row.match_id) : undefined,
     marketId: row.market_id ? String(row.market_id) : undefined,
     selection: String(row.selection),
@@ -18,6 +19,7 @@ function mapSnapshot(row: Record<string, unknown>): OddsSnapshot {
 }
 
 export interface CreateOddsSnapshotInput {
+  betId?: string;
   matchId?: string;
   marketId?: string;
   selection: string;
@@ -32,6 +34,13 @@ export class OddsSnapshotRepository {
   getById(id: string): OddsSnapshot | undefined {
     const row = queryOne<Record<string, unknown>>(`SELECT * FROM odds_snapshots WHERE id = ?`, id);
     return row ? mapSnapshot(row) : undefined;
+  }
+
+  getByBetId(betId: string): OddsSnapshot[] {
+    return query<Record<string, unknown>>(
+      `SELECT * FROM odds_snapshots WHERE bet_id = ? ORDER BY captured_at ASC`,
+      betId,
+    ).map(mapSnapshot);
   }
 
   getByBetContext(matchId?: string, marketId?: string, selection?: string): OddsSnapshot[] {
@@ -51,6 +60,7 @@ export class OddsSnapshotRepository {
   create(input: CreateOddsSnapshotInput): OddsSnapshot {
     const snapshot: OddsSnapshot = {
       id: `osnap-${randomUUID()}`,
+      betId: input.betId,
       matchId: input.matchId,
       marketId: input.marketId,
       selection: input.selection,
@@ -64,10 +74,11 @@ export class OddsSnapshotRepository {
 
     query(
       `INSERT INTO odds_snapshots (
-        id, match_id, market_id, selection, odds, implied_probability,
+        id, bet_id, match_id, market_id, selection, odds, implied_probability,
         liquidity, volume_24h, source, captured_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.id,
+      snapshot.betId ?? null,
       snapshot.matchId ?? null,
       snapshot.marketId ?? null,
       snapshot.selection,

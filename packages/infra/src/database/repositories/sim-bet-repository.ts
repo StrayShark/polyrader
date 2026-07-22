@@ -23,6 +23,12 @@ function mapBet(row: Record<string, unknown>): SimBet {
     reasoning: row.reasoning ? String(row.reasoning) : undefined,
     matchFormat: row.match_format ? String(row.match_format) as 'BO1' | 'BO3' | 'BO5' : undefined,
     matchTier: row.match_tier ? String(row.match_tier) : undefined,
+    runId: row.run_id ? String(row.run_id) : undefined,
+    reportId: row.report_id ? String(row.report_id) : undefined,
+    policyVersion: row.policy_version ? String(row.policy_version) : undefined,
+    game: row.game ? String(row.game) : undefined,
+    marketKind: row.market_kind ? String(row.market_kind) : undefined,
+    edgeAtEntry: row.edge_at_entry != null ? Number(row.edge_at_entry) : undefined,
     placedAt: String(row.placed_at),
     settledAt: row.settled_at ? String(row.settled_at) : undefined,
   };
@@ -59,12 +65,26 @@ export interface CreateSimBetInput {
   reasoning?: string;
   matchFormat?: 'BO1' | 'BO3' | 'BO5' | null;
   matchTier?: string | null;
+  runId?: string;
+  reportId?: string;
+  policyVersion?: string;
+  game?: string;
+  marketKind?: string;
+  edgeAtEntry?: number;
   legs: Omit<SimBetLeg, 'id' | 'betId' | 'createdAt'>[];
 }
 
 export class SimBetRepository {
   getById(id: string): SimBet | undefined {
     const row = queryOne<Record<string, unknown>>(`SELECT * FROM sim_bets WHERE id = ?`, id);
+    return row ? mapBet(row) : undefined;
+  }
+
+  getByRunId(runId: string): SimBet | undefined {
+    const row = queryOne<Record<string, unknown>>(
+      `SELECT * FROM sim_bets WHERE run_id = ? ORDER BY placed_at DESC LIMIT 1`,
+      runId,
+    );
     return row ? mapBet(row) : undefined;
   }
 
@@ -119,6 +139,12 @@ export class SimBetRepository {
       reasoning: input.reasoning,
       matchFormat: input.matchFormat,
       matchTier: input.matchTier,
+      runId: input.runId,
+      reportId: input.reportId,
+      policyVersion: input.policyVersion,
+      game: input.game,
+      marketKind: input.marketKind,
+      edgeAtEntry: input.edgeAtEntry,
       placedAt: now,
     };
 
@@ -127,8 +153,9 @@ export class SimBetRepository {
         `INSERT INTO sim_bets (
           id, account_id, match_id, market_id, bet_type, stake, total_odds,
           implied_probability, user_probability, model_probability, market_probability,
-          edge, ev, status, pnl, reasoning, match_format, match_tier, placed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          edge, ev, status, pnl, reasoning, match_format, match_tier,
+          run_id, report_id, policy_version, game, market_kind, edge_at_entry, placed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         bet.id,
         bet.accountId,
         bet.matchId ?? null,
@@ -147,6 +174,12 @@ export class SimBetRepository {
         bet.reasoning ?? null,
         bet.matchFormat ?? null,
         bet.matchTier ?? null,
+        bet.runId ?? null,
+        bet.reportId ?? null,
+        bet.policyVersion ?? null,
+        bet.game ?? null,
+        bet.marketKind ?? null,
+        bet.edgeAtEntry ?? null,
         bet.placedAt,
       );
 

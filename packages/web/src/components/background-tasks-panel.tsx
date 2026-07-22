@@ -17,7 +17,7 @@ import type {
   BackgroundTask,
   BackgroundTaskCategory,
   TaskMonitorSnapshot,
-} from '@polyrader/core';
+} from '@polyrader/core/browser';
 import {
   Badge,
   Card,

@@ -40,12 +40,13 @@ test.describe('Live trading UI (mock CLOB)', () => {
     );
   });
 
-  test('copy follow panel exposes live mode toggle when credentials ready', async ({ page }) => {
+  test('copy follow panel remains paper-only when credentials are ready', async ({ page }) => {
     await page.goto('/#/whales');
     await waitForMainHeading(page);
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
-    await expect(page.getByRole('button', { name: /切换实盘|Switch to live/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /切换实盘|Switch to live/i })).toHaveCount(0);
     await expect(page.getByText(/纸面跟单|Paper Copy/i).first()).toBeVisible();
+    await expect(page.getByText(/不会向 Polymarket 发送真实订单|No real order/i)).toBeVisible();
   });
 
   test('match detail hides live buy even when trading status allows', async ({ page }) => {

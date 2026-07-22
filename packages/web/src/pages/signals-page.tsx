@@ -27,7 +27,7 @@ import {
 } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
 import { useWebSocket } from '../hooks/use-websocket';
-import type { SignalBacktestSummary, SignalComparison, SignalTuningConfig } from '@polyrader/core';
+import type { SignalBacktestSummary, SignalComparison, SignalTuningConfig } from '@polyrader/core/browser';
 
 interface SignalStats {
   accuracy: number;

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PlaceSimBetInput, PlaceSimBetLegInput } from '@polyrader/core';
+import type { PlaceSimBetInput, PlaceSimBetLegInput } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 export const MAX_LEGS = 6;

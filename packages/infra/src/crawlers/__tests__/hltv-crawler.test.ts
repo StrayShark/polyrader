@@ -135,7 +135,46 @@ describe('parseHltvMatchOutcomeHtml', () => {
       teamBScore: 2,
       winnerTeamId: '13214',
       winnerTeamName: 'SPARTA',
+      maps: [
+        expect.objectContaining({ mapNumber: 1, winnerTeamName: 'ENCE', teamARounds: 13, teamBRounds: 8 }),
+      ],
     });
+  });
+
+  it('parses structured mapholder results with team names', () => {
+    const result = parseHltvMatchOutcomeHtml(`
+      <body>Match over
+        <div class="team1-gradient"><a href="/team/4869/ence"><div class="teamName">ENCE</div></a><span class="lost spoiler">1</span></div>
+        <div class="team2-gradient"><a href="/team/13214/sparta"><div class="teamName">SPARTA</div></a><span class="won spoiler">2</span></div>
+        <div class="mapholder">
+          <div class="mapname">Mirage</div>
+          <div class="results played">
+            <div class="results-left won"><div class="results-teamname">ENCE</div><div class="results-teamscore">13</div></div>
+            <div class="results-right lost"><div class="results-teamname">SPARTA</div><div class="results-teamscore">10</div></div>
+          </div>
+        </div>
+        <div class="mapholder">
+          <div class="mapname">Inferno</div>
+          <div class="results played">
+            <div class="results-left lost"><div class="results-teamname">ENCE</div><div class="results-teamscore">8</div></div>
+            <div class="results-right won"><div class="results-teamname">SPARTA</div><div class="results-teamscore">13</div></div>
+          </div>
+        </div>
+        <div class="mapholder">
+          <div class="mapname">Nuke</div>
+          <div class="results played">
+            <div class="results-left lost"><div class="results-teamname">ENCE</div><div class="results-teamscore">11</div></div>
+            <div class="results-right won"><div class="results-teamname">SPARTA</div><div class="results-teamscore">13</div></div>
+          </div>
+        </div>
+      </body>
+    `, '2395534');
+
+    expect(result.maps).toEqual([
+      { mapNumber: 1, mapName: 'Mirage', winnerTeamName: 'ENCE', teamARounds: 13, teamBRounds: 10 },
+      { mapNumber: 2, mapName: 'Inferno', winnerTeamName: 'SPARTA', teamARounds: 8, teamBRounds: 13 },
+      { mapNumber: 3, mapName: 'Nuke', winnerTeamName: 'SPARTA', teamARounds: 11, teamBRounds: 13 },
+    ]);
   });
 
   it('treats cancelled and postponed as terminal scheduling states without a winner', () => {

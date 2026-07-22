@@ -1,0 +1,31 @@
+// Browser-safe Core entrypoint. Node-only PromptEngine and KeyManager stay on the root entrypoint.
+export * from './types/index';
+export * from './scoring/index';
+export * from './utils/index';
+export * from './analysis/index';
+export * from './facts/index';
+export * from './markets/index';
+
+export * from './engines/prediction-engine';
+export * from './engines/lineup-engine';
+export * from './engines/whale-scoring-engine';
+export * from './engines/match-analysis-engine';
+export * from './engines/signal-comparison-engine';
+export * from './engines/daily-dashboard-engine';
+export * from './engines/result-aggregator';
+export * from './engines/stats-engine';
+export * from './engines/simulated-betting-engine';
+export * from './engines/backtest-engine';
+export * from './engines/settlement-engine';
+export { MatchStateMachine } from './engines/match-state-machine';
+export type { MatchState, UpdateFrequencies } from './engines/match-state-machine';
+export * from './engines/bet-allocation-engine';
+export * from './engines/mean-reversion-engine';
+export * from './engines/market-behavior-engine';
+export * from './engines/debate-inference-engine';
+export * from './engines/signal-backtest-engine';
+export * from './engines/wallet-performance-engine';
+export * from './engines/copy-signal-engine';
+export * from './engines/copy-trade-settlement-engine';
+export * from './engines/copy-strategy-presets';
+export * from './engines/multi-market-analysis-engine';

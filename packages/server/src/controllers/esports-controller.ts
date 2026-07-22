@@ -8,6 +8,9 @@ import type { Team, Player, HeadToHead, EnrichedMatch } from '@polyrader/core';
 import { SourceAlignmentService } from '../services/source-alignment-service';
 import { buildMatchInfo } from '../services/match-helpers';
 import { MatchReconciliationService } from '../services/match-reconciliation-service';
+import { envNumber, withTimeout } from '../utils/timeout';
+import { buildLocalSimulationMarket } from '../services/local-simulation-market';
+import { estimateLocalOdds } from '../services/local-odds';
 
 export class EsportsController {
   private service = new EsportsService();
@@ -18,6 +21,7 @@ export class EsportsController {
   private esportsRepo = new EsportsRepository();
   private marketRepo = new MarketRepository();
   private matchSelfHealAttempts = new Map<string, number>();
+  private hltvEnrichmentTask: Promise<void> | null = null;
   private enricher = new EsportsEnricher();
   private sourceAlignment = new SourceAlignmentService({
     esportsRepo: this.esportsRepo,
@@ -42,6 +46,13 @@ export class EsportsController {
         polymarketMarkets: Array<{ conditionId: string; question: string; outcomes: string[]; outcomePrices: string[]; volume: number; endDate: string }>;
         total: number;
         enrichment: { discovered: number; enriched: number; lineupRefreshed: number; reused: number; failed: number };
+        enrichmentQueued: boolean;
+      } = {
+        hltvMatches: [],
+        polymarketMarkets: [],
+        total: 0,
+        enrichment: { discovered: 0, enriched: 0, lineupRefreshed: 0, reused: 0, failed: 0 },
+        enrichmentQueued: false,
       };
 
       await trackTask('esports-fetch-upcoming', {
@@ -49,90 +60,212 @@ export class EsportsController {
         category: 'esports',
         trigger: 'manual',
       }, async (ctx) => {
+        const refreshTimeoutMs = envNumber('POLYRADER_ESPORTS_REFRESH_TIMEOUT_MS', 10_000, 1_000, 30_000);
+        const { MarketService } = await import('../services/market-service');
+        const marketService = new MarketService();
+
+        ctx.setProgress(10, '并行刷新赛事与盘口');
+        const hltvRequest = withTimeout(
+          this.hltv.getMatches(),
+          refreshTimeoutMs,
+          'HLTV upcoming matches',
+        ).catch((err) => {
+          ctx.log(`HLTV 失败: ${(err as Error).message}`, 'warn');
+          return [];
+        });
+        const gridRequest = withTimeout(
+          this.grid.getUpcomingSeries(),
+          refreshTimeoutMs,
+          'GRID upcoming series',
+        ).catch((err) => {
+          ctx.log(`GRID 失败: ${(err as Error).message}`, 'warn');
+          return [];
+        });
+        const marketRequest = withTimeout(
+          marketService.refreshMarkets(),
+          refreshTimeoutMs,
+          'Polymarket market refresh',
+        ).catch((err) => {
+          ctx.log(`Polymarket 失败: ${(err as Error).message}`, 'warn');
+          return [];
+        });
+
+        const [hltvResult, gridUpcoming, markets] = await Promise.all([
+          hltvRequest,
+          gridRequest,
+          marketRequest,
+        ]);
+
         let hltvMatches: Array<{ matchId: string; teamAId: string; teamBId: string; teamAName: string; teamBName: string; event: string; eventType: string; format: string; date: string }> = [];
         let enrichment = { discovered: 0, enriched: 0, lineupRefreshed: 0, reused: 0, failed: 0 };
-        try {
-          const hltvResult = await this.hltv.getMatches();
+        let enrichmentQueued = false;
+
+        if (hltvResult.length > 0) {
           hltvMatches = hltvResult.map((m) => ({
             matchId: m.matchId, teamAId: m.teamAId, teamBId: m.teamBId,
             teamAName: m.teamAName, teamBName: m.teamBName,
             event: m.event, eventType: m.eventType, format: m.format, date: m.date,
           }));
           ctx.log(`HLTV: ${hltvMatches.length} 场比赛`);
-          ctx.setProgress(15, '主动补全队伍与选手数据');
-          const sync = await this.sourceAlignment.syncDiscoveredHltvMatches(hltvResult);
-          enrichment = {
-            discovered: sync.discovered,
-            enriched: sync.enriched,
-            lineupRefreshed: sync.lineupRefreshed,
-            reused: sync.reused,
-            failed: sync.failed,
-          };
-          await this.hydrateStoredHltvMarkets(hltvResult.map((match) => match.matchId));
-          ctx.log(`HLTV 情报: 新补全 ${sync.enriched}，阵容刷新 ${sync.lineupRefreshed}，本地复用 ${sync.reused}`);
-        } catch (err) {
-          ctx.log(`HLTV 失败: ${(err as Error).message}`, 'warn');
-        }
+          ctx.setProgress(55, '写入最新赛程');
 
-        try {
-          const gridUpcoming = await this.grid.getUpcomingSeries();
-          const existingIds = new Set(hltvMatches.map((m) => m.matchId));
-          for (const m of gridUpcoming) {
-            if (!m.teamAId || !m.teamBId || existingIds.has(m.seriesId)) continue;
-            hltvMatches.push({
-              matchId: m.seriesId,
-              teamAId: m.teamAId,
-              teamBId: m.teamBId,
-              teamAName: m.teamAName,
-              teamBName: m.teamBName,
-              event: m.eventName,
-              eventType: 'Online',
-              format: m.format,
-              date: m.date,
-            });
-            existingIds.add(m.seriesId);
+          try {
+            const discovery = await this.sourceAlignment.syncDiscoveredHltvMatches(hltvResult, { limit: 0 });
+            const localMarketCount = this.persistHltvSimulationMarkets(hltvResult);
+            enrichment = {
+              discovered: discovery.discovered,
+              enriched: 0,
+              lineupRefreshed: 0,
+              reused: 0,
+              failed: 0,
+            };
+            await this.hydrateStoredHltvMarkets(hltvResult.map((match) => match.matchId));
+            await marketService.primeLocalMarketsCache(100);
+            const enrichmentStarted = this.queueHltvEnrichment(hltvResult, req.headers['x-request-id']);
+            enrichmentQueued = enrichmentStarted || this.hltvEnrichmentTask !== null;
+            ctx.log(`本地模拟盘口: ${localMarketCount} 个`);
+            ctx.log(enrichmentStarted ? 'HLTV 详细情报已进入后台补全队列' : 'HLTV 详细情报补全任务已在运行');
+          } catch (err) {
+            ctx.log(`HLTV 赛程写入失败: ${(err as Error).message}`, 'warn');
           }
-          ctx.log(`GRID: ${gridUpcoming.length} 场`);
-        } catch (err) {
-          ctx.log(`GRID 失败: ${(err as Error).message}`, 'warn');
         }
 
-        ctx.setProgress(40, '拉取 Polymarket 市场');
-        const { MarketService } = await import('../services/market-service');
-        const marketService = new MarketService();
-        let polymarketMarkets: Array<{ conditionId: string; question: string; outcomes: string[]; outcomePrices: string[]; volume: number; endDate: string }> = [];
-        try {
-          const markets = await marketService.refreshMarkets();
-          polymarketMarkets = markets
-            .filter((m) => {
-              const q = m.question.toLowerCase();
-              return q.startsWith('counter-strike') || q.includes('cs2') || q.includes('csgo');
-            })
-            .map((m) => ({
-              conditionId: m.conditionId, question: m.question,
-              outcomes: m.outcomes, outcomePrices: m.outcomePrices,
-              volume: m.volume, endDate: m.endDate,
-            }));
-          ctx.log(`Polymarket CS2: ${polymarketMarkets.length} 个市场`);
-        } catch (err) {
-          ctx.log(`Polymarket 失败: ${(err as Error).message}`, 'warn');
+        const existingIds = new Set(hltvMatches.map((m) => m.matchId));
+        for (const m of gridUpcoming) {
+          if (!m.teamAId || !m.teamBId || existingIds.has(m.seriesId)) continue;
+          hltvMatches.push({
+            matchId: m.seriesId,
+            teamAId: m.teamAId,
+            teamBId: m.teamBId,
+            teamAName: m.teamAName,
+            teamBName: m.teamBName,
+            event: m.eventName,
+            eventType: 'Online',
+            format: m.format,
+            date: m.date,
+          });
+          existingIds.add(m.seriesId);
         }
+        ctx.log(`GRID: ${gridUpcoming.length} 场`);
+
+        const polymarketMarkets = markets
+          .filter((m) => {
+            const q = m.question.toLowerCase();
+            return q.startsWith('counter-strike') || q.includes('cs2') || q.includes('csgo');
+          })
+          .map((m) => ({
+            conditionId: m.conditionId, question: m.question,
+            outcomes: m.outcomes, outcomePrices: m.outcomePrices,
+            volume: m.volume, endDate: m.endDate,
+          }));
+        ctx.log(`Polymarket CS2: ${polymarketMarkets.length} 个市场`);
 
         payload = {
           hltvMatches: hltvMatches.slice(0, 50),
           polymarketMarkets,
           total: hltvMatches.length + polymarketMarkets.length,
           enrichment,
+          enrichmentQueued,
         };
         ctx.setProgress(100);
-        return { hltvCount: hltvMatches.length, marketCount: polymarketMarkets.length };
+        return { hltvCount: hltvMatches.length, marketCount: polymarketMarkets.length, enrichmentQueued };
       });
 
-      res.json({ data: payload! });
+      res.json({ data: payload });
     } catch (err) {
       logger.error('Failed to fetch upcoming matches', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
       res.status(500).json({ error: 'Failed to fetch upcoming matches', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
     }
+  }
+
+  private queueHltvEnrichment(
+    hltvMatches: Awaited<ReturnType<HLTVCrawler['getMatches']>>,
+    requestId: string | string[] | undefined,
+  ): boolean {
+    if (hltvMatches.length === 0 || this.hltvEnrichmentTask) return false;
+
+    const task = trackTask('hltv-discovery-enrichment', {
+      name: 'HLTV 队伍与选手情报补全',
+      category: 'esports',
+      trigger: 'manual',
+      metadata: { discovered: hltvMatches.length, requestId },
+    }, async (ctx) => {
+      ctx.setProgress(10, '补全近期战绩、排名、阵容与地图池');
+      const sync = await this.sourceAlignment.syncDiscoveredHltvMatches(hltvMatches);
+      ctx.setProgress(90, '更新赛事大厅本地快照');
+      await this.hydrateStoredHltvMarkets(hltvMatches.map((match) => match.matchId));
+      const { MarketService } = await import('../services/market-service');
+      await new MarketService().primeLocalMarketsCache(100);
+      ctx.log(`补全 ${sync.enriched}，阵容刷新 ${sync.lineupRefreshed}，复用 ${sync.reused}，失败 ${sync.failed}`);
+      return {
+        discovered: sync.discovered,
+        enriched: sync.enriched,
+        lineupRefreshed: sync.lineupRefreshed,
+        reused: sync.reused,
+        failed: sync.failed,
+      };
+    });
+
+    this.hltvEnrichmentTask = task;
+    void task.finally(() => {
+      if (this.hltvEnrichmentTask === task) this.hltvEnrichmentTask = null;
+    });
+    return true;
+  }
+
+  private persistHltvSimulationMarkets(
+    hltvMatches: Awaited<ReturnType<HLTVCrawler['getMatches']>>,
+  ): number {
+    const today = new Date().toISOString().slice(0, 10);
+    const now = Date.now();
+    let persisted = 0;
+
+    hltvMatches.forEach((match, index) => {
+      if (!match.teamAName || !match.teamBName || !Number.isFinite(Date.parse(match.date))) return;
+      const localMarket = buildLocalSimulationMarket({
+        source: 'hltv',
+        matchId: match.matchId,
+        teamAName: match.teamAName,
+        teamBName: match.teamBName,
+        teamAId: match.teamAId,
+        teamBId: match.teamBId,
+        eventName: match.event,
+        eventType: match.eventType,
+        format: match.format,
+        scheduledAt: match.date,
+        today,
+        index,
+        hltvMatchId: match.matchId,
+      });
+      if (Date.parse(localMarket.endDate) < now - 5 * 60 * 1000) return;
+
+      try {
+        const existing = this.marketRepo.findByConditionId(localMarket.conditionId);
+        if (existing?.status === 'resolved') return;
+        const existingPrices = existing?.outcomePrices.length === 2
+          && existing.outcomePrices.every((price) => Number.isFinite(Number(price)))
+          ? existing.outcomePrices
+          : localMarket.outcomePrices;
+        const market = {
+          ...localMarket,
+          outcomePrices: existingPrices,
+          volume: existing?.volume ?? localMarket.volume,
+          volume24h: existing?.volume24h ?? localMarket.volume24h,
+          liquidity: existing?.liquidity ?? localMarket.liquidity,
+        };
+        this.marketRepo.upsert(market);
+        const price = Number(market.outcomePrices[0]);
+        if (Number.isFinite(price)) this.marketRepo.insertPriceHistoryIfChanged(market.conditionId, price);
+        persisted++;
+      } catch (err) {
+        logger.warn('Failed to persist HLTV simulation market', {
+          hltvMatchId: match.matchId,
+          error: (err as Error).message,
+        });
+      }
+    });
+
+    return persisted;
   }
 
   private async hydrateStoredHltvMarkets(hltvMatchIds: string[]): Promise<void> {
@@ -143,7 +276,17 @@ export class EsportsController {
       if (!market || !match) continue;
       const teamARow = this.llmRepo.getTeam(String(match.team_a_id ?? ''));
       const teamBRow = this.llmRepo.getTeam(String(match.team_b_id ?? ''));
-      this.marketRepo.upsert({ ...market, match: buildMatchInfo(match, teamARow, teamBRow) });
+      const matchInfo = buildMatchInfo(match, teamARow, teamBRow);
+      const nextMarket = { ...market, match: matchInfo };
+      if (market.tags.includes('local-sim')) {
+        const estimate = estimateLocalOdds(matchInfo);
+        nextMarket.outcomePrices = [
+          estimate.teamAProbability.toFixed(4),
+          estimate.teamBProbability.toFixed(4),
+        ];
+        this.marketRepo.insertPriceHistoryIfChanged(conditionId, estimate.teamAProbability);
+      }
+      this.marketRepo.upsert(nextMarket);
     }
     await Promise.all([
       cacheDelete('markets:50:0'),

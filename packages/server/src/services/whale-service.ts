@@ -14,17 +14,19 @@ export class WhaleService {
     sort?: 'volume' | 'win_rate';
     minSamples?: number;
     minWinRate?: number;
+    minRoi?: number;
   } = {}): Promise<Whale[]> {
     const limit = options.limit ?? 50;
     const sort = options.sort ?? 'volume';
     const minSamples = options.minSamples ?? 5;
     const minWinRate = options.minWinRate ?? 0;
-    const cacheKey = `whales:${sort}:${limit}:${minSamples}:${minWinRate}`;
+    const minRoi = options.minRoi ?? (sort === 'win_rate' ? 0.02 : 0);
+    const cacheKey = `whales:${sort}:${limit}:${minSamples}:${minWinRate}:${minRoi}`;
     const cached = await cacheGet<Whale[]>(cacheKey);
     if (cached) return cached;
 
     const whales = sort === 'win_rate'
-      ? this.whaleRepo.findByWinRate(limit, minSamples, minWinRate)
+      ? this.whaleRepo.findByWinRate(limit, minSamples, minWinRate, minRoi)
       : this.whaleRepo.findAll(limit);
 
     // Re-score each whale with fresh correlation data from the DB.
@@ -32,7 +34,7 @@ export class WhaleService {
     const scored = whales.map((w) => {
       const trades = this.whaleRepo.getTrades(w.address, 100);
       const correlationData = this.whaleRepo.findCorrelationData(w.address);
-      return this.engine.scoreWhale(
+      const rescored = this.engine.scoreWhale(
         w.address,
         trades,
         w.totalVolume,
@@ -41,9 +43,16 @@ export class WhaleService {
         w.pnl,
         correlationData,
       );
+      return {
+        ...w,
+        suspiciousScore: rescored.suspiciousScore,
+        recentTrades: trades.length > 0 ? trades.slice(0, 20) : w.recentTrades,
+      };
     });
 
-    const ranked = this.engine.rankWhales(scored);
+    const ranked = sort === 'win_rate'
+      ? scored.sort((a, b) => b.winRate - a.winRate || (b.settledBets ?? 0) - (a.settledBets ?? 0) || b.pnl - a.pnl)
+      : scored.sort((a, b) => b.totalVolume - a.totalVolume);
 
     await cacheSet(cacheKey, ranked, 120);
     return ranked;

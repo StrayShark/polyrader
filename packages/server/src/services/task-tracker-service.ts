@@ -26,7 +26,7 @@ export interface TaskRunContext {
 export const SCHEDULED_JOBS: ScheduledJobDefinition[] = [
   { jobKey: 'price-poll', name: 'Price Poll', category: 'market', cron: '* * * * *', scheduleLabel: 'Every 1 min', description: 'Poll CLOB midpoints and broadcast prices' },
   { jobKey: 'arbitrage-scan', name: 'Arbitrage Scan', category: 'signal', cron: '*/2 * * * *', scheduleLabel: 'Every 2 min', description: 'Detect cross-market arbitrage opportunities' },
-  { jobKey: 'whale-ingestion', name: 'Whale Ingestion', category: 'whale', cron: '*/5 * * * *', scheduleLabel: 'Every 5 min', description: 'Scan Polygon for large Polymarket trades' },
+  { jobKey: 'whale-ingestion', name: 'Whale Ingestion', category: 'whale', cron: '*/5 * * * *', scheduleLabel: 'Every 5 min', description: 'Read public Polymarket large trades with Polygon fallback' },
   { jobKey: 'copy-trade-sync', name: 'Copy Trade Sync', category: 'whale', cron: '*/2 * * * *', scheduleLabel: 'Every 2 min', description: 'Poll CLOB for live copy order fill status' },
   { jobKey: 'signal-snapshot-refresh', name: 'Signal Snapshots', category: 'signal', cron: '*/30 * * * *', scheduleLabel: 'Every 30 min', description: 'Refresh multi-source signal snapshots for backtest' },
   { jobKey: 'settlement-check', name: 'Settlement Check', category: 'market', cron: '*/10 * * * *', scheduleLabel: 'Every 10 min', description: 'Settle simulated bets on resolved markets' },

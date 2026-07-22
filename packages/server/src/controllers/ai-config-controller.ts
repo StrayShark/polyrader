@@ -110,6 +110,8 @@ export class AiConfigController {
             confidence: llmResult.confidence,
             reasoning: llmResult.reasoning,
             error: llmResult.error,
+            analysisRunId: llmResult.analysisRunId,
+            paperDecisionAction: llmResult.paperDecisionAction,
           });
         },
         locale,

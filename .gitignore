@@ -1,5 +1,6 @@
 node_modules/
 dist/
+*.tsbuildinfo
 .turbo/
 .env
 .env.local
@@ -24,3 +25,21 @@ src-tauri/gen/
 # Playwright
 test-results/
 playwright-report/
+
+# Historical product docs and design drafts remain local-only. The current canonical
+# document set below is explicitly versioned.
+.trae/documents/
+docs/*
+!docs/README.md
+!docs/product/
+docs/product/*
+!docs/product/four-game-product-plan.md
+!docs/contracts/
+docs/contracts/*
+!docs/contracts/llm-analysis-contract.md
+!docs/design/
+docs/design/*
+!docs/design/four-game-llm-simbook-prototype.html
+!docs/roadmap/
+docs/roadmap/*
+!docs/roadmap/four-game-llm-simbook-roadmap.md

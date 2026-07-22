@@ -8,7 +8,7 @@ import { DataState } from '../components/DataState';
 import { FollowWalletButton } from '../components/CopyFollowPanel';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { Card, CardHeader, CardTitle, Badge, Button, Progress } from '@/components/ui';
-import type { WhaleDetail } from '@polyrader/core';
+import type { WhaleDetail } from '@polyrader/core/browser';
 
 function PerformanceChart({
   data,

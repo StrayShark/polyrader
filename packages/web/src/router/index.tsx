@@ -11,19 +11,17 @@ const WhaleDetailPage = lazy(() => import('../pages/whale-detail-page').then((m)
 const EsportsPage = lazy(() => import('../pages/esports-page').then((m) => ({ default: m.EsportsPage })));
 const SignalsPage = lazy(() => import('../pages/signals-page').then((m) => ({ default: m.SignalsPage })));
 const PolymarketAccountPage = lazy(() => import('../pages/polymarket-account-page').then((m) => ({ default: m.PolymarketAccountPage })));
-const AiConfigPage = lazy(() => import('../pages/ai-config-page').then((m) => ({ default: m.AiConfigPage })));
 const AiStatsPage = lazy(() => import('../pages/ai-stats-page').then((m) => ({ default: m.AiStatsPage })));
 const LlmAnalysisPage = lazy(() => import('../pages/llm-analysis-page').then((m) => ({ default: m.LlmAnalysisPage })));
 const PromptVariantsPage = lazy(() => import('../pages/prompt-variants-page').then((m) => ({ default: m.PromptVariantsPage })));
 const AllocationPage = lazy(() => import('../pages/allocation-page').then((m) => ({ default: m.AllocationPage })));
-const SimulationPage = lazy(() => import('../pages/simulation-page').then((m) => ({ default: m.SimulationPage })));
+const AnalysisReportPage = lazy(() => import('../pages/analysis-report-page').then((m) => ({ default: m.AnalysisReportPage })));
+const ValidationLabPage = lazy(() => import('../pages/validation-lab-page').then((m) => ({ default: m.ValidationLabPage })));
 const NotFoundPage = lazy(() => import('../pages/not-found-page').then((m) => ({ default: m.NotFoundPage })));
 
 // New simulation-first pages (placeholders until M3-M5)
 const EventLobbyPage = lazy(() => import('../pages/event-lobby-page').then((m) => ({ default: m.EventLobbyPage })));
-const BankrollPage = lazy(() => import('../pages/bankroll-page').then((m) => ({ default: m.BankrollPage })));
-const ReviewPage = lazy(() => import('../pages/review-page').then((m) => ({ default: m.ReviewPage })));
-const DatabasePage = lazy(() => import('../pages/database-page').then((m) => ({ default: m.DatabasePage })));
+const AccountWorkspacePage = lazy(() => import('../pages/account-workspace-page').then((m) => ({ default: m.AccountWorkspacePage })));
 const StrategyLabPage = lazy(() => import('../pages/strategy-lab-page').then((m) => ({ default: m.StrategyLabPage })));
 const SettingsPage = lazy(() => import('../pages/settings-page').then((m) => ({ default: m.SettingsPage })));
 
@@ -57,22 +55,25 @@ export const router = createHashRouter([
       { path: 'daily', element: withSuspense(DailyPage) },
       { path: 'match/:slug', element: withSuspense(MatchDetailPage) },
       { path: 'match', element: withSuspense(MatchDetailPage) },
-      { path: 'bankroll', element: withSuspense(BankrollPage) },
-      { path: 'review', element: withSuspense(ReviewPage) },
-      { path: 'database', element: withSuspense(DatabasePage) },
+      { path: 'bankroll', element: withSuspense(AccountWorkspacePage) },
+      { path: 'review', element: <Navigate to="/bankroll?section=review" replace /> },
+      { path: 'database', element: <Navigate to="/settings?section=database" replace /> },
       { path: 'strategy', element: withSuspense(StrategyLabPage) },
+      { path: 'analysis/report', element: withSuspense(AnalysisReportPage) },
+      { path: 'analysis/report/:runId', element: withSuspense(AnalysisReportPage) },
+      { path: 'validation-lab', element: withSuspense(ValidationLabPage) },
       { path: 'settings', element: withSuspense(SettingsPage) },
       { path: 'whales', element: withSuspense(WhalesPage) },
       { path: 'whales/:address', element: withSuspense(WhaleDetailPage) },
       { path: 'esports', element: withSuspense(EsportsPage) },
       { path: 'signals', element: withSuspense(SignalsPage) },
       { path: 'polymarket/account', element: withSuspense(PolymarketAccountPage) },
-      { path: 'ai/config', element: withSuspense(AiConfigPage) },
+      { path: 'ai/config', element: <Navigate to="/settings?section=llm" replace /> },
       { path: 'ai/stats', element: withSuspense(AiStatsPage) },
       { path: 'llm/analysis/:providerId', element: withSuspense(LlmAnalysisPage) },
       { path: 'prompt-variants', element: withSuspense(PromptVariantsPage) },
       { path: 'allocation', element: withSuspense(AllocationPage) },
-      { path: 'simulation', element: withSuspense(SimulationPage) },
+      { path: 'simulation', element: <Navigate to="/bankroll?section=simulation" replace /> },
       { path: '*', element: withSuspense(NotFoundPage) },
     ],
   },

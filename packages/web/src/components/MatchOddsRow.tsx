@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Clock, Radio } from 'lucide-react';
-import type { Market, MatchResult, TeamBrief } from '@polyrader/core';
+import type { Market, MatchResult, TeamBrief } from '@polyrader/core/browser';
 import { parsePolymarketMatch } from '../utils/match-parser';
 import { OddsButton } from './OddsButton';
 import type { OddsFormat } from '../utils/bet-math';
@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui';
 import { usePracticeSlipStore } from '../stores/practice-slip-store';
 import { cn } from '../utils/cn';
 import { useI18n } from '../hooks/use-i18n';
+import { MarketLiquidityWarning } from './MarketLiquidityWarning';
 
 interface MatchOddsRowProps {
   market: Market;
@@ -43,7 +44,7 @@ export function MatchOddsRow({ market, className, displayFormat = 'decimal' }: M
   const teamBName = market.match?.teamB.name || parsed.teamBName;
   const format = market.match?.format || parsed.format;
   const eventName = market.match?.eventName || parsed.eventName;
-  const { eventStage } = parsed;
+  const { eventStage, isMapMarket, mapNumber } = parsed;
   const [priceA, priceB] = market.outcomePrices.map((p) => parseFloat(p));
   const oddsA = priceA > 0 ? 1 / priceA : 0;
   const oddsB = priceB > 0 ? 1 / priceB : 0;
@@ -51,7 +52,9 @@ export function MatchOddsRow({ market, className, displayFormat = 'decimal' }: M
   const scheduledAt = market.match?.scheduledAt ?? market.endDate;
 
   const matchLabel = `${teamAName} vs ${teamBName}`;
-  const marketLabel = t('lobby.matchWinner');
+  const marketLabel = isMapMarket && mapNumber
+    ? t('lobby.mapWinner', { map: mapNumber })
+    : t('lobby.matchWinner');
   const teamAData = market.match?.teamDetails?.teamA;
   const teamBData = market.match?.teamDetails?.teamB;
   const lineupReady = Boolean(
@@ -89,13 +92,19 @@ export function MatchOddsRow({ market, className, displayFormat = 'decimal' }: M
       <div className="flex min-h-9 items-center justify-between border-b border-border bg-muted/15 px-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-2 min-w-0">
           <span className="truncate font-medium text-foreground">{eventName}</span>
-          {eventStage && (
+          {isMapMarket && mapNumber != null && (
+            <Badge variant="secondary" className="text-[10px]">
+              {t('lobby.mapWinner', { map: mapNumber })}
+            </Badge>
+          )}
+          {eventStage && !isMapMarket && (
             <Badge variant="secondary" className="text-[10px]">
               {eventStage}
             </Badge>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <MarketLiquidityWarning liquidity={market.liquidity} tags={market.tags} compact />
           {format && (
             <Badge variant="outline" className="rounded text-[10px]">
               {format}

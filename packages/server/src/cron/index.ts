@@ -11,6 +11,7 @@ import type { SimulatedBet, Team, Player, HeadToHead } from '@polyrader/core';
 import { sharedWhaleIngestion } from '../services/whale-ingestion-service';
 import { WalletPerformanceService } from '../services/wallet-performance-service';
 import { WalletFollowService } from '../services/wallet-follow-service';
+import { sharedSmartWalletDiscovery } from '../services/smart-wallet-discovery-service';
 import { SourceAlignmentService } from '../services/source-alignment-service';
 import { MatchReconciliationService } from '../services/match-reconciliation-service';
 import { trackTask } from '../services/task-tracker-service';
@@ -319,12 +320,6 @@ export function startCronJobs(): void {
       category: 'whale',
       trigger: 'scheduled',
     }, async (ctx) => {
-      const ingestionStatus = whaleIngestion.getStatus();
-      if (ingestionStatus.consecutiveFailures >= 5) {
-        ctx.log(`跳过扫描（连续失败 ${ingestionStatus.consecutiveFailures} 次）`);
-        return { skipped: true, consecutiveFailures: ingestionStatus.consecutiveFailures };
-      }
-
       const count = await whaleIngestion.scanRecentTrades();
       broadcast('whales', { newTrades: count });
       if (count > 0) {
@@ -362,12 +357,13 @@ export function startCronJobs(): void {
       category: 'whale',
       trigger: 'scheduled',
     }, async (ctx) => {
+      const discovery = await sharedSmartWalletDiscovery.discoverTopWallets(12);
       const result = await walletPerformance.recalculateAll();
       if (result.addressesUpdated > 0) {
         broadcast('whales', { performanceUpdated: result.addressesUpdated });
         ctx.log(`已更新 ${result.addressesUpdated} 个地址的胜率统计`);
       }
-      return result as Record<string, unknown>;
+      return { ...result, ...discovery } as Record<string, unknown>;
     });
   });
 

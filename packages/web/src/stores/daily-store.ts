@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DailyDashboard } from '@polyrader/core';
+import type { DailyDashboard } from '@polyrader/core/browser';
 import { api } from '../utils/api';
 
 interface DailyState {
