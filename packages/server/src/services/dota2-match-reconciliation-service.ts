@@ -95,7 +95,7 @@ export class Dota2MatchReconciliationService {
           teamAMapsWon: result.teamAScore,
           teamBMapsWon: result.teamBScore,
         },
-        { kinds: ['match_winner'] },
+        { kinds: ['match_winner'], settlementSource: source === 'grid' ? 'grid' : 'opendota' },
       );
       const resolved = this.markets.resolveLocalMarkets(`dota2:${matchId}`, result.winnerTeamName);
       return {

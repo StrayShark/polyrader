@@ -84,8 +84,16 @@ export class SimController {
 
   settleBet(req: Request, res: Response): void {
     try {
-      const { result, pnl } = req.body as { result: 'won' | 'lost' | 'push'; pnl?: number };
-      const bet = this.betService.settleBet(req.params.id, result, pnl);
+      const { result, pnl, settlementSource } = req.body as {
+        result: 'won' | 'lost' | 'push';
+        pnl?: number;
+        settlementSource?: string;
+      };
+      const source =
+        process.env.NODE_ENV === 'test' && typeof settlementSource === 'string'
+          ? settlementSource
+          : 'manual';
+      const bet = this.betService.settleBet(req.params.id, result, pnl, source);
       res.json({ data: bet });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });

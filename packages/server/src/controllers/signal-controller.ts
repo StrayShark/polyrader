@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { SignalService } from '../services/signal-service';
+import { SignalService, TuningNotEligibleError } from '../services/signal-service';
 import { logger } from '../utils/logger';
 
 export class SignalController {
@@ -94,6 +94,14 @@ export class SignalController {
       });
       res.json({ data: result });
     } catch (err) {
+      if (err instanceof TuningNotEligibleError) {
+        res.status(403).json({
+          error: err.message,
+          authoritativeSettlements: err.authoritativeSettlements,
+          required: err.required,
+        });
+        return;
+      }
       logger.error('Failed to apply suggested signal weights', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
       res.status(500).json({ error: 'Failed to apply suggested weights', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
     }

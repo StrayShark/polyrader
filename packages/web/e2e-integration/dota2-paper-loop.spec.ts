@@ -103,7 +103,7 @@ test('Dota 2 fixture API closes normalized facts, paper bet and performance loop
   expect(closing.data.closingOdds).toBeCloseTo(1.8, 5);
 
   const settleResponse = await request.patch(`/api/sim/bets/${runBody.data.linkedBet.id}/settle`, {
-    data: { result: 'won' },
+    data: { result: 'won', settlementSource: 'opendota' },
   });
   expect(settleResponse.ok()).toBe(true);
 

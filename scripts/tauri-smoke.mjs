@@ -1,5 +1,9 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
 const port = Number(process.env.TAURI_SIDECAR_PORT ?? 13001);
 const base = `http://127.0.0.1:${port}/api`;
+const updaterSigningConfigured = Boolean(process.env.TAURI_SIGNING_PRIVATE_KEY);
 
 async function get(path) {
   const controller = new AbortController();
@@ -46,6 +50,8 @@ const result = {
   generatedAt: new Date().toISOString(),
   sidecarPort: port,
   health: health.status,
+  updaterSigningConfigured,
+  buildLabel: updaterSigningConfigured ? 'signed-release' : 'unsigned-local-debug',
   database: {
     filename: backup.data?.dbPath,
     fileSize: backup.data?.fileSize,
@@ -75,5 +81,3 @@ if (process.env.TAURI_SMOKE_OUTPUT) {
 }
 
 process.stdout.write(output);
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';

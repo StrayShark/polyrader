@@ -34,8 +34,8 @@ test('Sprint H exposes persisted history, lifecycle, and sanitized diagnostics',
   });
   expect(lifecycle.data.nextAction.length).toBeGreaterThan(0);
   expect(diagnostics.data.contractVersion).toBe('release-diagnostics.v1');
-  expect(diagnostics.data.database.migrationCount).toBe(40);
-  expect(diagnostics.data.database.latestMigration).toBe('040_release_audit_history.sql');
+  expect(diagnostics.data.database.migrationCount).toBe(43);
+  expect(diagnostics.data.database.latestMigration).toBe('043_sim_bet_settlement_source.sql');
   expect(serialized).not.toMatch(/api[_-]?key|private[_-]?key|authorization|bearer\s/i);
   expect(serialized).not.toContain(process.env.HOME ?? '/Users');
 });

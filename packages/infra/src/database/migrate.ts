@@ -63,6 +63,7 @@ export function runMigrations(): void {
     '040_release_audit_history.sql',
     '041_esports_match_source_identities.sql',
     '042_esports_team_aliases.sql',
+    '043_sim_bet_settlement_source.sql',
   ];
 
   for (const name of migrations) {

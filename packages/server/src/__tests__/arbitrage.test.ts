@@ -39,6 +39,12 @@ vi.mock('../services/whale-service', () => ({
   })),
 }));
 
+vi.mock('../services/performance-service', () => ({
+  PerformanceService: vi.fn().mockImplementation(() => ({
+    getSummary: vi.fn().mockReturnValue({ tuningEligible: true, settledCount: 30 }),
+  })),
+}));
+
 vi.mock('@polyrader/core', () => ({
   SignalComparisonEngine: vi.fn().mockImplementation(() => ({
     compareSignals: vi.fn(),

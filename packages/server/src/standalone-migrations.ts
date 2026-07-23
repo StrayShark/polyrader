@@ -41,6 +41,8 @@ import m040 from '../../infra/src/database/migrations/040_release_audit_history.
 import m041 from '../../infra/src/database/migrations/041_esports_match_source_identities.sql' with { type: 'text' };
 import m042 from '../../infra/src/database/migrations/042_esports_team_aliases.sql' with { type: 'text' };
 
+import m043 from '../../infra/src/database/migrations/043_sim_bet_settlement_source.sql' with { type: 'text' };
+
 export const standaloneMigrationSources: Record<string, string> = {
   '001_initial_schema.sql': m001,
   '002_add_clob_token_ids.sql': m002,
@@ -84,4 +86,5 @@ export const standaloneMigrationSources: Record<string, string> = {
   '040_release_audit_history.sql': m040,
   '041_esports_match_source_identities.sql': m041,
   '042_esports_team_aliases.sql': m042,
+  '043_sim_bet_settlement_source.sql': m043,
 };

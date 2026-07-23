@@ -1510,6 +1510,8 @@ export interface SimBet {
   clvUnavailableReason?: string;
   clv?: number;
   clvStatus?: 'pending' | 'captured' | 'unavailable';
+  /** Authoritative reconciliation source; manual/fixture excluded from ranking thresholds. */
+  settlementSource?: string;
   placedAt: string;
   settledAt?: string;
 }

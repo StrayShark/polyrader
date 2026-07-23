@@ -38,8 +38,8 @@ describe('Sprint H release diagnostics', () => {
 
     expect(service.list('cs2')).toHaveLength(1);
     expect(service.get('audit-1')?.stageTimings[0]?.durationMs).toBe(12);
-    expect(bundle.database.latestMigration).toBe('042_esports_team_aliases.sql');
-    expect(bundle.database.migrationCount).toBe(42);
+    expect(bundle.database.latestMigration).toBe('043_sim_bet_settlement_source.sql');
+    expect(bundle.database.migrationCount).toBe(43);
     expect(serialized).not.toContain('998877');
     expect(serialized).not.toContain('secret-token');
     expect(serialized).not.toContain('429082f2');

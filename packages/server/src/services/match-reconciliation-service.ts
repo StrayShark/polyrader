@@ -151,7 +151,9 @@ export class MatchReconciliationService {
           })),
         };
         // Map / handicap / total stay pending until structured fields exist.
-        settledBets = this.settlementService.settleStructuredMatch(matchId, structured).length;
+        settledBets = this.settlementService.settleStructuredMatch(matchId, structured, {
+          settlementSource: 'hltv',
+        }).length;
         resolvedMarkets = this.marketRepo.resolveLocalMarkets(
           canonicalMatchId,
           outcome.winnerTeamName,

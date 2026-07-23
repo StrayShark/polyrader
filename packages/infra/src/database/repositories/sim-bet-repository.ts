@@ -47,6 +47,7 @@ function mapBet(row: Record<string, unknown>): SimBet {
       : undefined,
     clv: row.clv != null ? Number(row.clv) : undefined,
     clvStatus: row.clv_status ? (String(row.clv_status) as SimBet['clvStatus']) : 'pending',
+    settlementSource: row.settlement_source ? String(row.settlement_source) : undefined,
     placedAt: String(row.placed_at),
     settledAt: row.settled_at ? String(row.settled_at) : undefined,
   };
@@ -510,13 +511,17 @@ export class SimBetRepository {
     ).map((row) => ({ key: String(row.key), exposure: Number(row.exposure) || 0 }));
   }
 
-  settle(id: string, result: SimBetResult, pnl: number): SimBet {
+  settle(id: string, result: SimBetResult, pnl: number, settlementSource?: string): SimBet {
     const settledAt = new Date().toISOString();
     query(
-      `UPDATE sim_bets SET status = 'settled', result = ?, pnl = ?, settled_at = ? WHERE id = ?`,
+      `UPDATE sim_bets
+       SET status = 'settled', result = ?, pnl = ?, settled_at = ?,
+           settlement_source = COALESCE(?, settlement_source)
+       WHERE id = ?`,
       result,
       pnl,
       settledAt,
+      settlementSource ?? null,
       id,
     );
     const bet = this.getById(id);

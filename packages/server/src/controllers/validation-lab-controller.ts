@@ -66,6 +66,10 @@ export class ValidationLabController {
       const result = await this.releaseAudit.run(game, {
         executeAnalysis: req.body?.executeAnalysis !== false,
         provider: typeof req.body?.provider === 'string' ? req.body.provider : undefined,
+        preferredExternalMatchId:
+          typeof req.body?.preferredExternalMatchId === 'string'
+            ? req.body.preferredExternalMatchId
+            : undefined,
       });
       res.status(201).json({ data: result });
     } catch (err) {
@@ -186,7 +190,13 @@ export class ValidationLabController {
       } else {
         sourceRefresh = { attempted: false };
       }
-      let result = this.service.normalizeGame(game, { forceFixture });
+      let result = this.service.normalizeGame(game, {
+        forceFixture,
+        preferredExternalMatchId:
+          typeof req.body?.preferredExternalMatchId === 'string'
+            ? req.body.preferredExternalMatchId
+            : undefined,
+      });
       let marketDiscovery:
         | { scanned: number; aligned: number; marketIds: string[]; detail: string; matchedExternalMatchId?: string }
         | undefined;

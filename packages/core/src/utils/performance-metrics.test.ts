@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildPerformanceSummary, brierForBet, logLossForBet } from './performance-metrics';
+import {
+  buildPerformanceSummary,
+  brierForBet,
+  logLossForBet,
+  isAuthoritativeSettlement,
+  RANKING_MIN_AUTHORITATIVE_SETTLEMENTS,
+  TUNING_MIN_AUTHORITATIVE_SETTLEMENTS,
+} from './performance-metrics';
 import type { SimBet } from '../types';
 
 function bet(partial: Partial<SimBet> & Pick<SimBet, 'id' | 'status' | 'result' | 'pnl'>): SimBet {
@@ -71,6 +78,7 @@ describe('performance-metrics', () => {
           closingSource: 'market_history',
           closingAttemptCount: 1,
           closingLatencySeconds: 30,
+          settlementSource: 'hltv',
         }),
         bet({
           id: 'loss',
@@ -84,6 +92,7 @@ describe('performance-metrics', () => {
           clvStatus: 'unavailable',
           clvUnavailableReason: 'NO_RELIABLE_CLOSING_PRICE',
           closingAttemptCount: 2,
+          settlementSource: 'grid',
         }),
       ],
     });
@@ -147,6 +156,7 @@ describe('performance-metrics', () => {
         result: index % 2 === 0 ? 'won' : 'lost',
         pnl: index % 2 === 0 ? 10 : -10,
         game: index < 9 ? 'lol' : 'cs2',
+        settlementSource: 'hltv',
       }),
     );
 
@@ -161,5 +171,53 @@ describe('performance-metrics', () => {
     expect(thirty.tuningEligible).toBe(true);
     expect(thirty.byGame.find((row) => row.key === 'lol')?.rankingStatus).toBe('hidden');
     expect(thirty.byGame.find((row) => row.key === 'cs2')?.rank).toBe(1);
+  });
+
+  it('excludes manual and fixture settlements from ranking gates', () => {
+    const authoritative = bet({
+      id: 'auth',
+      status: 'settled',
+      result: 'won',
+      pnl: 10,
+      settlementSource: 'hltv',
+    });
+    const manual = bet({
+      id: 'manual',
+      status: 'settled',
+      result: 'won',
+      pnl: 10,
+      settlementSource: 'manual',
+    });
+    const fixture = bet({
+      id: 'fixture',
+      status: 'settled',
+      result: 'won',
+      pnl: 10,
+      settlementSource: 'fixture',
+    });
+    const missing = bet({
+      id: 'missing',
+      status: 'settled',
+      result: 'won',
+      pnl: 10,
+    });
+
+    expect(isAuthoritativeSettlement(authoritative)).toBe(true);
+    expect(isAuthoritativeSettlement(manual)).toBe(false);
+    expect(isAuthoritativeSettlement(fixture)).toBe(false);
+    expect(isAuthoritativeSettlement(missing)).toBe(false);
+
+    const summary = buildPerformanceSummary({
+      initialBankroll: 10000,
+      bets: [authoritative, manual, fixture, missing],
+    });
+    expect(summary.settledCount).toBe(1);
+    expect(summary.rankingStatus).toBe('hidden');
+    expect(summary.tuningEligible).toBe(false);
+  });
+
+  it('documents authoritative settlement thresholds', () => {
+    expect(RANKING_MIN_AUTHORITATIVE_SETTLEMENTS).toBe(10);
+    expect(TUNING_MIN_AUTHORITATIVE_SETTLEMENTS).toBe(30);
   });
 });

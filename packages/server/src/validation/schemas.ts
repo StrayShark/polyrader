@@ -488,6 +488,8 @@ export const placeSimBetBodySchema = z.object({
 export const settleSimBetBodySchema = z.object({
   result: z.enum(['won', 'lost', 'push']),
   pnl: z.number().optional(),
+  /** Integration tests may label fixture settlements as authoritative without live reconcile. */
+  settlementSource: z.string().min(1).max(32).optional(),
 });
 
 export const captureClosingPriceBodySchema = z.object({

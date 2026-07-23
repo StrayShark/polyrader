@@ -47,7 +47,7 @@ describe('paper_bet → sim_bet → settle → performance', () => {
     expect(linked!.bet.modelProbability).toBeTruthy();
     expect(linked!.bet.policyVersion).toBe('paper-v1-low-edge');
 
-    const settled = new SettlementService().settleBet(linked!.bet.id, 'won');
+    const settled = new SettlementService().settleBet(linked!.bet.id, 'won', undefined, 'hltv');
     expect(settled.status).toBe('settled');
     expect(settled.pnl).toBeGreaterThan(0);
 

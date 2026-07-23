@@ -80,7 +80,11 @@ export class CurrentSourceReleaseAuditService {
 
   async run(
     game: EsportsGame,
-    options: { executeAnalysis?: boolean; provider?: string } = {},
+    options: {
+      executeAnalysis?: boolean;
+      provider?: string;
+      preferredExternalMatchId?: string;
+    } = {},
   ): Promise<CurrentSourceReleaseAuditResult> {
     const auditId = `ra-${randomUUID()}`;
     const startedAt = this.now().toISOString();
@@ -94,19 +98,25 @@ export class CurrentSourceReleaseAuditService {
       `${sync.records} records · ${sync.status}`,
     );
 
+    const normalizeOpts = options.preferredExternalMatchId
+      ? { preferredExternalMatchId: options.preferredExternalMatchId }
+      : undefined;
+
     const factsStage = this.beginStage('fact_normalize', stageTimings);
-    let normalized = this.normalization.normalizeGame(game);
+    let normalized = this.normalization.normalizeGame(game, normalizeOpts);
     let board = normalized.summary;
     let factsPassed = board.stages.some(
       (stage) => stage.stage === 'fact_normalize' && stage.status === 'passed',
     );
+    const preferredMatchId =
+      options.preferredExternalMatchId ?? board.sampleMatch?.externalMatchId;
     if (
       game === 'cs2' &&
-      board.sampleMatch &&
+      preferredMatchId &&
       (!factsPassed || board.boardState !== 'paper_ready' || !factsAreFresh(board))
     ) {
-      await this.preparation.prepare('cs2', board.sampleMatch.externalMatchId);
-      normalized = this.normalization.normalizeGame(game);
+      await this.preparation.prepare('cs2', preferredMatchId);
+      normalized = this.normalization.normalizeGame(game, normalizeOpts);
       board = normalized.summary;
       factsPassed = board.stages.some(
         (stage) => stage.stage === 'fact_normalize' && stage.status === 'passed',
@@ -117,7 +127,10 @@ export class CurrentSourceReleaseAuditService {
       try {
         const discovery = await this.cs2MarketDiscovery.discoverForFacts(board.sampleMatch);
         discoveryDetail = discovery.detail;
-        board = annotateBoardMarketDiscovery(this.normalization.normalizeGame(game).summary, discovery);
+        board = annotateBoardMarketDiscovery(
+          this.normalization.normalizeGame(game, normalizeOpts).summary,
+          discovery,
+        );
         factsPassed = board.stages.some(
           (stage) => stage.stage === 'fact_normalize' && stage.status === 'passed',
         );
@@ -129,7 +142,10 @@ export class CurrentSourceReleaseAuditService {
       try {
         const discovery = await this.marketDiscovery.discoverForFacts(board.sampleMatch);
         discoveryDetail = discovery.detail;
-        board = annotateBoardMarketDiscovery(this.normalization.normalizeGame(game).summary, discovery);
+        board = annotateBoardMarketDiscovery(
+          this.normalization.normalizeGame(game, normalizeOpts).summary,
+          discovery,
+        );
         factsPassed = board.stages.some(
           (stage) => stage.stage === 'fact_normalize' && stage.status === 'passed',
         );

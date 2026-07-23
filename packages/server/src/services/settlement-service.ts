@@ -34,7 +34,7 @@ export class SettlementService {
   private reviewService = new ReviewService();
   private closingPrices = new ClosingPriceService();
 
-  settleBet(id: string, result: SimBetResult, pnl?: number): SimBet {
+  settleBet(id: string, result: SimBetResult, pnl?: number, settlementSource?: string): SimBet {
     const withLegs = this.betRepo.getWithLegs(id);
     if (!withLegs) throw new Error(`Bet ${id} not found`);
     if (withLegs.bet.status !== 'open') throw new Error(`Bet ${id} is not open`);
@@ -42,7 +42,7 @@ export class SettlementService {
     this.closingPrices.captureOrMarkUnavailable(id);
 
     const finalPnl = this.calculatePnl(withLegs.bet, result, pnl);
-    const settledBet = this.betRepo.settle(id, result, finalPnl);
+    const settledBet = this.betRepo.settle(id, result, finalPnl, settlementSource);
     this.recalculateAccount(settledBet.accountId);
     this.recordSettlementMetrics(settledBet);
     return settledBet;
@@ -72,6 +72,7 @@ export class SettlementService {
     structured: StructuredMatchResult,
     options: {
       kinds?: Array<'match_winner' | 'map_winner' | 'handicap' | 'total_maps' | 'correct_score'>;
+      settlementSource?: string;
     } = {},
   ): SettlementResult[] {
     const openBets = this.betRepo.getOpenBetsWithLegsForMatch(matchId);
@@ -107,7 +108,7 @@ export class SettlementService {
       }
       if (!changed) continue;
       this.closingPrices.captureOrMarkUnavailable(withLegs.bet.id);
-      const result = this.finalizeResolvedBet(withLegs.bet.id);
+      const result = this.finalizeResolvedBet(withLegs.bet.id, options.settlementSource);
       if (result) results.push(result);
     }
 
@@ -159,7 +160,7 @@ export class SettlementService {
     return 0;
   }
 
-  private finalizeResolvedBet(betId: string): SettlementResult | null {
+  private finalizeResolvedBet(betId: string, settlementSource?: string): SettlementResult | null {
     const withLegs = this.betRepo.getWithLegs(betId);
     if (!withLegs || withLegs.bet.status !== 'open') return null;
     const settledLegs = withLegs.legs.map((leg) => ({ leg, result: leg.result ?? null }));
@@ -171,7 +172,7 @@ export class SettlementService {
 
     let bet: SimBet;
     if (anyLost) {
-      bet = this.settleBet(betId, 'lost');
+      bet = this.settleBet(betId, 'lost', undefined, settlementSource);
     } else {
       const wonLegs = withLegs.legs.filter((leg) => leg.result === 'won');
       if (wonLegs.length === 0) {
@@ -179,7 +180,12 @@ export class SettlementService {
         this.recalculateAccount(bet.accountId);
       } else {
         const effectiveOdds = wonLegs.reduce((product, leg) => product * leg.odds, 1);
-        bet = this.settleBet(betId, 'won', withLegs.bet.stake * (effectiveOdds - 1));
+        bet = this.settleBet(
+          betId,
+          'won',
+          withLegs.bet.stake * (effectiveOdds - 1),
+          settlementSource,
+        );
       }
     }
     return { bet, legs: settledLegs, pnl: bet.pnl };

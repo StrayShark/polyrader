@@ -68,7 +68,7 @@ test.describe('LoL and Valorant deterministic paper loops', () => {
 
       const settleResponse = await request.patch(
         `/api/sim/bets/${runBody.data.linkedBet.id}/settle`,
-        { data: { result: 'won' } },
+        { data: { result: 'won', settlementSource: 'grid' } },
       );
       expect(settleResponse.ok()).toBe(true);
 

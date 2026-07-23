@@ -22,7 +22,7 @@ test('CS2 fixture API closes the report, paper bet and performance loop', async 
   expect(detailResponse.ok()).toBe(true);
 
   const settleResponse = await request.patch(`/api/sim/bets/${runBody.data.linkedBet.id}/settle`, {
-    data: { result: 'won' },
+    data: { result: 'won', settlementSource: 'hltv' },
   });
   expect(settleResponse.ok()).toBe(true);
 

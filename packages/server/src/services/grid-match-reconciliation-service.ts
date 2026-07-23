@@ -97,7 +97,7 @@ export class GridMatchReconciliationService {
           teamAMapsWon: state.teamAScore,
           teamBMapsWon: state.teamBScore,
         },
-        { kinds: ['match_winner'] },
+        { kinds: ['match_winner'], settlementSource: 'grid' },
       );
       const resolved = this.markets.resolveLocalMarkets(`${game}:${matchId}`, winnerTeamName);
       return {

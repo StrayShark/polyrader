@@ -130,6 +130,17 @@ export function outcomeToBinary(result: SimBet['result']): 0 | 1 | null {
   return null;
 }
 
+export const RANKING_MIN_AUTHORITATIVE_SETTLEMENTS = 10;
+export const TUNING_MIN_AUTHORITATIVE_SETTLEMENTS = 30;
+
+/** Count only reconciliation-backed settlements toward ranking/tuning gates. */
+export function isAuthoritativeSettlement(bet: SimBet): boolean {
+  const source = bet.settlementSource;
+  if (!source) return false;
+  if (source === 'manual' || source === 'fixture') return false;
+  return true;
+}
+
 export function brierForBet(bet: SimBet): number | undefined {
   const binary = outcomeToBinary(bet.result);
   const probability = bet.modelProbability ?? bet.userProbability;
@@ -158,24 +169,29 @@ export function buildPerformanceSummary(input: {
   const settled = input.bets.filter(
     (bet) => bet.status === 'settled' && (bet.result === 'won' || bet.result === 'lost'),
   );
-  const wins = settled.filter((bet) => bet.result === 'won').length;
-  const losses = settled.filter((bet) => bet.result === 'lost').length;
-  const totalPnl = settled.reduce((sum, bet) => sum + bet.pnl, 0);
-  const totalStake = settled.reduce((sum, bet) => sum + bet.stake, 0);
-  const briers = settled.map(brierForBet).filter((value): value is number => value != null);
-  const logLosses = settled.map(logLossForBet).filter((value): value is number => value != null);
-  const returns = returnsForBets(settled);
-  const clvs = settled
+  const authoritativeSettled = settled.filter(isAuthoritativeSettlement);
+  const wins = authoritativeSettled.filter((bet) => bet.result === 'won').length;
+  const losses = authoritativeSettled.filter((bet) => bet.result === 'lost').length;
+  const totalPnl = authoritativeSettled.reduce((sum, bet) => sum + bet.pnl, 0);
+  const totalStake = authoritativeSettled.reduce((sum, bet) => sum + bet.stake, 0);
+  const briers = authoritativeSettled
+    .map(brierForBet)
+    .filter((value): value is number => value != null);
+  const logLosses = authoritativeSettled
+    .map(logLossForBet)
+    .filter((value): value is number => value != null);
+  const returns = returnsForBets(authoritativeSettled);
+  const clvs = authoritativeSettled
     .map((bet) => bet.clv)
     .filter((value): value is number => value != null && Number.isFinite(value));
   const avgBrier =
     briers.length > 0 ? briers.reduce((a, b) => a + b, 0) / briers.length : undefined;
-  const winRate = settled.length > 0 ? wins / settled.length : 0;
-  const winRateInterval = wilsonInterval(wins, settled.length);
-  const equityCurve = buildEquityCurve(settled, input.initialBankroll);
+  const winRate = authoritativeSettled.length > 0 ? wins / authoritativeSettled.length : 0;
+  const winRateInterval = wilsonInterval(wins, authoritativeSettled.length);
+  const equityCurve = buildEquityCurve(authoritativeSettled, input.initialBankroll);
 
   return {
-    settledCount: settled.length,
+    settledCount: authoritativeSettled.length,
     openCount,
     wins,
     losses,
@@ -186,18 +202,18 @@ export function buildPerformanceSummary(input: {
     roi: totalStake > 0 ? totalPnl / totalStake : 0,
     avgBrier,
     avgLogLoss: average(logLosses),
-    calibrationError: expectedCalibrationError(settled),
+    calibrationError: expectedCalibrationError(authoritativeSettled),
     avgClv: clvs.length > 0 ? clvs.reduce((a, b) => a + b, 0) / clvs.length : undefined,
     clvSampleCount: clvs.length,
-    clvMissingCount: settled.length - clvs.length,
+    clvMissingCount: authoritativeSettled.length - clvs.length,
     equity: input.initialBankroll + totalPnl,
     maxDrawdown: maxDrawdown(equityCurve),
     returnVolatility: sampleStandardDeviation(returns),
     sharpeRatio: sampleSharpe(returns),
-    closingCoverage: closingCoverage(settled),
-    sampleStatus: getSampleStatus(settled.length),
-    rankingStatus: getRankingStatus(settled.length),
-    tuningEligible: settled.length >= 30,
+    closingCoverage: closingCoverage(authoritativeSettled),
+    sampleStatus: getSampleStatus(authoritativeSettled.length),
+    rankingStatus: getRankingStatus(authoritativeSettled.length),
+    tuningEligible: authoritativeSettled.length >= TUNING_MIN_AUTHORITATIVE_SETTLEMENTS,
     filters: input.filters ?? {},
     filterOptions: input.filterOptions ?? {
       games: [],
@@ -207,43 +223,47 @@ export function buildPerformanceSummary(input: {
       promptVersions: [],
     },
     equityCurve,
-    byGame: attribute(settled, (bet) => bet.game ?? 'unknown', 'game', input.providerByRunId),
+    byGame: attribute(authoritativeSettled, (bet) => bet.game ?? 'unknown', 'game', input.providerByRunId),
     byProvider: attribute(
-      settled,
+      authoritativeSettled,
       (bet) => providerForBet(bet, input.providerByRunId),
       'provider',
       input.providerByRunId,
     ),
     byMarketKind: attribute(
-      settled,
+      authoritativeSettled,
       (bet) => bet.marketKind ?? 'unknown',
       'market_kind',
       input.providerByRunId,
     ),
     byPolicy: attribute(
-      settled,
+      authoritativeSettled,
       (bet) => bet.policyVersion ?? 'unknown',
       'policy',
       input.providerByRunId,
     ),
     byPromptVersion: attribute(
-      settled,
+      authoritativeSettled,
       (bet) => (bet.runId ? input.promptVersionByRunId?.[bet.runId] : undefined) ?? 'manual',
       'prompt_version',
       input.providerByRunId,
     ),
-    byEventTier: attribute(settled, (bet) => bet.matchTier ?? 'unknown', 'event_tier'),
+    byEventTier: attribute(authoritativeSettled, (bet) => bet.matchTier ?? 'unknown', 'event_tier'),
     byDataQuality: attribute(
-      settled,
+      authoritativeSettled,
       (bet) => qualityBand(metadataForBet(bet, input.runMetadataByRunId)?.dataQuality),
       'data_quality',
     ),
     byConfidenceBand: attribute(
-      settled,
+      authoritativeSettled,
       (bet) => confidenceBand(metadataForBet(bet, input.runMetadataByRunId)?.confidence),
       'confidence_band',
     ),
-    byEdgeBand: attribute(settled, (bet) => edgeBand(bet.edgeAtEntry ?? bet.edge), 'edge_band'),
+    byEdgeBand: attribute(
+      authoritativeSettled,
+      (bet) => edgeBand(bet.edgeAtEntry ?? bet.edge),
+      'edge_band',
+    ),
   };
 }
 
@@ -305,7 +325,7 @@ function attribute(
       avgClosingLatencySeconds: average(latencies),
       sampleStatus: getSampleStatus(rows.length),
       rankingStatus: getRankingStatus(rows.length),
-      tuningEligible: rows.length >= 30,
+      tuningEligible: rows.length >= TUNING_MIN_AUTHORITATIVE_SETTLEMENTS,
       items: rows
         .map((bet) => ({
           betId: bet.id,
@@ -324,7 +344,7 @@ function attribute(
   });
   const rankByKey = new Map(
     rows
-      .filter((row) => row.settledCount >= 10)
+      .filter((row) => row.settledCount >= RANKING_MIN_AUTHORITATIVE_SETTLEMENTS)
       .sort((a, b) => b.roi - a.roi || b.totalPnl - a.totalPnl || a.key.localeCompare(b.key))
       .map((row, index) => [row.key, index + 1]),
   );
@@ -367,11 +387,19 @@ function providerForBet(bet: SimBet, providerByRunId?: Record<string, string>): 
 }
 
 function getSampleStatus(count: number): 'insufficient' | 'caution' | 'reliable' {
-  return count < 10 ? 'insufficient' : count < 30 ? 'caution' : 'reliable';
+  return count < RANKING_MIN_AUTHORITATIVE_SETTLEMENTS
+    ? 'insufficient'
+    : count < TUNING_MIN_AUTHORITATIVE_SETTLEMENTS
+      ? 'caution'
+      : 'reliable';
 }
 
 function getRankingStatus(count: number): 'hidden' | 'provisional' | 'eligible' {
-  return count < 10 ? 'hidden' : count < 30 ? 'provisional' : 'eligible';
+  return count < RANKING_MIN_AUTHORITATIVE_SETTLEMENTS
+    ? 'hidden'
+    : count < TUNING_MIN_AUTHORITATIVE_SETTLEMENTS
+      ? 'provisional'
+      : 'eligible';
 }
 
 function returnsForBets(bets: SimBet[]): number[] {

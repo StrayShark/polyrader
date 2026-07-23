@@ -155,7 +155,7 @@ describe('Sprint D paper risk and CLV', () => {
         .some((snapshot) => snapshot.source === 'closing:market-close'),
     ).toBe(true);
 
-    service.settleBet(placed.bet.id, 'won');
+    service.settleBet(placed.bet.id, 'won', undefined, 'hltv');
     const performance = new PerformanceService().getSummary();
     expect(performance.avgClv).toBeCloseTo(0.1111, 3);
     expect(performance.clvSampleCount).toBe(1);
@@ -168,7 +168,7 @@ describe('Sprint D paper risk and CLV', () => {
     const placed = service.placeBet(
       betInput(context('valorant', 'provider-a', 'match_winner', 'missing-market')),
     );
-    const settled = service.settleBet(placed.bet.id, 'lost');
+    const settled = service.settleBet(placed.bet.id, 'lost', undefined, 'grid');
     expect(settled.clvStatus).toBe('unavailable');
     expect(settled.clv).toBeUndefined();
     expect(settled.closingAttemptCount).toBe(1);

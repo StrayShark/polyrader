@@ -25,6 +25,7 @@ import type { OrderBookSummary, HLTVCrawler } from '@polyrader/infra';
 import { cacheDelete, cacheGet, cacheKeys, cacheSet, HLTVCrawler as HLTVCrawlerClass, LLMRepository, ManifoldClient, SignalRepository, WalletFollowRepository } from '@polyrader/infra';
 import { MarketService } from './market-service';
 import { WhaleService } from './whale-service';
+import { PerformanceService } from './performance-service';
 import { buildMatchInfo, buildFallbackMatchInfo, loadTeamFromDb, buildFallbackTeam } from './match-helpers';
 import { broadcast } from '../websocket';
 import { logger } from '../utils/logger';
@@ -41,6 +42,18 @@ export interface ArbitrageResult {
   opportunities: ArbitrageOpportunity[];
 }
 
+export class TuningNotEligibleError extends Error {
+  constructor(
+    public readonly authoritativeSettlements: number,
+    public readonly required: number,
+  ) {
+    super(
+      `Tuning requires at least ${required} authoritative settlements (currently ${authoritativeSettlements})`,
+    );
+    this.name = 'TuningNotEligibleError';
+  }
+}
+
 export class SignalService {
   private engine = new SignalComparisonEngine();
   private predictionEngine = new PredictionEngine();
@@ -52,6 +65,7 @@ export class SignalService {
   private llmRepo = new LLMRepository();
   private signalRepo = new SignalRepository();
   private walletFollowRepo = new WalletFollowRepository();
+  private performance = new PerformanceService();
   private hltvCrawler: HLTVCrawler = new HLTVCrawlerClass();
   private manifoldClient = new ManifoldClient();
 
@@ -226,6 +240,10 @@ export class SignalService {
     applied: Partial<SignalTuningConfig['sourceWeights']>;
     config: SignalTuningConfig;
   } {
+    const summary = this.performance.getSummary();
+    if (!summary.tuningEligible) {
+      throw new TuningNotEligibleError(summary.settledCount, 30);
+    }
     const backtest = this.getSignalBacktest();
     const updates = buildSignalWeightUpdates(backtest.metrics, options);
     if (Object.keys(updates).length === 0) {

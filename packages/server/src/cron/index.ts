@@ -1165,12 +1165,22 @@ export function startCronJobs(): void {
           trigger: 'scheduled',
         },
         async () => {
-          const result = signalService.applySuggestedWeights({
-            minSampleSize: 15,
-            maxStepRatio: 0.35,
-          });
-          logger.info('Cron: Auto-tuned signal weights', { applied: result.applied });
-          return result;
+          try {
+            const result = signalService.applySuggestedWeights({
+              minSampleSize: 15,
+              maxStepRatio: 0.35,
+            });
+            logger.info('Cron: Auto-tuned signal weights', { applied: result.applied });
+            return result;
+          } catch (err) {
+            if ((err as Error).name === 'TuningNotEligibleError') {
+              logger.info('Cron: Skipped auto-tune — insufficient authoritative settlements', {
+                message: (err as Error).message,
+              });
+              return { skipped: true, reason: (err as Error).message };
+            }
+            throw err;
+          }
         },
       );
     });

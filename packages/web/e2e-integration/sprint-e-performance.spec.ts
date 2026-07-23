@@ -42,10 +42,10 @@ test('Sprint E filters one canonical metric scope and exposes closing observabil
   expect(closeResponse.ok()).toBe(true);
 
   await request.patch(`/api/sim/bets/${winner.data.bet.id}/settle`, {
-    data: { result: 'won' },
+    data: { result: 'won', settlementSource: 'hltv' },
   });
   await request.patch(`/api/sim/bets/${loser.data.bet.id}/settle`, {
-    data: { result: 'lost' },
+    data: { result: 'lost', settlementSource: 'hltv' },
   });
 
   const filteredResponse = await request.get(

@@ -178,8 +178,8 @@ export class SimBetService {
     });
   }
 
-  settleBet(id: string, result: SimBetResult, pnl?: number): SimBet {
-    return this.settlementService.settleBet(id, result, pnl);
+  settleBet(id: string, result: SimBetResult, pnl?: number, settlementSource = 'manual'): SimBet {
+    return this.settlementService.settleBet(id, result, pnl, settlementSource);
   }
 
   captureClosingPrice(id: string, input: ClosingPriceCaptureInput): SimBet {
