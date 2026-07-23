@@ -61,22 +61,39 @@ const OPTIONAL_VARS = [
   'LIQUIPEDIA_USER_AGENT',
   'LIQUIPEDIA_TIMEOUT_MS',
   'LIQUIPEDIA_MIN_INTERVAL_MS',
+  'LIQUIPEDIA_CACHE_TTL_MS',
+  'LIQUIPEDIA_DB_API_URL',
+  'LIQUIPEDIA_DB_API_KEY',
   'POLYRADER_ENABLE_LIQUIPEDIA_SYNC',
   'POLYRADER_LIQUIPEDIA_MAX_TEAMS_PER_RUN',
   'POLYRADER_LIQUIPEDIA_CONFIDENCE_THRESHOLD',
+  'POLYRADER_LIQUIPEDIA_ROSTER_TEAM_LIMIT',
+  'POLYRADER_LIQUIPEDIA_ROSTER_ATTEMPT_LIMIT',
   'POLYRADER_ENABLE_HLTV_LINEUP_REFRESH',
   'POLYRADER_HLTV_LINEUP_MAX_MATCHES',
   'POLYRADER_HLTV_DISCOVERY_ENRICH_LIMIT',
   'POLYRADER_HLTV_TEAM_TTL_HOURS',
   'POLYRADER_HLTV_DISCOVERY_TIMEOUT_MS',
+  'POLYRADER_CRAWLER_USER_AGENT',
+  'POLYRADER_CRAWLER_MIN_INTERVAL_MS',
+  'POLYRADER_CRAWLER_CACHE_TTL_MS',
+  'POLYRADER_CRAWLER_TIMEOUT_MS',
+  'POLYRADER_CRAWLER_MAX_RETRIES',
   'OPENDOTA_API_URL',
   'OPENDOTA_API_KEY',
   'OPENDOTA_TIMEOUT_MS',
+  'POLYRADER_OPENDOTA_DETAIL_LIMIT',
+  'POLYRADER_OPENDOTA_MATCHES_PER_TEAM',
+  'POLYRADER_OPENDOTA_TARGET_TEAM_LIMIT',
   'RIOT_API_KEY',
   'RIOT_LOL_PLATFORM_ROUTE',
   'RIOT_VALORANT_ROUTE',
   'RIOT_API_TIMEOUT_MS',
   'RIOT_DATA_DRAGON_URL',
+  'VALORANT_API_URL',
+  'VALORANT_API_TIMEOUT_MS',
+  'VALORANT_API_MIN_INTERVAL_MS',
+  'VALORANT_API_CACHE_TTL_MS',
   'STEAM_WEB_API_KEY',
   'STRATZ_API_KEY',
   'POLYRADER_AUTO_TUNE_SIGNALS',
@@ -125,13 +142,14 @@ function parseEnvLine(line: string): [string, string] | null {
 
 function globalEnvCandidates(): string[] {
   const home = homedir();
-  return [
-    resolve(home, 'global_env', '.env'),
-    resolve(home, 'globel_env', '.env'),
-  ];
+  return [resolve(home, 'global_env', '.env'), resolve(home, 'globel_env', '.env')];
 }
 
-function applyEnvFile(filePath: string, override: boolean, protectedKeys = new Set<string>()): void {
+function applyEnvFile(
+  filePath: string,
+  override: boolean,
+  protectedKeys = new Set<string>(),
+): void {
   if (!existsSync(filePath)) return;
 
   const contents = readFileSync(filePath, 'utf8');
@@ -195,7 +213,7 @@ export function validateEnv(): EnvValidationResult {
   if (!env.POLYRADER_ENCRYPTION_KEY && !env.ENCRYPTION_KEY) {
     warnings.push(
       'POLYRADER_ENCRYPTION_KEY is not set. A random key will be generated. ' +
-      'Set it explicitly to persist encrypted API keys across restarts.',
+        'Set it explicitly to persist encrypted API keys across restarts.',
     );
   }
 

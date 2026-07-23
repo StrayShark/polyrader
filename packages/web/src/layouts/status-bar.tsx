@@ -1,10 +1,9 @@
-import { Clock, Activity, Fish, Radio } from 'lucide-react';
+import { Activity, Fish, Radio } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useWebSocket } from '../hooks/use-websocket';
 import { ConnectionStatus } from '../components/connection-status';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
-import { PRODUCT_NAME } from '../utils/brand';
 
 interface HealthSnapshot {
   whaleIngestion?: {
@@ -21,14 +20,8 @@ interface HealthSnapshot {
 
 export function StatusBar() {
   const { t } = useI18n();
-  const [time, setTime] = useState(new Date());
   const [health, setHealth] = useState<HealthSnapshot | null>(null);
   const { wsStatus, latency } = useWebSocket();
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +62,7 @@ export function StatusBar() {
     : null;
 
   return (
-    <footer className="flex h-7 items-center justify-between border-t border-border bg-status-bar px-2 md:px-4 text-[10px] md:text-[11px] text-status-bar-foreground">
+    <footer className="flex h-7 items-center border-t border-border bg-status-bar px-2 md:px-4 text-[10px] md:text-[11px] text-status-bar-foreground">
       <div className="flex min-w-0 items-center gap-2 md:gap-4">
         <ConnectionStatus status={wsStatus} />
         {wsStatus === 'connected' && (
@@ -90,13 +83,6 @@ export function StatusBar() {
             {streamLabel}
           </span>
         )}
-      </div>
-      <div className="flex items-center gap-2 md:gap-4 shrink-0">
-        <span className="hidden sm:inline">{PRODUCT_NAME} v0.3.0</span>
-        <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          {time.toLocaleTimeString()}
-        </span>
       </div>
     </footer>
   );

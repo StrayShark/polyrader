@@ -15,7 +15,7 @@ test.describe('Settings page', () => {
     await expect(page.getByRole('tab', { name: /本地数据库|Local Database/ })).toBeVisible();
     await expect(page.getByRole('tab', { name: /系统|System/ })).toBeVisible();
     await expect(page.getByText(/外观与语言|Appearance & Language/)).toBeVisible();
-    await expect(page.getByText('练习账户与风险纪律', { exact: true })).toBeVisible();
+    await expect(page.getByText('资金与风控', { exact: true })).toBeVisible();
     await expect(page.getByText(/Polymarket 只读账户|Polymarket Read-only Account/)).toBeVisible();
     await expect(page.getByText(/CS2_SIMBOOK_ENABLE_POLYMARKET_ACCOUNT/)).toBeVisible();
 
@@ -38,6 +38,12 @@ test.describe('Settings page', () => {
     await expect(page.getByTestId('source-game-cs2')).toBeVisible();
     await expect(page.getByTestId('source-game-lol')).toBeVisible();
     await expect(page.getByTestId('source-game-dota2')).toContainText('OpenDota');
+    await expect(page.getByTestId('source-game-dota2')).toContainText(
+      /1 条赛事身份|1 match identity/,
+    );
+    await expect(page.getByTestId('source-readiness-dota2-opendota')).toContainText(
+      /数据可用|Data available/,
+    );
     await expect(page.getByTestId('source-game-valorant')).toContainText('Riot VAL API');
 
     const requestPromise = page.waitForRequest((request) =>

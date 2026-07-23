@@ -11,6 +11,7 @@ import type { Market } from '@polyrader/core/browser';
 import { classifyEventTier } from '@polyrader/core/browser';
 import { cn } from '../utils/cn';
 import type { OddsFormat } from '../utils/bet-math';
+import { isLobbyVisibleMatch } from '../utils/match-eligibility';
 import { api } from '../utils/api';
 
 const ODDS_FORMAT_KEY = 'polyrader-odds-format';
@@ -166,7 +167,11 @@ export function EventLobbyPage() {
   }, [syncMatches]);
 
   const allCs2Markets = useMemo(() => {
-    return markets.filter(isCs2MatchMarket);
+    return markets.filter(
+      (market) =>
+        isCs2MatchMarket(market) &&
+        isLobbyVisibleMatch(market.match?.status, market.match?.scheduledAt),
+    );
   }, [markets]);
 
   const tournaments = useMemo(() => {

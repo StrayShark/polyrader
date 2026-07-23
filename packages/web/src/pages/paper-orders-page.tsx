@@ -1,15 +1,29 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { SimBet } from '@polyrader/core/browser';
-import { Badge, Button, Card, CardHeader, CardTitle, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 
 type StatusFilter = 'all' | 'open' | 'settled' | 'voided';
 
-export function PaperOrdersPage() {
+export function PaperOrdersPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusedBetId = searchParams.get('betId');
   const [bets, setBets] = useState<SimBet[]>([]);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(false);
@@ -33,13 +47,23 @@ export function PaperOrdersPage() {
     void load();
   }, [filter]);
 
+  const visibleBets = focusedBetId ? bets.filter((bet) => bet.id === focusedBetId) : bets;
+
+  const clearFocusedBet = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('betId');
+    setSearchParams(next, { replace: true });
+  };
+
   return (
     <Card data-testid="paper-orders-page">
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-        <div>
-          <CardTitle className="text-base">{t('paperOrders.title')}</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{t('paperOrders.subtitle')}</p>
-        </div>
+        {!embedded && (
+          <div>
+            <CardTitle className="text-base">{t('paperOrders.title')}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">{t('paperOrders.subtitle')}</p>
+          </div>
+        )}
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={loading ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
           {t('common.refresh')}
@@ -58,7 +82,24 @@ export function PaperOrdersPage() {
             </Button>
           ))}
         </div>
-        {error && <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+        {focusedBetId && (
+          <div
+            className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-xs"
+            data-testid="focused-paper-order"
+          >
+            <span>
+              {t('paperOrders.focusedOrder')} · <span className="font-mono">{focusedBetId}</span>
+            </span>
+            <Button variant="ghost" size="sm" onClick={clearFocusedBet}>
+              {t('paperOrders.showAll')}
+            </Button>
+          </div>
+        )}
+        {error && (
+          <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
         <div className="overflow-x-auto rounded-md border border-border">
           <Table>
             <TableHeader>
@@ -73,39 +114,61 @@ export function PaperOrdersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bets.map((bet) => (
-                <TableRow key={bet.id}>
+              {visibleBets.map((bet) => (
+                <TableRow
+                  key={bet.id}
+                  data-testid={`paper-order-${bet.id}`}
+                  className={focusedBetId === bet.id ? 'bg-accent/40' : undefined}
+                >
                   <TableCell>
                     <div className="font-medium">{bet.matchId ?? '—'}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{bet.id.slice(0, 18)}</div>
+                    <div className="font-mono text-xs text-muted-foreground">
+                      {bet.id.slice(0, 18)}
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs uppercase text-muted-foreground">
                     {bet.game ?? 'unknown'} · {(bet.marketKind ?? 'unknown').replaceAll('_', ' ')}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={bet.status === 'open' ? 'yellow' : bet.status === 'settled' ? 'green' : 'secondary'}>
-                      {bet.status}{bet.result ? ` · ${bet.result}` : ''}
+                    <Badge
+                      variant={
+                        bet.status === 'open'
+                          ? 'yellow'
+                          : bet.status === 'settled'
+                            ? 'green'
+                            : 'secondary'
+                      }
+                    >
+                      {bet.status}
+                      {bet.result ? ` · ${bet.result}` : ''}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono">${bet.stake.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-mono">
                     {bet.edgeAtEntry == null ? '—' : `${(bet.edgeAtEntry * 100).toFixed(1)}pp`}
                   </TableCell>
-                  <TableCell className={`text-right font-mono ${bet.pnl > 0 ? 'text-emerald-600' : bet.pnl < 0 ? 'text-rose-600' : ''}`}>
+                  <TableCell
+                    className={`text-right font-mono ${bet.pnl > 0 ? 'text-emerald-600' : bet.pnl < 0 ? 'text-rose-600' : ''}`}
+                  >
                     {bet.status === 'open' ? '—' : `$${bet.pnl.toFixed(2)}`}
                   </TableCell>
                   <TableCell>
                     {bet.runId && (
-                      <Link to={`/analysis/report/${encodeURIComponent(bet.runId)}`} aria-label={t('paperOrders.openReport')}>
+                      <Link
+                        to={`/analysis/report/${encodeURIComponent(bet.runId)}`}
+                        aria-label={t('paperOrders.openReport')}
+                      >
                         <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                       </Link>
                     )}
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && bets.length === 0 && (
+              {!loading && visibleBets.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-28 text-center text-muted-foreground">{t('paperOrders.empty')}</TableCell>
+                  <TableCell colSpan={7} className="h-28 text-center text-muted-foreground">
+                    {t('paperOrders.empty')}
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>

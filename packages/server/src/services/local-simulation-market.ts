@@ -1,4 +1,4 @@
-import { buildCanonicalMatchId, type Market } from '@polyrader/core';
+import { buildCanonicalMatchId, type Market, type NormalizedMatchFacts } from '@polyrader/core';
 
 export interface LocalSimulationMarketInput {
   source: 'db' | 'hltv';
@@ -18,9 +18,10 @@ export interface LocalSimulationMarketInput {
 
 export function buildLocalSimulationMarket(input: LocalSimulationMarketInput): Market {
   const sourceMatchId = input.matchId || `${input.today}-${input.index}`;
-  const conditionId = sourceMatchId.startsWith('local-') || sourceMatchId.startsWith('daily-')
-    ? sourceMatchId
-    : `local-${input.source}-${sourceMatchId}`;
+  const conditionId =
+    sourceMatchId.startsWith('local-') || sourceMatchId.startsWith('daily-')
+      ? sourceMatchId
+      : `local-${input.source}-${sourceMatchId}`;
   const teamAName = normalizeLabel(input.teamAName, 'Team A');
   const teamBName = normalizeLabel(input.teamBName, 'Team B');
   const eventName = normalizeLabel(input.eventName, 'HLTV Upcoming');
@@ -67,6 +68,95 @@ export function buildLocalSimulationMarket(input: LocalSimulationMarketInput): M
   };
 }
 
+/** Build an explicit zero-liquidity practice market from normalized game facts. */
+export function buildMultigamePracticeMarket(facts: NormalizedMatchFacts): Market {
+  if (facts.participants.length !== 2) {
+    throw new Error(`Practice market ${facts.externalMatchId} requires exactly two participants`);
+  }
+  const [teamA, teamB] = facts.participants;
+  const conditionId = `local-${facts.game}-${facts.externalMatchId}`;
+  const canonicalMatchId =
+    facts.game === 'cs2'
+      ? `hltv:${facts.externalMatchId}`
+      : `${facts.game}:${facts.externalMatchId}`;
+  const eventName = normalizeLabel(facts.eventName, `${facts.game.toUpperCase()} Practice`);
+  const teamAName = normalizeLabel(teamA.name, 'Team A');
+  const teamBName = normalizeLabel(teamB.name, 'Team B');
+  return {
+    conditionId,
+    canonicalMatchId,
+    slug: conditionId,
+    question:
+      facts.game === 'cs2'
+        ? `Counter-Strike: ${teamAName} vs ${teamBName} (${facts.format}) - ${eventName}`
+        : `${teamAName} vs ${teamBName} (${facts.format}) - ${gameLabel(facts.game)} · ${eventName}`,
+    description: `Local ${gameLabel(facts.game)} practice market generated from normalized facts.`,
+    outcomes: [teamAName, teamBName],
+    outcomePrices: ['0.50', '0.50'],
+    clobTokenIds: [],
+    volume: 0,
+    volume24h: 0,
+    liquidity: 0,
+    startDate: facts.startsAt,
+    endDate: addHours(facts.startsAt, facts.format === 'BO1' ? 2 : facts.format === 'BO5' ? 6 : 4),
+    status: 'active',
+    tags: [facts.game, 'practice', 'local-sim', 'local-odds-v1', 'normalized-facts'],
+    match: {
+      matchId: facts.externalMatchId,
+      canonicalMatchId,
+      teamA: {
+        teamId: teamA.participantId,
+        name: teamAName,
+        rank: teamA.rating ?? 0,
+        logo: '',
+        region: '',
+      },
+      teamB: {
+        teamId: teamB.participantId,
+        name: teamBName,
+        rank: teamB.rating ?? 0,
+        logo: '',
+        region: '',
+      },
+      eventName,
+      eventType: 'Online',
+      format: facts.format,
+      scheduledAt: facts.startsAt,
+      status: 'scheduled',
+      maps: facts.mapPool,
+    },
+  };
+}
+
+/** Build independently auditable Dota winner, handicap and total-games practice markets. */
+export function buildMultigamePracticeMarkets(facts: NormalizedMatchFacts): Market[] {
+  const winner = buildMultigamePracticeMarket(facts);
+  if (facts.game !== 'dota2' || facts.format === 'BO1') return [winner];
+  const [teamAName, teamBName] = winner.outcomes;
+  const handicapLine = facts.format === 'BO5' ? -2.5 : -1.5;
+  const totalLine = facts.format === 'BO5' ? 4.5 : 2.5;
+  const sharedTags = [...winner.tags, 'dota-series-market'];
+  const handicap: Market = {
+    ...winner,
+    conditionId: `${winner.conditionId}-handicap`,
+    slug: `${winner.slug}-handicap`,
+    question: `Map Handicap ${teamAName} ${handicapLine} vs ${teamBName} (${facts.format})`,
+    description: 'Synthetic Dota series game-handicap practice market.',
+    outcomes: [`${teamAName} ${handicapLine}`, `${teamBName} +${Math.abs(handicapLine)}`],
+    tags: [...sharedTags, 'market:handicap'],
+  };
+  const total: Market = {
+    ...winner,
+    conditionId: `${winner.conditionId}-total-maps`,
+    slug: `${winner.slug}-total-maps`,
+    question: `Total Maps ${totalLine}: ${teamAName} vs ${teamBName} (${facts.format})`,
+    description: 'Synthetic Dota series total-games practice market.',
+    outcomes: [`Over ${totalLine}`, `Under ${totalLine}`],
+    tags: [...sharedTags, 'market:total_maps'],
+  };
+  return [winner, handicap, total];
+}
+
 /** Generate Map Winner practice markets that stay independent of the series winner market. */
 export function buildLocalMapWinnerMarkets(seriesMarket: Market): Market[] {
   const format = seriesMarket.match?.format ?? 'BO3';
@@ -108,7 +198,10 @@ function normalizeLabel(value: string, fallback: string): string {
 }
 
 function localTeamId(name: string, side: 'a' | 'b'): string {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
   return `local-team-${side}-${slug || 'unknown'}`;
 }
 
@@ -116,4 +209,11 @@ function addHours(iso: string, hours: number): string {
   const timestamp = Date.parse(iso);
   if (!Number.isFinite(timestamp)) return iso;
   return new Date(timestamp + hours * 60 * 60 * 1000).toISOString();
+}
+
+function gameLabel(game: NormalizedMatchFacts['game']): string {
+  if (game === 'dota2') return 'Dota 2';
+  if (game === 'lol') return 'League of Legends';
+  if (game === 'valorant') return 'VALORANT';
+  return 'Counter-Strike 2';
 }

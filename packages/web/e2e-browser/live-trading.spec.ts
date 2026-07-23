@@ -46,7 +46,7 @@ test.describe('Live trading UI (mock CLOB)', () => {
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
     await expect(page.getByRole('button', { name: /切换实盘|Switch to live/i })).toHaveCount(0);
     await expect(page.getByText(/纸面跟单|Paper Copy/i).first()).toBeVisible();
-    await expect(page.getByText(/不会向 Polymarket 发送真实订单|No real order/i)).toBeVisible();
+    await expect(page.getByRole('note')).toContainText(/无法与 Leader 同区块成交|cannot copy in the same block/i);
   });
 
   test('match detail hides live buy even when trading status allows', async ({ page }) => {
@@ -60,8 +60,8 @@ test.describe('Live trading UI (mock CLOB)', () => {
     );
     await page.goto('/#/match/spirit-vs-g2-bo3');
     await waitForMainHeading(page);
-    await page.getByRole('tab', { name: /模拟|Practice/i }).click();
-    await expect(page.getByRole('button', { name: /实盘买入.*Spirit|Live buy.*Spirit/i })).not.toBeVisible();
+    await expect(page.getByRole('tab', { name: /模拟|Practice/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /实盘买入|Live buy/i })).toHaveCount(0);
   });
 
   test('POST market order mock returns success payload', async ({ page }) => {

@@ -21,6 +21,9 @@ describe('market settlement adapters', () => {
   it('classifies map winner markets', () => {
     expect(classifySettledMarketKind('Counter-Strike: ENCE vs SPARTA - Map 2 Winner')).toBe('map_winner');
     expect(classifySettledMarketKind('Counter-Strike: ENCE vs SPARTA (BO3) - Event')).toBe('match_winner');
+    expect(classifySettledMarketKind('LoL: Myth Esports vs Dynasty - Game 1 Winner')).toBe('map_winner');
+    expect(classifySettledMarketKind('Games Total: O/U 2.5')).toBe('total_maps');
+    expect(classifySettledMarketKind('Game 1: Both Teams Slay Baron Nashor?')).toBe('unsupported');
   });
 
   it('settles map winner only when that map result exists', () => {

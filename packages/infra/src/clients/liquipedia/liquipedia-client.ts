@@ -1,5 +1,6 @@
 import type { Player, PlayerRole } from '@polyrader/core';
 import { load } from 'cheerio';
+import { fetchTextPolitely } from '../../crawlers/polite-fetch';
 
 export type LiquipediaGame = 'cs2' | 'lol' | 'dota2' | 'valorant';
 
@@ -38,12 +39,30 @@ export interface LiquipediaRosterSnapshot {
   rawLength: number;
 }
 
+export interface LiquipediaUpcomingMatch {
+  matchId: string;
+  teamAId: string;
+  teamBId: string;
+  teamAName: string;
+  teamBName: string;
+  date: string;
+  eventId?: string;
+  eventName: string;
+  format: 'BO1' | 'BO2' | 'BO3' | 'BO5';
+  sourceUrl?: string;
+  status?: 'scheduled' | 'finished';
+  scoreA?: number;
+  scoreB?: number;
+}
+
 interface LiquipediaClientOptions {
   game?: LiquipediaGame;
   apiUrl?: string;
   userAgent?: string;
   timeoutMs?: number;
   minIntervalMs?: number;
+  dbApiUrl?: string;
+  dbApiKey?: string;
 }
 
 let lastRequestAt = 0;
@@ -55,6 +74,8 @@ export class LiquipediaClient {
   private readonly userAgent: string;
   private readonly timeoutMs: number;
   private readonly minIntervalMs: number;
+  private readonly dbApiUrl: string;
+  private readonly dbApiKey: string;
 
   constructor(options: LiquipediaClientOptions = {}) {
     this.game = options.game ?? 'cs2';
@@ -63,6 +84,80 @@ export class LiquipediaClient {
     this.userAgent = options.userAgent ?? process.env.LIQUIPEDIA_USER_AGENT ?? DEFAULT_USER_AGENT;
     this.timeoutMs = options.timeoutMs ?? envNumber('LIQUIPEDIA_TIMEOUT_MS', 8000, 500, 30000);
     this.minIntervalMs = options.minIntervalMs ?? envNumber('LIQUIPEDIA_MIN_INTERVAL_MS', 2100, 0, 10000);
+    this.dbApiUrl = (
+      options.dbApiUrl ??
+      process.env.LIQUIPEDIA_DB_API_URL ??
+      'https://api.liquipedia.net/api/v3'
+    ).replace(/\/$/, '');
+    this.dbApiKey = options.dbApiKey ?? process.env.LIQUIPEDIA_DB_API_KEY ?? '';
+  }
+
+  isMatchScheduleConfigured(): boolean {
+    return Boolean(this.dbApiKey);
+  }
+
+  async getPublicUpcomingMatches(limit = 50, now = new Date()): Promise<LiquipediaUpcomingMatch[]> {
+    const html = await this.getPublicMatchesHtml();
+    return parseUpcomingMatchesHtml(html, this.game, now, limit);
+  }
+
+  async getPublicRecentMatches(limit = 50, now = new Date()): Promise<LiquipediaUpcomingMatch[]> {
+    const html = await this.getPublicMatchesHtml();
+    return parseRecentMatchesHtml(html, this.game, now, limit);
+  }
+
+  private async getPublicMatchesHtml(): Promise<string> {
+    const data = await this.fetchApi<Record<string, unknown>>({
+      action: 'parse',
+      page: 'Liquipedia:Matches',
+      prop: 'text',
+    });
+    const parsed = objectValue(data.parse);
+    const textValue = parsed?.text;
+    const html = typeof textValue === 'string'
+      ? textValue
+      : String(objectValue(textValue)?.['*'] ?? '');
+    if (!html) throw new Error('Liquipedia public matches page returned no rendered content');
+    return html;
+  }
+
+  async getUpcomingMatches(limit = 50, now = new Date()): Promise<LiquipediaUpcomingMatch[]> {
+    if (!this.dbApiKey) {
+      throw new Error('LIQUIPEDIA_DB_API_KEY not configured for schedule access');
+    }
+    await this.rateLimit();
+
+    const url = new URL(`${this.dbApiUrl}/match`);
+    url.searchParams.set('wiki', this.game);
+    url.searchParams.set('limit', String(clamp(limit, 1, 100)));
+    url.searchParams.set('order', 'date ASC');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Apikey ${this.dbApiKey}`,
+          'User-Agent': this.userAgent,
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Liquipedia DB API HTTP ${response.status}: ${text.slice(0, 200)}`);
+      }
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rows = Array.isArray(payload.result) ? payload.result : [];
+      const nowMs = now.getTime();
+      return rows
+        .map(mapUpcomingMatch)
+        .filter((match): match is LiquipediaUpcomingMatch => Boolean(match))
+        .filter((match) => Date.parse(match.date) >= nowMs)
+        .slice(0, clamp(limit, 1, 100));
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async searchTeams(name: string, limit = 5): Promise<LiquipediaTeamSearchResult[]> {
@@ -144,8 +239,6 @@ export class LiquipediaClient {
   }
 
   private async fetchApi<T>(params: Record<string, string>): Promise<T> {
-    await this.rateLimit();
-
     const url = new URL(this.apiUrl);
     url.searchParams.set('format', 'json');
     url.searchParams.set('formatversion', '2');
@@ -153,23 +246,22 @@ export class LiquipediaClient {
       url.searchParams.set(key, value);
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const response = await fetch(url, {
+      const text = await fetchTextPolitely(url.href, {
         headers: {
           Accept: 'application/json',
-          'User-Agent': this.userAgent,
         },
-        signal: controller.signal,
+        userAgent: this.userAgent,
+        timeoutMs: this.timeoutMs,
+        minIntervalMs: this.minIntervalMs,
+        cacheTtlMs: envNumber('LIQUIPEDIA_CACHE_TTL_MS', 5 * 60_000, 0, 60 * 60_000),
       });
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`Liquipedia API HTTP ${response.status}: ${text.slice(0, 200)}`);
+      return JSON.parse(text) as T;
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw new Error('Liquipedia API returned invalid JSON');
       }
-      return response.json() as Promise<T>;
-    } finally {
-      clearTimeout(timer);
+      throw error;
     }
   }
 
@@ -195,6 +287,219 @@ function gameApiUrl(game: LiquipediaGame): string {
   return process.env[`LIQUIPEDIA_API_URL_${suffix}`]
     ?? process.env.LIQUIPEDIA_API_URL
     ?? `https://liquipedia.net/${LIQUIPEDIA_WIKIS[game]}/api.php`;
+}
+
+function mapUpcomingMatch(row: unknown): LiquipediaUpcomingMatch | null {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  const value = row as Record<string, unknown>;
+  const opponents = parseOpponentRows(value.match2opponents ?? value.opponents);
+  if (opponents.length < 2) return null;
+  const date = normalizeDate(value.dateexact ?? value.date ?? value.starttime ?? value.start_time);
+  if (!date) return null;
+
+  const tournament = objectValue(value.tournament);
+  const eventName = String(
+    tournament?.name ?? value.tournamentname ?? value.eventname ?? value.event ?? 'Unknown event',
+  );
+  const sourcePage = String(value.liquipediapage ?? value.pagename ?? value.page ?? '');
+  const matchId = String(
+    value.match2id ?? value.matchid ?? value.objectid ?? value.id ?? sourcePage,
+  );
+  if (!matchId) return null;
+
+  return {
+    matchId,
+    teamAId: opponents[0].id || opponents[0].name,
+    teamBId: opponents[1].id || opponents[1].name,
+    teamAName: opponents[0].name,
+    teamBName: opponents[1].name,
+    date,
+    eventId: String(tournament?.id ?? value.tournamentid ?? value.eventid ?? '') || undefined,
+    eventName,
+    format: normalizeBestOf(value.bestof ?? value.format ?? value.matchformat),
+    sourceUrl: sourcePage
+      ? `https://liquipedia.net/${String(value.wiki ?? 'dota2')}/${encodeURIComponent(sourcePage.replace(/ /g, '_'))}`
+      : undefined,
+  };
+}
+
+export function parseUpcomingMatchesHtml(
+  html: string,
+  game: LiquipediaGame,
+  now = new Date(),
+  limit = 50,
+): LiquipediaUpcomingMatch[] {
+  return parseMatchesHtml(html, game, now, limit, 'scheduled');
+}
+
+export function parseRecentMatchesHtml(
+  html: string,
+  game: LiquipediaGame,
+  now = new Date(),
+  limit = 50,
+): LiquipediaUpcomingMatch[] {
+  return parseMatchesHtml(html, game, now, limit, 'finished');
+}
+
+function parseMatchesHtml(
+  html: string,
+  game: LiquipediaGame,
+  now: Date,
+  limit: number,
+  mode: 'scheduled' | 'finished',
+): LiquipediaUpcomingMatch[] {
+  const $ = load(html, null, false);
+  const rows: LiquipediaUpcomingMatch[] = [];
+  const nowMs = now.getTime();
+
+  $('.match-info').each((_index, element) => {
+    if (rows.length >= clamp(limit, 1, 100)) return;
+    const root = $(element);
+    const timestamp = Number(root.find('.timer-object[data-timestamp]').first().attr('data-timestamp'));
+    if (!Number.isFinite(timestamp)) return;
+    const startsAt = timestamp * 1000;
+    const finished = root.find('.timer-object[data-finished]').length > 0;
+    if (mode === 'scheduled' && (startsAt < nowMs || finished)) return;
+    if (mode === 'finished' && (!finished || startsAt > nowMs)) return;
+
+    const opponents = root.find('.match-info-header-opponent').toArray().map((node) => {
+      const anchor = $(node).find('.name a').first();
+      const title = cleanTeamTitle(anchor.attr('title') ?? anchor.text() ?? $(node).find('.name').text());
+      return {
+        id: pageIdentity(anchor.attr('href'), title),
+        name: title,
+      };
+    }).filter((opponent) => opponent.name);
+    if (opponents.length < 2) return;
+
+    const eventAnchor = root.find('.match-info-tournament-name a').first();
+    const eventName = cleanWikiText(eventAnchor.text()) || cleanTeamTitle(eventAnchor.attr('title') ?? '');
+    const eventId = pageIdentity(eventAnchor.attr('href'), eventName);
+    const matchAnchor = root.find('.match-info-links a[href*="/Match:"], .match-info-links a[href*="title=Match"]').first();
+    const matchPage = cleanMatchIdentity(matchAnchor.attr('title') ?? matchAnchor.attr('href') ?? '');
+    const date = new Date(startsAt).toISOString();
+    const matchId = matchPage || [
+      'public',
+      game,
+      String(timestamp),
+      slug(opponents[0].id),
+      slug(opponents[1].id),
+    ].join(':');
+    const sourceHref = matchAnchor.attr('href') || eventAnchor.attr('href');
+    const scores = root.find('.match-info-header-scoreholder-score').toArray()
+      .map((node) => Number($(node).text().trim()))
+      .filter(Number.isFinite);
+
+    rows.push({
+      matchId,
+      teamAId: opponents[0].id,
+      teamBId: opponents[1].id,
+      teamAName: opponents[0].name,
+      teamBName: opponents[1].name,
+      date,
+      eventId: eventId || undefined,
+      eventName: eventName || 'Unknown event',
+      format: normalizeBestOf(root.find('.match-info-header-scoreholder-lower').text()),
+      sourceUrl: absoluteLiquipediaUrl(sourceHref),
+      status: mode,
+      ...(mode === 'finished' && scores.length >= 2
+        ? { scoreA: scores[0], scoreB: scores[1] }
+        : {}),
+    });
+  });
+
+  return rows.sort((a, b) => mode === 'scheduled'
+    ? Date.parse(a.date) - Date.parse(b.date)
+    : Date.parse(b.date) - Date.parse(a.date));
+}
+
+function cleanTeamTitle(value: string): string {
+  return cleanWikiText(value).replace(/\s*\(page does not exist\)\s*$/i, '').trim();
+}
+
+function pageIdentity(href: string | undefined, fallback: string): string {
+  if (!href) return fallback;
+  try {
+    const url = new URL(href, 'https://liquipedia.net');
+    const queryTitle = url.searchParams.get('title');
+    const pathTitle = decodeURIComponent(url.pathname.split('/').slice(2).join('/'));
+    return cleanTeamTitle((queryTitle ?? pathTitle).replace(/_/g, ' ')) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function cleanMatchIdentity(value: string): string {
+  let decoded = value;
+  try {
+    const url = new URL(value, 'https://liquipedia.net');
+    decoded = url.searchParams.get('title') ?? decodeURIComponent(url.pathname.split('/').at(-1) ?? value);
+  } catch {
+    // The title attribute is already a provider identity.
+  }
+  const normalized = decoded.replace(/^Match:/i, '').replace(/^ID[ _]/i, '').replace(/\s+/g, '_');
+  return normalized.replace(/[^A-Za-z0-9:_-]/g, '').replace(/^_+|_+$/g, '');
+}
+
+function absoluteLiquipediaUrl(href: string | undefined): string | undefined {
+  if (!href) return undefined;
+  try {
+    return new URL(href, 'https://liquipedia.net').href;
+  } catch {
+    return undefined;
+  }
+}
+
+function slug(value: string): string {
+  return normalizeName(value) || 'unknown';
+}
+
+function parseOpponentRows(value: unknown): Array<{ id: string; name: string }> {
+  let rows = value;
+  if (typeof rows === 'string') {
+    try {
+      rows = JSON.parse(rows) as unknown;
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => {
+      if (typeof row === 'string') return { id: row, name: row };
+      const item = objectValue(row);
+      if (!item) return null;
+      const name = String(item.name ?? item.opponentname ?? item.template ?? item.page ?? '');
+      if (!name) return null;
+      return {
+        id: String(item.id ?? item.opponentid ?? item.page ?? item.template ?? name),
+        name,
+      };
+    })
+    .filter((row): row is { id: string; name: string } => Boolean(row));
+}
+
+function normalizeDate(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const millis = value < 10_000_000_000 ? value * 1000 : value;
+    return new Date(millis).toISOString();
+  }
+  const millis = Date.parse(String(value ?? ''));
+  return Number.isFinite(millis) ? new Date(millis).toISOString() : null;
+}
+
+function normalizeBestOf(value: unknown): LiquipediaUpcomingMatch['format'] {
+  const match = String(value ?? '').match(/(?:bo|best\s*of\s*)?([1235])/i);
+  if (match?.[1] === '1') return 'BO1';
+  if (match?.[1] === '2') return 'BO2';
+  if (match?.[1] === '5') return 'BO5';
+  return 'BO3';
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 export function parseRosterFromWikitext(wikitext: string): LiquipediaRosterPlayer[] {
@@ -365,5 +670,9 @@ function nameConfidence(query: string, title: string): number {
 function envNumber(name: string, fallback: number, min: number, max: number): number {
   const value = Number(process.env[name]);
   if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

@@ -10,6 +10,7 @@ interface BackupInfo {
   fileSizeFormatted: string;
   tableCounts: Record<string, number>;
   dbPath: string;
+  schema?: { migrationCount: number; latestMigration: string | null };
 }
 
 export function BackupPanel() {
@@ -26,7 +27,7 @@ export function BackupPanel() {
       const base = await getBase();
       const res = await fetch(`${base}/backup/info`);
       if (!res.ok) throw new Error('Failed to load backup info');
-      const json = await res.json() as { data: BackupInfo };
+      const json = (await res.json()) as { data: BackupInfo };
       setInfo(json.data);
     } catch (err) {
       addToast('error', (err as Error).message);
@@ -67,7 +68,7 @@ export function BackupPanel() {
         headers: { 'Content-Type': 'application/octet-stream' },
         body: buffer,
       });
-      const json = await res.json().catch(() => ({})) as { error?: string; message?: string };
+      const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
       if (!res.ok) throw new Error(json.error ?? 'Import failed');
       addToast('success', json.message ?? t('backup.importSuccess'));
       await fetchInfo();
@@ -106,12 +107,14 @@ export function BackupPanel() {
               <div className="text-xs text-muted-foreground">{t('backup.fileName')}</div>
               <div className="font-mono text-xs">{info.dbPath}</div>
             </div>
-            {Object.entries(info.tableCounts).slice(0, 2).map(([table, count]) => (
-              <div key={table}>
-                <div className="text-xs text-muted-foreground">{table}</div>
-                <div className="font-medium tabular-nums">{count.toLocaleString()}</div>
-              </div>
-            ))}
+            {Object.entries(info.tableCounts)
+              .slice(0, 2)
+              .map(([table, count]) => (
+                <div key={table}>
+                  <div className="text-xs text-muted-foreground">{table}</div>
+                  <div className="font-medium tabular-nums">{count.toLocaleString()}</div>
+                </div>
+              ))}
           </div>
         )}
 

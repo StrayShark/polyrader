@@ -8,10 +8,12 @@ test.describe('Simbook lobby', () => {
     await setupCommonMocks(page);
   });
 
-  test('shows practice mode and no real order entry on lobby', async ({ page }) => {
+  test('shows a concise bet slip and no real order entry on lobby', async ({ page }) => {
     await page.goto('/#/');
     await expect(page.getByRole('heading', { name: /赛事大厅|Event Lobby/ })).toBeVisible();
-    await expect(page.getByTestId('desktop-bet-slip').getByText('模拟投注单')).toBeVisible();
+    await expect(page.getByTestId('desktop-bet-slip').getByText('投注单')).toBeVisible();
+    await expect(page.getByText('Practice Mode')).toHaveCount(0);
+    await expect(page.getByText('练习账户')).toHaveCount(0);
 
     const body = page.locator('body');
     for (const keyword of REAL_ORDER_KEYWORDS) {
@@ -33,7 +35,7 @@ test.describe('Simbook lobby', () => {
     // Submit should call /api/sim/bets, not real order endpoints
     const [request] = await Promise.all([
       page.waitForRequest((req) => req.url().includes('/api/sim/bets') && req.method() === 'POST'),
-      page.getByRole('button', { name: /提交模拟下注|Submit Practice Bet/ }).click(),
+      page.getByRole('button', { name: /记录订单|Record Order/ }).click(),
     ]);
     expect(request.url()).toContain('/api/sim/bets');
   });
@@ -75,13 +77,13 @@ test.describe('Simbook lobby', () => {
     await expect(page.getByRole('button', { name: /刷新|Refresh/, exact: true })).toBeEnabled();
   });
 
-  test('match detail has practice tab and no live bet button', async ({ page }) => {
+  test('match detail keeps odds in overview without a duplicate practice tab', async ({ page }) => {
     await setupMatchDetailMocks(page);
     await page.goto('/#/match/spirit-vs-g2-bo3');
 
-    await page.getByRole('tab', { name: /模拟|Practice/ }).click();
     await expect(page.getByRole('button', { name: /Spirit \d/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /G2 \d/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /模拟|Practice/ })).toHaveCount(0);
 
     const body = page.locator('body');
     for (const keyword of ['实盘下单', 'Live bet', 'market-orders']) {

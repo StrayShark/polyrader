@@ -219,4 +219,5 @@ describe('PolymarketGammaClient', () => {
       expect(results[0].question).toBe('Counter-Strike: Spirit vs G2');
     });
   });
+
 });

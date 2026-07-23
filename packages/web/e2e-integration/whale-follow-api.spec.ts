@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const API = 'http://127.0.0.1:3001';
+const API = process.env.POLYRADER_E2E_API_BASE ?? 'http://127.0.0.1:13101';
 
 test.describe('Integration — whale follow API', () => {
   const address = '0x1234567890123456789012345678901234567890';

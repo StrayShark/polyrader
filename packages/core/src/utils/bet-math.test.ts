@@ -68,8 +68,7 @@ describe('bet-math', () => {
 
   describe('calculateClosingLineValue', () => {
     it('returns positive when entry odds are better than closing', () => {
-      // Entry odds 2.0 (implied 0.5), closing odds 1.8 (implied 0.5556)
-      expect(calculateClosingLineValue(2, 1.8)).toBeCloseTo(-0.1, 3);
+      expect(calculateClosingLineValue(2, 1.8)).toBeCloseTo(0.1111, 3);
     });
   });
 

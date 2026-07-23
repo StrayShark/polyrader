@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { FileJson2, RefreshCw, Copy, FlaskConical, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
+import { FileJson2, Copy, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -120,7 +120,7 @@ export function AnalysisReportPage() {
   ];
 
   return (
-    <div className="space-y-6" data-testid="analysis-report-page">
+    <div className="space-y-6" data-testid="analysis-report-page" aria-busy={isLoading}>
       <Breadcrumbs
         items={[
           { label: t('nav.strategy'), to: '/strategy' },
@@ -145,14 +145,6 @@ export function AnalysisReportPage() {
             <Copy className="h-3.5 w-3.5" />
             {t('analysisReport.copyReportId')}
           </Button>
-          <Button variant="outline" size="sm" onClick={loadFixtureLocal} disabled={isLoading}>
-            <FlaskConical className="h-3.5 w-3.5" />
-            {t('analysisReport.loadFixture')}
-          </Button>
-          <Button size="sm" onClick={() => void loadFromApi()} disabled={isLoading}>
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            {t('analysisReport.runPipeline')}
-          </Button>
         </div>
       </div>
 
@@ -176,6 +168,10 @@ export function AnalysisReportPage() {
             <Badge variant="outline">{view.envelope.game.toUpperCase()}</Badge>
             <Badge variant="outline">{view.provider} · {view.model}</Badge>
             <Badge variant="outline">prompt {view.envelope.promptVersion}</Badge>
+            <Badge variant={view.report.marketContext?.evidenceType === 'real' ? 'green' : 'secondary'}>
+              {view.report.marketContext?.evidenceType ?? 'unknown'} ·{' '}
+              {view.report.marketContext?.liquidityStatus ?? 'unknown'}
+            </Badge>
             <Badge variant="secondary">{Math.round(view.report.dataQuality.completeness * 100)}% data</Badge>
           </div>
         </CardHeader>

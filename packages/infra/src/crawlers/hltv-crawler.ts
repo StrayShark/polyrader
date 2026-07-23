@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { fetchWithBrowser } from './anti-detect';
+import { fetchTextPolitely } from './polite-fetch';
 import type { Team, Player, RecentForm, MatchResult, MapStat, HeadToHead, Lineup, LineupPlayer } from '@polyrader/core';
 
 const HLTV_BASE = 'https://www.hltv.org';
@@ -501,7 +501,7 @@ export class HLTVCrawler {
    * Uses Playwright to bypass Cloudflare, then extracts data via page.evaluate.
    */
   async getRankings(): Promise<Array<{ rank: number; teamId: string; name: string }>> {
-    const html = await fetchWithBrowser(`${HLTV_BASE}/ranking/teams`);
+    const html = await fetchTextPolitely(`${HLTV_BASE}/ranking/teams`);
     const $ = cheerio.load(html);
 
     const rankings: Array<{ rank: number; teamId: string; name: string }> = [];
@@ -529,7 +529,7 @@ export class HLTVCrawler {
    * Returns all upcoming matches sorted by star rating (importance).
    */
   async getMatches(): Promise<HltvMatchSummary[]> {
-    const html = await fetchWithBrowser(`${HLTV_BASE}/matches`);
+    const html = await fetchTextPolitely(`${HLTV_BASE}/matches`);
     return parseHltvMatchesHtml(html);
   }
 
@@ -554,7 +554,7 @@ export class HLTVCrawler {
    */
   async getMatchDetail(matchId: string, matchUrl?: string): Promise<HltvMatchDetail> {
     const url = await this.resolveMatchUrl(matchId, matchUrl);
-    const html = await fetchWithBrowser(url);
+    const html = await fetchTextPolitely(url);
     return parseHltvMatchDetailHtml(html, matchId, url);
   }
 
@@ -564,7 +564,7 @@ export class HLTVCrawler {
    */
   async getCommunityPrediction(matchId: string): Promise<HltvCommunityPrediction | null> {
     try {
-      const html = await fetchWithBrowser(await this.resolveMatchUrl(matchId));
+      const html = await fetchTextPolitely(await this.resolveMatchUrl(matchId));
       const $ = cheerio.load(html);
       if (!$('.pick-a-winner').length) return null;
 
@@ -637,7 +637,7 @@ export class HLTVCrawler {
   async getMatchOutcome(matchId: string, matchUrl?: string): Promise<HltvMatchOutcome> {
     try {
       const url = matchUrl || await this.resolveMatchUrl(matchId);
-      const html = await fetchWithBrowser(url);
+      const html = await fetchTextPolitely(url);
       return parseHltvMatchOutcomeHtml(html, matchId, url);
     } catch (err) {
       return {
@@ -685,10 +685,10 @@ export class HLTVCrawler {
    * Get detailed team information including players, recent form, and map pool.
    */
   async getTeam(teamId: string): Promise<Team> {
-    const html = await fetchWithBrowser(`${HLTV_BASE}/team/${teamId}/_`);
+    const html = await fetchTextPolitely(`${HLTV_BASE}/team/${teamId}/_`);
     const team = parseHltvTeamHtml(html, teamId);
     try {
-      const resultsHtml = await fetchWithBrowser(`${HLTV_BASE}/results?team=${teamId}`);
+      const resultsHtml = await fetchTextPolitely(`${HLTV_BASE}/results?team=${teamId}`);
       team.recentForm = parseHltvResultsHtml(resultsHtml, team.name);
     } catch {
       // Team identity, roster and map pool remain usable when results are temporarily unavailable.
@@ -709,7 +709,7 @@ export class HLTVCrawler {
    */
   async getHeadToHead(teamAId: string, teamBId: string): Promise<HeadToHead> {
     try {
-      const html = await fetchWithBrowser(`${HLTV_BASE}/stats/teams/compare/${teamAId}/${teamBId}`);
+      const html = await fetchTextPolitely(`${HLTV_BASE}/stats/teams/compare/${teamAId}/${teamBId}`);
       const $ = cheerio.load(html);
 
       // Parse overall stats
@@ -776,7 +776,7 @@ export class HLTVCrawler {
    */
   private async getHeadToHeadFromMatches(teamAId: string, teamBId: string): Promise<HeadToHead> {
     try {
-      const html = await fetchWithBrowser(`${HLTV_BASE}/team/${teamAId}/matches`);
+      const html = await fetchTextPolitely(`${HLTV_BASE}/team/${teamAId}/matches`);
       const $ = cheerio.load(html);
 
       let wins = 0;

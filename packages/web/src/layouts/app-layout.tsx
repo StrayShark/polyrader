@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Sidebar, MobileMenuButton } from './sidebar';
 import { StatusBar } from './status-bar';
@@ -16,6 +16,7 @@ import { useCopySignalAlerts } from '../hooks/use-copy-signal-alerts';
 import { useSettlementAlerts } from '../hooks/use-settlement-alerts';
 import { useI18n } from '../hooks/use-i18n';
 import { PRODUCT_NAME } from '../utils/brand';
+import { cn } from '../utils/cn';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -23,6 +24,9 @@ export function AppLayout() {
   const fetchMarkets = useMarketStore((state) => state.fetchMarkets);
   const fetchSummary = useBankrollStore((state) => state.fetchSummary);
   const { t } = useI18n();
+  const { pathname } = useLocation();
+  const showBetSlip = pathname === '/' || pathname === '/match' || pathname.startsWith('/match/');
+  const showBankrollBar = !pathname.startsWith('/bankroll');
   useKeyboardShortcuts({ onCommandPalette: () => setPaletteOpen((o) => !o) });
   useWhaleAlerts();
   useCopySignalAlerts();
@@ -36,7 +40,12 @@ export function AppLayout() {
   return (
     <div
       data-testid="practice-app-shell"
-      className="grid h-screen overflow-hidden bg-background text-foreground lg:grid-cols-[240px_minmax(0,1fr)_340px]"
+      className={cn(
+        'grid h-screen overflow-hidden bg-background text-foreground',
+        showBetSlip
+          ? 'lg:grid-cols-[240px_minmax(0,1fr)_340px]'
+          : 'lg:grid-cols-[240px_minmax(0,1fr)]',
+      )}
     >
       {/* Desktop rail: navigation, theme and advanced entry points */}
       <div className="hidden min-h-0 border-r border-border bg-sidebar lg:block">
@@ -64,9 +73,6 @@ export function AppLayout() {
             <MobileMenuButton onClick={() => setSidebarOpen(true)} />
           </div>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="hidden rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary sm:inline-flex">
-              Practice Mode
-            </span>
             <span className="hidden truncate text-sm font-semibold sm:inline lg:hidden">{PRODUCT_NAME}</span>
           </div>
 
@@ -81,13 +87,12 @@ export function AppLayout() {
           </button>
 
           <div className="ml-auto flex items-center gap-2">
-            <MobileBetSlipDrawer />
+            {showBetSlip && <MobileBetSlipDrawer />}
             <NotificationBell />
           </div>
         </header>
 
-        {/* Virtual bankroll bar */}
-        <VirtualBankrollBar />
+        {showBankrollBar && <VirtualBankrollBar />}
 
         <main className="min-w-0 flex-1 overflow-auto p-4 md:p-5 lg:p-6">
           <Outlet />
@@ -96,13 +101,14 @@ export function AppLayout() {
         <StatusBar />
       </div>
 
-      {/* Desktop practice slip */}
-      <aside
-        data-testid="desktop-bet-slip"
-        className="hidden min-h-0 border-l border-border bg-card/50 p-3 lg:flex lg:flex-col"
-      >
-        <PracticeBetSlip />
-      </aside>
+      {showBetSlip && (
+        <aside
+          data-testid="desktop-bet-slip"
+          className="hidden min-h-0 border-l border-border bg-card/50 p-3 lg:flex lg:flex-col"
+        >
+          <PracticeBetSlip />
+        </aside>
+      )}
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>

@@ -24,7 +24,7 @@ export function calculateEv(stake: number, userProbability: number, odds: number
 export function calculateKellyFraction(userProbability: number, marketProbability: number): number {
   if (userProbability <= 0 || marketProbability <= 0 || marketProbability >= 1) return 0;
   // Kelly = (bp - q) / b, where b = odds - 1, p = userProbability, q = 1 - p
-  const b = (1 / marketProbability) - 1;
+  const b = 1 / marketProbability - 1;
   const q = 1 - userProbability;
   const fraction = (b * userProbability - q) / b;
   return Math.max(0, fraction);
@@ -46,15 +46,12 @@ export function calculateBrierScore(probability: number, outcome: 0 | 1): number
   return Math.pow(probability - outcome, 2);
 }
 
-export function calculateClosingLineValue(
-  entryOdds: number,
-  closingOdds: number,
-): number {
+export function calculateClosingLineValue(entryOdds: number, closingOdds: number): number {
   // Positive CLV means you got better odds than the closing line.
-  const entryProb = oddsToImpliedProbability(entryOdds);
-  const closingProb = oddsToImpliedProbability(closingOdds);
-  if (closingProb === 0) return 0;
-  return (entryProb - closingProb) / closingProb;
+  if (!Number.isFinite(entryOdds) || !Number.isFinite(closingOdds) || closingOdds <= 1) {
+    return 0;
+  }
+  return entryOdds / closingOdds - 1;
 }
 
 export function americanToDecimal(american: number): number {

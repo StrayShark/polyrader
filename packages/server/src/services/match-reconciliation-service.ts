@@ -35,13 +35,15 @@ export class MatchReconciliationService {
   private marketRepo: MarketRepository;
   private settlementService: SettlementService;
 
-  constructor(deps: {
-    hltv?: Pick<HLTVCrawler, 'getMatchOutcome'>;
-    llmRepo?: LLMRepository;
-    esportsRepo?: EsportsRepository;
-    marketRepo?: MarketRepository;
-    settlementService?: SettlementService;
-  } = {}) {
+  constructor(
+    deps: {
+      hltv?: Pick<HLTVCrawler, 'getMatchOutcome'>;
+      llmRepo?: LLMRepository;
+      esportsRepo?: EsportsRepository;
+      marketRepo?: MarketRepository;
+      settlementService?: SettlementService;
+    } = {},
+  ) {
     this.hltv = deps.hltv ?? new HLTVCrawler();
     this.llmRepo = deps.llmRepo ?? new LLMRepository();
     this.esportsRepo = deps.esportsRepo ?? new EsportsRepository();
@@ -50,10 +52,17 @@ export class MatchReconciliationService {
   }
 
   async reconcileActiveMatches(limit = 25): Promise<MatchReconciliationReport> {
-    const rows = this.llmRepo.getActiveMatches()
+    const rows = this.llmRepo
+      .getActiveMatches()
       .filter((row) => row.hltv_match_id)
       .slice(0, limit);
-    const report: MatchReconciliationReport = { checked: 0, unavailable: 0, updated: 0, settledBets: 0, events: [] };
+    const report: MatchReconciliationReport = {
+      checked: 0,
+      unavailable: 0,
+      updated: 0,
+      settledBets: 0,
+      events: [],
+    };
     for (const row of rows) {
       const event = await this.reconcileRow(row);
       report.checked++;
@@ -74,29 +83,39 @@ export class MatchReconciliationService {
     return this.reconcileRow(row);
   }
 
-  private async reconcileRow(row: Record<string, unknown>): Promise<MatchReconciliationEvent | null> {
+  private async reconcileRow(
+    row: Record<string, unknown>,
+  ): Promise<MatchReconciliationEvent | null> {
     const matchId = String(row.match_id ?? '');
     const hltvMatchId = String(row.hltv_match_id ?? '');
     if (!matchId || !hltvMatchId) return null;
-    const sourceUrl = this.esportsRepo.getMatchSourceLinks(matchId)
+    const sourceUrl = this.esportsRepo
+      .getMatchSourceLinks(matchId)
       .find((link) => link.source === 'hltv')?.sourceUrl;
     let outcome: HltvMatchOutcome;
     try {
       outcome = await this.hltv.getMatchOutcome(hltvMatchId, sourceUrl);
     } catch (err) {
-      logger.warn('HLTV match reconciliation failed', { matchId, hltvMatchId, error: (err as Error).message });
+      logger.warn('HLTV match reconciliation failed', {
+        matchId,
+        hltvMatchId,
+        error: (err as Error).message,
+      });
       return null;
     }
     if (!outcome.available) return null;
 
     const previousStatus = String(row.status ?? 'scheduled');
-    const canonicalMatchId = String(row.canonical_match_id ?? '') || buildCanonicalMatchId({ hltvMatchId });
+    const canonicalMatchId =
+      String(row.canonical_match_id ?? '') || buildCanonicalMatchId({ hltvMatchId });
     const canonicalRow = { ...row, canonical_match_id: canonicalMatchId };
-    this.marketRepo.alignLocalMarketsWithMatch(buildMatchInfo(
-      canonicalRow,
-      this.llmRepo.getTeam(String(row.team_a_id ?? '')),
-      this.llmRepo.getTeam(String(row.team_b_id ?? '')),
-    ));
+    this.marketRepo.alignLocalMarketsWithMatch(
+      buildMatchInfo(
+        canonicalRow,
+        this.llmRepo.getTeam(String(row.team_a_id ?? '')),
+        this.llmRepo.getTeam(String(row.team_b_id ?? '')),
+      ),
+    );
     let status: MatchReconciliationEvent['status'];
     let settledBets = 0;
     let resolvedMarkets = 0;
@@ -112,13 +131,11 @@ export class MatchReconciliationService {
         outcome.winnerTeamId,
       );
       if (outcome.winnerTeamName) {
-        resolvedMarkets = this.marketRepo.resolveLocalMarkets(canonicalMatchId, outcome.winnerTeamName).length;
         const mapWinners = (outcome.maps ?? [])
-          .filter((map): map is { mapNumber: number; winnerTeamName: string } => Boolean(map.winnerTeamName))
+          .filter((map): map is { mapNumber: number; winnerTeamName: string } =>
+            Boolean(map.winnerTeamName),
+          )
           .map((map) => ({ mapNumber: map.mapNumber, winnerTeamName: map.winnerTeamName }));
-        if (mapWinners.length > 0) {
-          resolvedMarkets += this.marketRepo.resolveLocalMapMarkets(canonicalMatchId, mapWinners).length;
-        }
         const structured: StructuredMatchResult = {
           winnerTeamName: outcome.winnerTeamName,
           teamAName: outcome.teamAName,
@@ -135,6 +152,16 @@ export class MatchReconciliationService {
         };
         // Map / handicap / total stay pending until structured fields exist.
         settledBets = this.settlementService.settleStructuredMatch(matchId, structured).length;
+        resolvedMarkets = this.marketRepo.resolveLocalMarkets(
+          canonicalMatchId,
+          outcome.winnerTeamName,
+        ).length;
+        if (mapWinners.length > 0) {
+          resolvedMarkets += this.marketRepo.resolveLocalMapMarkets(
+            canonicalMatchId,
+            mapWinners,
+          ).length;
+        }
       }
     } else if (outcome.status === 'cancelled') {
       status = 'cancelled';
@@ -142,11 +169,12 @@ export class MatchReconciliationService {
       resolvedMarkets = this.marketRepo.closeLocalMarkets(canonicalMatchId).length;
       settledBets = this.settlementService.voidMatch(matchId).length;
     } else {
-      status = outcome.status === 'postponed'
-        ? 'delayed'
-        : outcome.status === 'live'
-          ? 'live'
-          : scheduledStatus(String(row.scheduled_at ?? ''));
+      status =
+        outcome.status === 'postponed'
+          ? 'delayed'
+          : outcome.status === 'live'
+            ? 'live'
+            : scheduledStatus(String(row.scheduled_at ?? ''));
       if (status !== previousStatus) this.llmRepo.updateMatchStatus(matchId, status);
     }
 

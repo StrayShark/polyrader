@@ -3,14 +3,38 @@ import type {
   AnalysisRequestEnvelope,
   EsportsGame,
   LLMProvider,
+  MarketAlignmentResult,
   NormalizedMatchFacts,
 } from '@polyrader/core';
-import { buildRunId, findSettlementRule } from '@polyrader/core';
+import {
+  alignMarketsForMatch,
+  buildRunId,
+  classifySettledMarketKind,
+  evaluateDotaAnalysisEligibility,
+  evaluateLolAnalysisEligibility,
+  evaluateValorantAnalysisEligibility,
+  extractHandicapLine,
+  extractTotalMapsLine,
+  findSettlementRule,
+  type DotaAnalysisEligibility,
+  type LolAnalysisEligibility,
+  type ValorantAnalysisEligibility,
+} from '@polyrader/core';
 import { FactRepository, LLMRepository, MarketRepository } from '@polyrader/infra';
 import { AiConfigService } from './ai-config-service';
 import { AnalysisFactPreparationService } from './analysis-fact-preparation-service';
 import { AnalysisRunService, type AnalysisRunDetail } from './analysis-run-service';
 import { PaperPolicyService } from './paper-policy-service';
+import { Dota2MarketDiscoveryService } from './dota2-market-discovery-service';
+import {
+  LolMarketDiscoveryService,
+  ValorantMarketDiscoveryService,
+} from './riot-games-market-discovery-service';
+
+type AnalysisEligibilityGate =
+  | DotaAnalysisEligibility
+  | LolAnalysisEligibility
+  | ValorantAnalysisEligibility;
 
 export interface ExecuteStandardAnalysisInput {
   game: EsportsGame;
@@ -39,6 +63,22 @@ interface StandardPromptExecutor {
   }): Promise<{ provider: LLMProvider; model: string; rawResponse: string; latencyMs: number }>;
 }
 
+interface StandardFactPreparation {
+  prepare(game: EsportsGame, matchId?: string): Promise<unknown>;
+}
+
+export class AnalysisEligibilityError extends Error {
+  readonly code = 'ANALYSIS_NOT_ELIGIBLE';
+
+  constructor(
+    message: string,
+    readonly eligibility: AnalysisEligibilityGate,
+  ) {
+    super(message);
+    this.name = 'AnalysisEligibilityError';
+  }
+}
+
 /** Real analysis.v1 executor: normalized facts -> frozen prompt -> provider -> validated report. */
 export class StandardAnalysisService {
   private readonly facts: FactRepository;
@@ -47,7 +87,13 @@ export class StandardAnalysisService {
   private readonly llm: StandardPromptExecutor;
   private readonly llmConfigs: LLMRepository;
   private readonly markets: MarketRepository;
-  private readonly factPreparation: Pick<AnalysisFactPreparationService, 'prepare'>;
+  private readonly factPreparation: StandardFactPreparation;
+  private readonly dotaMarketDiscovery: Pick<Dota2MarketDiscoveryService, 'discoverForFacts'>;
+  private readonly lolMarketDiscovery: Pick<LolMarketDiscoveryService, 'discoverForFacts'>;
+  private readonly valorantMarketDiscovery: Pick<
+    ValorantMarketDiscoveryService,
+    'discoverForFacts'
+  >;
 
   constructor(deps?: {
     facts?: FactRepository;
@@ -56,7 +102,10 @@ export class StandardAnalysisService {
     llm?: StandardPromptExecutor;
     llmConfigs?: LLMRepository;
     markets?: MarketRepository;
-    factPreparation?: Pick<AnalysisFactPreparationService, 'prepare'>;
+    factPreparation?: StandardFactPreparation;
+    dotaMarketDiscovery?: Pick<Dota2MarketDiscoveryService, 'discoverForFacts'>;
+    lolMarketDiscovery?: Pick<LolMarketDiscoveryService, 'discoverForFacts'>;
+    valorantMarketDiscovery?: Pick<ValorantMarketDiscoveryService, 'discoverForFacts'>;
   }) {
     this.facts = deps?.facts ?? new FactRepository();
     this.runs = deps?.runs ?? new AnalysisRunService();
@@ -65,13 +114,57 @@ export class StandardAnalysisService {
     this.llmConfigs = deps?.llmConfigs ?? new LLMRepository();
     this.markets = deps?.markets ?? new MarketRepository();
     this.factPreparation = deps?.factPreparation ?? new AnalysisFactPreparationService();
+    this.dotaMarketDiscovery = deps?.dotaMarketDiscovery ?? new Dota2MarketDiscoveryService();
+    this.lolMarketDiscovery = deps?.lolMarketDiscovery ?? new LolMarketDiscoveryService();
+    this.valorantMarketDiscovery =
+      deps?.valorantMarketDiscovery ?? new ValorantMarketDiscoveryService();
   }
 
   async execute(input: ExecuteStandardAnalysisInput): Promise<AnalysisRunDetail> {
     await this.factPreparation.prepare(input.game, input.matchId);
     const facts = this.resolveFacts(input.game, input.matchId);
+    if (!isPrematchAnalysisEligible(facts)) {
+      throw new Error(
+        `Match ${facts.externalMatchId} is not an eligible current pre-match event`,
+      );
+    }
     const activePolicy = this.policy.getActive();
-    const storedMarket = input.market ? undefined : this.resolveStoredMarket(input.game, facts);
+    if (input.game === 'dota2' || input.game === 'lol' || input.game === 'valorant') {
+      try {
+        if (input.game === 'dota2') await this.dotaMarketDiscovery.discoverForFacts(facts);
+        else if (input.game === 'lol') await this.lolMarketDiscovery.discoverForFacts(facts);
+        else await this.valorantMarketDiscovery.discoverForFacts(facts);
+      } catch {
+        // Public market discovery is optional; an existing synthetic practice market remains valid.
+      }
+    }
+    const storedMarkets = this.resolveStoredMarkets(input.game, facts);
+    const requestedStoredMarket = input.market?.marketId
+      ? storedMarkets.find((market) => market.marketId === input.market?.marketId)
+      : input.market?.kind
+        ? storedMarkets.find((market) => market.kind === input.market?.kind)
+        : undefined;
+    const alignment = this.buildMarketAlignment(input, facts, storedMarkets);
+    const eligibility = evaluateGameAnalysisEligibility({
+      game: input.game,
+      facts,
+      marketAlignment: alignment,
+      selectedMarketId: input.market?.marketId,
+      policy: activePolicy,
+    });
+    if (eligibility && !eligibility.analysisEligible) {
+      const label =
+        input.game === 'dota2' ? 'Dota' : input.game === 'lol' ? 'LoL' : 'Valorant';
+      throw new AnalysisEligibilityError(
+        `${label} analysis blocked: ${eligibility.reasonCodes.join(', ')}`,
+        eligibility,
+      );
+    }
+    const storedMarket =
+      requestedStoredMarket ??
+      (eligibility?.selectedMarket
+        ? storedMarkets.find((market) => market.marketId === eligibility.selectedMarket?.marketId)
+        : storedMarkets[0]);
     const kind = input.market?.kind ?? storedMarket?.kind ?? 'match_winner';
     const marketId =
       input.market?.marketId ??
@@ -86,6 +179,24 @@ export class StandardAnalysisService {
         label: participant.name,
         marketProbability: 1 / facts.participants.length,
       }));
+    const analysisFacts = eligibility
+      ? [
+          ...facts.facts,
+          {
+            factId:
+              input.game === 'dota2'
+                ? 'dota-analysis-eligibility'
+                : input.game === 'lol'
+                  ? 'lol-analysis-eligibility'
+                  : 'valorant-analysis-eligibility',
+            entityType: 'quality',
+            source: 'polyrader-runtime',
+            observedAt: eligibility.checkedAt,
+            field: 'analysis_gate',
+            value: eligibility,
+          },
+        ]
+      : facts.facts;
 
     const envelope: AnalysisRequestEnvelope = {
       contractVersion: 'analysis.v1',
@@ -110,7 +221,13 @@ export class StandardAnalysisService {
       market: {
         marketId,
         kind,
-        line: input.market?.line ?? null,
+        line: input.market?.line ?? storedMarket?.line ?? null,
+        evidenceType: storedMarket?.evidenceType ?? (input.market ? 'real' : 'synthetic'),
+        liquidityStatus:
+          storedMarket?.liquidityStatus ??
+          ((input.market?.liquidityUsd ?? 0) < activePolicy.lowLiquidityThresholdUsd
+            ? 'low'
+            : 'normal'),
         outcomes,
         liquidityUsd: input.market?.liquidityUsd ?? storedMarket?.liquidityUsd ?? 0,
         observedAt:
@@ -120,7 +237,7 @@ export class StandardAnalysisService {
         dataSnapshotHash: facts.dataSnapshotHash,
         completeness: facts.completeness,
         freshnessSeconds: facts.freshnessSeconds,
-        facts: facts.facts,
+        facts: analysisFacts,
         missing: [...facts.missing, ...facts.conflictFlags],
       },
       policy: {
@@ -152,10 +269,14 @@ export class StandardAnalysisService {
         provider: selected.provider,
       });
       const isUpcoming =
-        ['scheduled', 'upcoming', 'pre_match'].includes(facts.status) &&
+        ['scheduled', 'upcoming', 'pre_match', 'prematch', 'not_started'].includes(
+          facts.status.toLowerCase(),
+        ) &&
         Date.parse(facts.startsAt) >= Date.now();
       const settlementRulesAvailable =
-        Boolean(findSettlementRule(input.game, kind)?.supported) && isUpcoming;
+        Boolean(findSettlementRule(input.game, kind)?.supported) &&
+        isUpcoming &&
+        (!eligibility || eligibility.analysisEligible);
       return this.runs.ingestResponse({
         runId,
         rawResponse: completed.rawResponse,
@@ -183,13 +304,14 @@ export class StandardAnalysisService {
 
   private async selectProvider(requested?: string): Promise<{ provider: string; model: string }> {
     const configs = await this.llmConfigs.getAllConfigs();
-    const config = configs.find(
+    const candidates = configs.filter(
       (item) =>
         item.isEnabled &&
         Boolean(item.apiKey) &&
         item.provider !== 'user' &&
         (!requested || item.provider === requested),
     );
+    const config = candidates.find((item) => item.isConnected) ?? candidates[0];
     if (!config) {
       throw new Error(
         requested
@@ -200,40 +322,165 @@ export class StandardAnalysisService {
     return { provider: config.provider, model: config.model };
   }
 
-  private resolveStoredMarket(game: EsportsGame, facts: NormalizedMatchFacts) {
+  private resolveStoredMarkets(game: EsportsGame, facts: NormalizedMatchFacts) {
     const canonicalId =
       game === 'cs2' ? `hltv:${facts.externalMatchId}` : `${game}:${facts.externalMatchId}`;
-    const market = this.markets
+    const markets = this.markets
       .findByCanonicalMatchId(canonicalId)
-      .find(
-        (item) => item.status === 'active' && item.outcomes.length === facts.participants.length,
-      );
-    if (!market) return undefined;
-    const rawPrices = market.outcomePrices.map((value) => Number(value));
-    const validPrices =
-      rawPrices.length === market.outcomes.length &&
-      rawPrices.every((value) => Number.isFinite(value) && value >= 0);
-    const total = validPrices ? rawPrices.reduce((sum, value) => sum + value, 0) : 0;
-    const outcomes = market.outcomes.map((label, index) => {
-      const participant = facts.participants.find(
-        (item) => normalizeName(item.name) === normalizeName(label),
-      );
-      return {
-        outcomeId: participant?.participantId ?? `o${index}`,
-        label,
-        marketProbability: total > 0 ? rawPrices[index] / total : 1 / market.outcomes.length,
-      };
+      .filter((item) => item.status === 'active' && item.outcomes.length >= 2);
+    return markets
+      .map((market) => {
+        const marketAlignment = alignMarketsForMatch({
+          game,
+          matchId: facts.externalMatchId,
+          markets: [
+            {
+              marketId: market.conditionId,
+              question: market.question,
+              line: marketLine(market.question),
+              outcomes: market.outcomes.map((label) => ({ label })),
+              liquidityUsd: market.liquidity,
+              tags: market.tags,
+            },
+          ],
+        });
+        const identity = marketAlignment.markets[0];
+        if (!identity?.settlementSupported) return undefined;
+        const rawPrices = market.outcomePrices.map((value) => Number(value));
+        const validPrices =
+          rawPrices.length === market.outcomes.length &&
+          rawPrices.every((value) => Number.isFinite(value) && value >= 0);
+        const total = validPrices ? rawPrices.reduce((sum, value) => sum + value, 0) : 0;
+        return {
+          marketId: market.conditionId,
+          kind: identity.kind as AnalysisMarketKind,
+          line: identity.line,
+          liquidityUsd: market.liquidity,
+          liquidityStatus: identity.liquidityStatus,
+          evidenceType: identity.evidenceType,
+          observedAt: new Date().toISOString(),
+          question: market.question,
+          tags: market.tags,
+          outcomes: market.outcomes.map((label, index) => {
+            const normalizedLabel = normalizeName(label);
+            const participant = facts.participants.find((item) =>
+              normalizedLabel.includes(normalizeName(item.name)),
+            );
+            return {
+              outcomeId: participant?.participantId ?? `${market.conditionId}:o${index}`,
+              label,
+              marketProbability: total > 0 ? rawPrices[index] / total : 1 / market.outcomes.length,
+            };
+          }),
+        };
+      })
+      .filter((market): market is NonNullable<typeof market> => Boolean(market))
+      .sort((a, b) => {
+        const real = Number(b.evidenceType === 'real') - Number(a.evidenceType === 'real');
+        const winner = Number(b.kind === 'match_winner') - Number(a.kind === 'match_winner');
+        return real || winner || b.liquidityUsd - a.liquidityUsd;
+      });
+  }
+
+  private buildMarketAlignment(
+    input: ExecuteStandardAnalysisInput,
+    facts: NormalizedMatchFacts,
+    storedMarkets: ReturnType<StandardAnalysisService['resolveStoredMarkets']>,
+  ): MarketAlignmentResult {
+    const customMarket =
+      input.market &&
+      (input.market.outcomes?.length ?? 0) >= 2 &&
+      !storedMarkets.some((market) => market.marketId === input.market?.marketId)
+        ? [
+            {
+              marketId: input.market.marketId,
+              kind: input.market.kind,
+              line: input.market.line,
+              outcomes: (input.market.outcomes ?? []).map((outcome) => ({
+                outcomeId: outcome.outcomeId,
+                label: outcome.label,
+              })),
+              liquidityUsd: input.market.liquidityUsd,
+            },
+          ]
+        : [];
+    return alignMarketsForMatch({
+      game: input.game,
+      matchId: facts.externalMatchId,
+      markets: [
+        ...storedMarkets.map((market) => ({
+          marketId: market.marketId,
+          question: market.question,
+          kind: market.kind,
+          line: market.line,
+          outcomes: market.outcomes.map((outcome) => ({
+            outcomeId: outcome.outcomeId,
+            label: outcome.label,
+          })),
+          liquidityUsd: market.liquidityUsd,
+          tags: market.tags,
+        })),
+        ...customMarket,
+      ],
     });
-    return {
-      marketId: market.conditionId,
-      kind: 'match_winner' as const,
-      liquidityUsd: market.liquidity,
-      observedAt: new Date().toISOString(),
-      outcomes,
-    };
   }
 }
 
 function normalizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function isPrematchAnalysisEligible(facts: NormalizedMatchFacts): boolean {
+  const prematchStatuses = ['scheduled', 'upcoming', 'pre_match', 'prematch', 'not_started'];
+  const timestamp = Date.parse(facts.startsAt);
+  return (
+    prematchStatuses.includes(facts.status.toLowerCase()) &&
+    Number.isFinite(timestamp) &&
+    timestamp >= Date.now() - 15 * 60 * 1000
+  );
+}
+
+function marketLine(question: string): number | null {
+  const kind = classifySettledMarketKind(question);
+  if (kind === 'handicap') return extractHandicapLine(question);
+  if (kind === 'total_maps') return extractTotalMapsLine(question);
+  return null;
+}
+
+function evaluateGameAnalysisEligibility(input: {
+  game: EsportsGame;
+  facts: NormalizedMatchFacts;
+  marketAlignment: MarketAlignmentResult;
+  selectedMarketId?: string;
+  policy: {
+    minimumCompleteness: number;
+    maximumFreshnessSeconds: number;
+    lowLiquidityThresholdUsd: number;
+  };
+}): AnalysisEligibilityGate | undefined {
+  if (input.game === 'dota2') {
+    return evaluateDotaAnalysisEligibility({
+      facts: input.facts,
+      marketAlignment: input.marketAlignment,
+      selectedMarketId: input.selectedMarketId,
+      policy: input.policy,
+    });
+  }
+  if (input.game === 'lol') {
+    return evaluateLolAnalysisEligibility({
+      facts: input.facts,
+      marketAlignment: input.marketAlignment,
+      selectedMarketId: input.selectedMarketId,
+      policy: input.policy,
+    });
+  }
+  if (input.game === 'valorant') {
+    return evaluateValorantAnalysisEligibility({
+      facts: input.facts,
+      marketAlignment: input.marketAlignment,
+      selectedMarketId: input.selectedMarketId,
+      policy: input.policy,
+    });
+  }
+  return undefined;
 }

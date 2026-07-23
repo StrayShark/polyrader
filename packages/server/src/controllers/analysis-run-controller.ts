@@ -1,6 +1,9 @@
 import type { Request, Response } from 'express';
 import { AnalysisRunService } from '../services/analysis-run-service';
-import { StandardAnalysisService } from '../services/standard-analysis-service';
+import {
+  AnalysisEligibilityError,
+  StandardAnalysisService,
+} from '../services/standard-analysis-service';
 
 export class AnalysisRunController {
   private service = new AnalysisRunService();
@@ -79,17 +82,26 @@ export class AnalysisRunController {
       });
       res.status(201).json({ data: detail });
     } catch (err) {
+      if (err instanceof AnalysisEligibilityError) {
+        res.status(409).json({
+          error: err.message,
+          code: err.code,
+          eligibility: err.eligibility,
+        });
+        return;
+      }
       const message = (err as Error).message;
       const unavailable = message.includes('not configured') || message.includes('No executable');
       res.status(unavailable ? 409 : 400).json({ error: message });
     }
   }
 
-  /** Sprint A demo: deterministic CS2 prompt → validated response → paper decision. */
+  /** Deterministic four-game prompt → validated response → paper decision. */
   runFixture(req: Request, res: Response): void {
     try {
       const invalid = req.body?.invalid === true || req.query.invalid === '1';
-      const detail = this.service.runCs2FixturePipeline({
+      const detail = this.service.runFixturePipeline({
+        game: ['cs2', 'lol', 'dota2', 'valorant'].includes(req.body?.game) ? req.body.game : 'cs2',
         invalid,
         provider: typeof req.body?.provider === 'string' ? req.body.provider : undefined,
         model: typeof req.body?.model === 'string' ? req.body.model : undefined,

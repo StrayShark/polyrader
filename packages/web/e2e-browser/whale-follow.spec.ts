@@ -37,8 +37,10 @@ test.describe('Whale follow & copy trading', () => {
   test('follow star toggles followed wallet list', async ({ page }) => {
     await page.goto('/#/whales');
     await waitForMainHeading(page);
-    await page.getByTitle(/关注|Follow/i).first().click();
-    await page.waitForResponse((resp) => resp.url().includes('/api/whale-follow') && resp.request().method() === 'POST');
+    await Promise.all([
+      page.waitForResponse((resp) => resp.url().includes('/api/whale-follow') && resp.request().method() === 'POST'),
+      page.getByTitle(/关注|Follow/i).first().click(),
+    ]);
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
     await expect(page.getByText(/0xabc1\.\.\.f456/i).first()).toBeVisible({ timeout: 5000 });
   });

@@ -60,19 +60,28 @@ export class KeyManager {
    * Input is base64-encoded (IV + ciphertext + auth tag).
    */
   decrypt(encryptedBase64: string): string {
-    const combined = Buffer.from(encryptedBase64, 'base64');
+    try {
+      const combined = Buffer.from(encryptedBase64, 'base64');
+      if (combined.length <= this.ivLength + this.tagLength) {
+        throw new Error('Invalid encrypted value');
+      }
 
-    const iv = combined.subarray(0, this.ivLength);
-    const tag = combined.subarray(combined.length - this.tagLength);
-    const encrypted = combined.subarray(this.ivLength, combined.length - this.tagLength);
+      const iv = combined.subarray(0, this.ivLength);
+      const tag = combined.subarray(combined.length - this.tagLength);
+      const encrypted = combined.subarray(this.ivLength, combined.length - this.tagLength);
 
-    const decipher = crypto.createDecipheriv(this.algorithm, this.encryptionKey, iv);
-    decipher.setAuthTag(tag);
+      const decipher = crypto.createDecipheriv(this.algorithm, this.encryptionKey, iv);
+      decipher.setAuthTag(tag);
 
-    let decrypted = decipher.update(encrypted);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
+      let decrypted = decipher.update(encrypted);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
 
-    return decrypted.toString('utf8');
+      return decrypted.toString('utf8');
+    } catch {
+      throw new Error(
+        'Stored API key cannot be decrypted with this app key. Re-save the provider key in Settings.',
+      );
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
-import type { Team, MatchInfo } from '@polyrader/core';
-import { HLTVCrawler, LLMRepository, MarketRepository } from '@polyrader/infra';
+import type { EsportsGame, NormalizedMatchFacts, Team, MatchInfo } from '@polyrader/core';
+import { FactRepository, HLTVCrawler, LLMRepository, MarketRepository } from '@polyrader/infra';
 import { cacheGet, cacheSet } from '@polyrader/infra';
 import { logger } from '../utils/logger';
 import { buildMatchInfo, buildTeamFromDbRow } from './match-helpers';
@@ -23,6 +23,7 @@ export class EsportsService {
   private hltvCrawler = new HLTVCrawler();
   private llmRepo = new LLMRepository();
   private marketRepo = new MarketRepository();
+  private factRepo = new FactRepository();
 
   async getEvents(): Promise<EventSummary[]> {
     const cacheKey = 'esports:events';
@@ -91,10 +92,13 @@ export class EsportsService {
     try {
       // Try DB first
       let dbMatch = this.llmRepo.getMatch(matchId);
+      let linkedMatchId: string | undefined;
       if (!dbMatch) {
-        const market = this.marketRepo.findBySlug(matchId) ?? this.marketRepo.findByConditionId(matchId);
-        const linkedMatchId = market?.match?.matchId;
-        if (linkedMatchId && linkedMatchId !== matchId) dbMatch = this.llmRepo.getMatch(linkedMatchId);
+        const market =
+          this.marketRepo.findBySlug(matchId) ?? this.marketRepo.findByConditionId(matchId);
+        linkedMatchId = market?.match?.matchId;
+        if (linkedMatchId && linkedMatchId !== matchId)
+          dbMatch = this.llmRepo.getMatch(linkedMatchId);
       }
       if (dbMatch) {
         const teamARow = this.llmRepo.getTeam(String(dbMatch.team_a_id ?? ''));
@@ -102,6 +106,18 @@ export class EsportsService {
         const match = buildMatchInfo(dbMatch, teamARow, teamBRow);
         await cacheSet(cacheKey, match, 300);
         return match;
+      }
+
+      for (const candidateId of [matchId, linkedMatchId].filter((value): value is string =>
+        Boolean(value),
+      )) {
+        for (const game of ['dota2', 'lol', 'valorant', 'cs2'] as EsportsGame[]) {
+          const facts = this.factRepo.getByGameExternalId(game, candidateId);
+          if (!facts) continue;
+          const match = matchInfoFromNormalizedFacts(facts);
+          await cacheSet(cacheKey, match, 300);
+          return match;
+        }
       }
 
       // Fallback: fetch from HLTV
@@ -133,12 +149,15 @@ export class EsportsService {
         status: 'scheduled',
         maps: detail.maps,
         lineups: detail.lineups ?? undefined,
-        teamDetails: teamAData && teamBData ? {
-          teamA: teamAData,
-          teamB: teamBData,
-          source: 'hltv',
-          isComplete: false,
-        } : undefined,
+        teamDetails:
+          teamAData && teamBData
+            ? {
+                teamA: teamAData,
+                teamB: teamBData,
+                source: 'hltv',
+                isComplete: false,
+              }
+            : undefined,
       };
       await cacheSet(cacheKey, match, 300);
       return match;
@@ -150,7 +169,8 @@ export class EsportsService {
 
   async getMapPool(): Promise<Array<{ map: string; teamAPct: number; teamBPct: number }>> {
     const cacheKey = 'esports:map-pool';
-    const cached = await cacheGet<Array<{ map: string; teamAPct: number; teamBPct: number }>>(cacheKey);
+    const cached =
+      await cacheGet<Array<{ map: string; teamAPct: number; teamBPct: number }>>(cacheKey);
     if (cached) return cached;
 
     try {
@@ -193,7 +213,50 @@ export class EsportsService {
         const mp = mapPool as Record<string, unknown>;
         if (mp.maps) return mp.maps as Record<string, number>;
       }
-    } catch (err) { logger.warn('Failed to parse team map pool', { error: (err as Error).message }); }
+    } catch (err) {
+      logger.warn('Failed to parse team map pool', { error: (err as Error).message });
+    }
     return {};
   }
+}
+
+export function matchInfoFromNormalizedFacts(facts: NormalizedMatchFacts): MatchInfo {
+  const teamA = facts.participants.find((participant) => participant.side === 'a');
+  const teamB = facts.participants.find((participant) => participant.side === 'b');
+  return {
+    matchId: facts.externalMatchId,
+    canonicalMatchId: `${facts.game}:${facts.externalMatchId}`,
+    teamA: {
+      teamId: teamA?.participantId ?? `${facts.externalMatchId}-a`,
+      name: teamA?.name ?? 'Team A',
+      logo: '',
+      rank: 999,
+      region: '',
+    },
+    teamB: {
+      teamId: teamB?.participantId ?? `${facts.externalMatchId}-b`,
+      name: teamB?.name ?? 'Team B',
+      logo: '',
+      rank: 999,
+      region: '',
+    },
+    eventName: facts.eventName,
+    eventType: 'Online',
+    format: facts.format,
+    scheduledAt: facts.startsAt,
+    status: normalizeFactMatchStatus(facts.status),
+    maps: facts.mapPool,
+  };
+}
+
+function normalizeFactMatchStatus(status: string): MatchInfo['status'] {
+  const normalized = status.toLowerCase();
+  if (['scheduled', 'upcoming'].includes(normalized)) return 'scheduled';
+  if (['pre_match', 'prematch', 'not_started'].includes(normalized)) return 'pre_match';
+  if (['live', 'running', 'in_progress'].includes(normalized)) return 'live';
+  if (['finished', 'completed'].includes(normalized)) return 'finished';
+  if (normalized === 'settled') return 'settled';
+  if (normalized === 'delayed') return 'delayed';
+  if (['cancelled', 'canceled'].includes(normalized)) return 'cancelled';
+  return 'scheduled';
 }

@@ -121,9 +121,11 @@ fn load_sidecar_env_vars() -> Vec<(String, String)> {
             || key.starts_with("RIOT_")
             || key.starts_with("LIQUIPEDIA_")
             || key.starts_with("OPENDOTA_")
+            || key.starts_with("VALORANT_API_")
             || key == "STEAM_WEB_API_KEY"
             || key.starts_with("POLYRADER_ENABLE_")
             || key.starts_with("POLYRADER_LIQUIPEDIA_")
+            || key.starts_with("POLYRADER_CRAWLER_")
         {
             let cleaned = value.trim().trim_matches('"').trim_matches('\'').to_string();
             if !cleaned.is_empty() {
@@ -245,9 +247,29 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
 
     let encryption_key = config.encryption_key.clone().unwrap_or_default();
 
-    // In development, use npx tsx to run the server from source.
-    // In production, use the bun-compiled standalone binary (shipped as a Tauri resource).
-    let mut cmd = if cfg!(debug_assertions) {
+    // A bundled app must be self-contained even when built with the debug profile.
+    // `cargo tauri dev` falls back to the TypeScript source when no resource exists.
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+    let bundled_candidates = [
+        resource_dir.join(sidecar_binary_name()),
+        resource_dir
+            .join("_up_")
+            .join("packages")
+            .join("server")
+            .join("dist")
+            .join(sidecar_binary_name()),
+    ];
+    let bundled_sidecar = bundled_candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned();
+
+    let mut cmd = if let Some(resource_path) = bundled_sidecar {
+        Command::new(resource_path)
+    } else if cfg!(debug_assertions) {
         // cargo tauri dev runs with cwd = src-tauri; server path is relative to repo root.
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -258,23 +280,10 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
             .args(["tsx", "packages/server/src/index.ts"]);
         c
     } else {
-        // Resolve the bundled server binary from Tauri's resource directory
-        let resource_path = app
-            .path()
-            .resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))?
-            .join(sidecar_binary_name());
-
-        if !resource_path.exists() {
-            return Err(format!(
-                "Bundled server not found at: {:?}. Ensure the build includes server resources.",
-                resource_path
-            ));
-        }
-
-        // The bun-compiled binary is standalone — no Node.js required
-         let c = Command::new(&resource_path);
-         c
+        return Err(format!(
+            "Bundled server not found in resource directory: {:?}",
+            resource_dir
+        ));
     };
 
     cmd.arg(format!("--port={}", port))

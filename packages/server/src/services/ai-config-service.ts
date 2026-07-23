@@ -223,12 +223,13 @@ export class AiConfigService {
     provider?: string;
   }): Promise<{ provider: LLMProvider; model: string; rawResponse: string; latencyMs: number }> {
     const configs = await this.llmRepo.getAllConfigs();
-    const config = configs.find((item) => (
+    const candidates = configs.filter((item) => (
       item.isEnabled
       && Boolean(item.apiKey)
       && item.provider !== 'user'
       && (!input.provider || item.provider === input.provider)
     ));
+    const config = candidates.find((item) => item.isConnected) ?? candidates[0];
     if (!config) {
       throw new Error(input.provider
         ? `LLM provider ${input.provider} is not configured or enabled`
@@ -250,6 +251,13 @@ export class AiConfigService {
         rawResponse,
         latencyMs: Date.now() - startedAt,
       };
+    } catch (error) {
+      await this.llmRepo.upsertConfig({
+        ...config,
+        isConnected: false,
+        lastTestedAt: new Date().toISOString(),
+      });
+      throw error;
     } finally {
       this.releaseSlot();
     }

@@ -7,6 +7,7 @@ import {
 } from '@polyrader/core';
 import { SimBetRepository, SimAccountRepository, MarketRepository } from '@polyrader/infra';
 import { ReviewService } from './review-service';
+import { ClosingPriceService } from './closing-price-service';
 
 export interface SettledLeg {
   leg: SimBetLeg;
@@ -31,11 +32,14 @@ export class SettlementService {
   private accountRepo = new SimAccountRepository();
   private marketRepo = new MarketRepository();
   private reviewService = new ReviewService();
+  private closingPrices = new ClosingPriceService();
 
   settleBet(id: string, result: SimBetResult, pnl?: number): SimBet {
     const withLegs = this.betRepo.getWithLegs(id);
     if (!withLegs) throw new Error(`Bet ${id} not found`);
     if (withLegs.bet.status !== 'open') throw new Error(`Bet ${id} is not open`);
+
+    this.closingPrices.captureOrMarkUnavailable(id);
 
     const finalPnl = this.calculatePnl(withLegs.bet, result, pnl);
     const settledBet = this.betRepo.settle(id, result, finalPnl);
@@ -48,7 +52,11 @@ export class SettlementService {
    * Legacy helper: treat every open leg on the match as a series-winner selection.
    * Prefer `settleStructuredMatch` for multi-market settlement.
    */
-  settleMatch(matchId: string, winnerSelection: string, options: { strictMarketWinner?: boolean } = {}): SettlementResult[] {
+  settleMatch(
+    matchId: string,
+    winnerSelection: string,
+    options: { strictMarketWinner?: boolean } = {},
+  ): SettlementResult[] {
     const structured: StructuredMatchResult = { winnerTeamName: winnerSelection };
     if (options.strictMarketWinner) {
       return this.settleStructuredMatch(matchId, structured, { kinds: ['match_winner'] });
@@ -62,7 +70,9 @@ export class SettlementService {
   settleStructuredMatch(
     matchId: string,
     structured: StructuredMatchResult,
-    options: { kinds?: Array<'match_winner' | 'map_winner' | 'handicap' | 'total_maps' | 'correct_score'> } = {},
+    options: {
+      kinds?: Array<'match_winner' | 'map_winner' | 'handicap' | 'total_maps' | 'correct_score'>;
+    } = {},
   ): SettlementResult[] {
     const openBets = this.betRepo.getOpenBetsWithLegsForMatch(matchId);
     const results: SettlementResult[] = [];
@@ -86,7 +96,8 @@ export class SettlementService {
         // Back-compat: legs without market metadata still settle as series winner when provided.
         let legResult: StructuredLegResult = decision.result;
         if (decision.kind === 'unsupported' && structured.winnerTeamName) {
-          const won = normalizeSelection(leg.selection) === normalizeSelection(structured.winnerTeamName);
+          const won =
+            normalizeSelection(leg.selection) === normalizeSelection(structured.winnerTeamName);
           legResult = won ? 'won' : 'lost';
         }
 
@@ -95,6 +106,7 @@ export class SettlementService {
         changed = true;
       }
       if (!changed) continue;
+      this.closingPrices.captureOrMarkUnavailable(withLegs.bet.id);
       const result = this.finalizeResolvedBet(withLegs.bet.id);
       if (result) results.push(result);
     }
@@ -112,6 +124,7 @@ export class SettlementService {
         changed = true;
       }
       if (!changed) continue;
+      this.closingPrices.captureOrMarkUnavailable(withLegs.bet.id);
       const result = this.finalizeResolvedBet(withLegs.bet.id);
       if (result) results.push(result);
     }
@@ -151,7 +164,9 @@ export class SettlementService {
     if (!withLegs || withLegs.bet.status !== 'open') return null;
     const settledLegs = withLegs.legs.map((leg) => ({ leg, result: leg.result ?? null }));
     const anyLost = settledLegs.some(({ result }) => result === 'lost');
-    const allResolved = settledLegs.every(({ result }) => result === 'won' || result === 'lost' || result === 'push');
+    const allResolved = settledLegs.every(
+      ({ result }) => result === 'won' || result === 'lost' || result === 'push',
+    );
     if (!anyLost && !allResolved) return null;
 
     let bet: SimBet;
@@ -191,5 +206,7 @@ function normalizeSelection(value: string): string {
 export function isSeriesWinnerMarketQuestion(question: string): boolean {
   const parsed = parsePolymarketMatch(question);
   if (!parsed || parsed.isMapMarket) return false;
-  return !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(question);
+  return !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(
+    question,
+  );
 }

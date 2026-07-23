@@ -4,7 +4,6 @@ import { Star, Bell, Zap, Play, Loader2, Inbox, Users, ExternalLink, Trophy, Wav
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
 import { useI18n } from '../hooks/use-i18n';
 import { Badge, Button, Card, CardHeader, CardTitle, Input } from '@/components/ui';
-import { ProductModeNotice } from './ProductModeNotice';
 import { EmptyStateGuide } from './EmptyStateGuide';
 import { useToast } from './ToastProvider';
 import type { FollowedWallet, WalletCopySignal } from '@polyrader/core/browser';
@@ -52,7 +51,6 @@ export function CopyFollowPanel() {
 
   return (
     <div className="space-y-4">
-      <ProductModeNotice mode="paper-copy" />
       <p className="text-xs text-muted-foreground" role="note">{t('whales.sameBlockDisclaimer')}</p>
 
       <Card>

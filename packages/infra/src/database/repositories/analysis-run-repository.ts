@@ -305,7 +305,8 @@ export class AnalysisRunRepository {
       runId: String(row.run_id),
       attempt: Number(row.attempt),
       rawResponse: String(row.raw_response),
-      normalizedResponseJson: row.normalized_response_json != null ? String(row.normalized_response_json) : null,
+      normalizedResponseJson:
+        row.normalized_response_json != null ? String(row.normalized_response_json) : null,
       validationErrorsJson: String(row.validation_errors_json ?? '[]'),
       isValid: Number(row.is_valid) === 1,
       latencyMs: row.latency_ms != null ? Number(row.latency_ms) : null,
@@ -445,10 +446,7 @@ export class AnalysisRunRepository {
   }
 
   getPaperDecision(id: string): PaperDecisionRecord | undefined {
-    const row = queryOne<Record<string, unknown>>(
-      `SELECT * FROM paper_decisions WHERE id = ?`,
-      id,
-    );
+    const row = queryOne<Record<string, unknown>>(`SELECT * FROM paper_decisions WHERE id = ?`, id);
     if (!row) return undefined;
     return {
       id: String(row.id),
@@ -485,17 +483,32 @@ export class AnalysisRunRepository {
     query(`UPDATE paper_decisions SET bet_id = ? WHERE id = ?`, betId, decisionId);
   }
 
+  rejectPaperDecision(decisionId: string, reasonCode: string): PaperDecisionRecord {
+    const current = this.getPaperDecision(decisionId);
+    if (!current) throw new Error(`Paper decision ${decisionId} not found`);
+    const reasons = new Set<string>(JSON.parse(current.reasonCodesJson) as string[]);
+    reasons.add(reasonCode);
+    query(
+      `UPDATE paper_decisions
+       SET action = 'rejected', reason_codes_json = ?, stake = 0
+       WHERE id = ?`,
+      JSON.stringify([...reasons]),
+      decisionId,
+    );
+    return this.getPaperDecision(decisionId)!;
+  }
+
   listPaperDecisions(limit = 50, action?: string): PaperDecisionRecord[] {
     const rows = action
       ? query<Record<string, unknown>>(
-        `SELECT * FROM paper_decisions WHERE action = ? ORDER BY created_at DESC LIMIT ?`,
-        action,
-        limit,
-      )
+          `SELECT * FROM paper_decisions WHERE action = ? ORDER BY created_at DESC LIMIT ?`,
+          action,
+          limit,
+        )
       : query<Record<string, unknown>>(
-        `SELECT * FROM paper_decisions ORDER BY created_at DESC LIMIT ?`,
-        limit,
-      );
+          `SELECT * FROM paper_decisions ORDER BY created_at DESC LIMIT ?`,
+          limit,
+        );
     return rows.map((row) => this.getPaperDecision(String(row.id))!).filter(Boolean);
   }
 

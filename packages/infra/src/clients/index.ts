@@ -7,3 +7,4 @@ export * from './grid/grid-client';
 export * from './liquipedia/index';
 export * from './opendota/index';
 export * from './riot/index';
+export * from './valorant/index';

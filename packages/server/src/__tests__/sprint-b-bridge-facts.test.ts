@@ -119,7 +119,9 @@ describe('LLM bridge + Validation Lab', () => {
       prediction: { outcomes: [{ outcomeId: 'navi', probability: 0.9 }] },
       confidence: { score: 0.7, grade: 'medium', reasonCodes: [] },
       recommendation: { action: 'recommend_outcome', outcomeId: 'navi' },
-      evidence: [{ factIds: ['team-a-rating'], direction: 'supports', impact: 'medium', summary: 'rating' }],
+      evidence: [
+        { factIds: ['team-a-rating'], direction: 'supports', impact: 'medium', summary: 'rating' },
+      ],
       risks: [],
       rationaleSummary: 'repaired path',
     });
@@ -138,7 +140,35 @@ describe('LLM bridge + Validation Lab', () => {
     const { summary, persisted } = service.normalizeGame('dota2', { useFixtureFallback: true });
     expect(persisted.length).toBeGreaterThan(0);
     expect(summary.game).toBe('dota2');
+    expect(summary.boardState).toBe('paper_ready');
+    expect(summary.completeness).toBe(1);
+    expect(summary.missing).toEqual([]);
+    expect(summary.sampleMatch?.adapterVersion).toBe('dota2.facts.v3');
+    expect(summary.sampleMatch?.players).toHaveLength(10);
     expect(summary.sampleMatch?.dataSnapshotHash.startsWith('sha256:')).toBe(true);
-    expect(summary.stages.some((s) => s.stage === 'fact_normalize')).toBe(true);
+    expect(summary.stages.find((s) => s.stage === 'market_align')?.status).toBe('warning');
+    expect(summary.marketAlignment?.evidenceType).toBe('synthetic');
   });
+
+  it.each([
+    ['lol', 'lol.facts.v2', 'draft'],
+    ['valorant', 'valorant.facts.v2', 'agent_bans'],
+  ] as const)(
+    'normalizes a complete future %s fixture with an aligned practice market',
+    (game, adapterVersion, expectedPlaceholder) => {
+      const { summary, persisted } = new FactNormalizationService().normalizeGame(game, {
+        forceFixture: true,
+      });
+
+      expect(persisted).toHaveLength(1);
+      expect(summary.boardState).toBe('paper_ready');
+      expect(summary.completeness).toBe(1);
+      expect(summary.missing).toContain(expectedPlaceholder);
+      expect(summary.sampleMatch).toMatchObject({ adapterVersion });
+      expect(summary.sampleMatch?.players).toHaveLength(10);
+      expect(Date.parse(summary.sampleMatch!.startsAt)).toBeGreaterThan(Date.now());
+      expect(summary.stages.find((stage) => stage.stage === 'market_align')?.status).toBe('warning');
+      expect(summary.marketAlignment?.evidenceType).toBe('synthetic');
+    },
+  );
 });

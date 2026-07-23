@@ -73,7 +73,7 @@ test.describe('PRD module audit', () => {
 
     record('review', 'page-render', 'pass');
     record('review', 'title', await page.getByRole('heading', { name: '我的账本' }).isVisible() ? 'pass' : 'fail');
-    record('review', 'active-tab', await page.getByRole('tab', { name: '复盘中心' }).getAttribute('aria-selected') === 'true' ? 'pass' : 'fail');
+    record('review', 'active-tab', await page.getByRole('tab', { name: '复盘', exact: true }).getAttribute('aria-selected') === 'true' ? 'pass' : 'fail');
     record('review', 'filter-format', await page.getByText('赛制').count() > 0 ? 'pass' : 'fail');
     record('review', 'filter-result', await page.getByText('结果').count() > 0 ? 'pass' : 'fail');
     record('review', 'bets-table', await page.locator('main table').count() > 0 ? 'pass' : 'fail');

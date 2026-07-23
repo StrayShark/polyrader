@@ -1,4 +1,4 @@
-import type { Market } from '@polyrader/core';
+import type { EsportsGame, Market } from '@polyrader/core';
 import { fetchJsonWithBrowser } from '../../crawlers/browser-fetch.js';
 
 const GAMMA_API_URL = process.env.POLYMARKET_GAMMA_API_URL ?? 'https://gamma-api.polymarket.com';
@@ -76,6 +76,97 @@ export class PolymarketGammaClient {
     }
 
     return cs2Markets.slice(0, limit);
+  }
+
+  /** Scan public Gamma markets for an esports title without requiring account credentials. */
+  async getMarketsForGame(
+    game: EsportsGame,
+    limit = 50,
+    offset = 0,
+  ): Promise<Market[]> {
+    if (game === 'cs2') return this.getMarkets(limit, offset);
+    const errors: string[] = [];
+    const volumeRanked = await this.scanVolumeRankedMarkets(game, limit, offset, errors);
+    const searched =
+      volumeRanked.length >= limit ? [] : await this.searchGameMarkets(game, limit, errors);
+    const merged = dedupeMarkets([...volumeRanked, ...searched]);
+    if (merged.length === 0 && errors.length > 0) {
+      throw new Error(`Gamma ${game} fetch failed: ${errors.slice(0, 3).join(' | ')}`);
+    }
+    return merged.slice(0, limit);
+  }
+
+  private async scanVolumeRankedMarkets(
+    game: Exclude<EsportsGame, 'cs2'>,
+    limit: number,
+    offset: number,
+    errors: string[],
+  ): Promise<Market[]> {
+    const pageSize = 500;
+    const maxPages = 8;
+    const matches: Market[] = [];
+    for (let page = 0; page < maxPages; page++) {
+      let batch: unknown[];
+      try {
+        batch = await this.fetch<unknown[]>('/markets', {
+          limit: String(pageSize),
+          offset: String(offset + page * pageSize),
+          active: 'true',
+          closed: 'false',
+          order: 'volume24hr',
+          ascending: 'false',
+        });
+      } catch (error) {
+        errors.push(`markets@${page}: ${error instanceof Error ? error.message : String(error)}`);
+        break;
+      }
+      if (!batch?.length) break;
+      const gameBatch = batch
+        .filter(
+          (item) =>
+            marketMatchesGame(item as Record<string, unknown>, game) &&
+            this.isTradableMarket(item as Record<string, unknown>),
+        )
+        .map((item) => this.mapMarket(item as Record<string, unknown>));
+      matches.push(...gameBatch);
+      if (matches.length >= limit) break;
+      if (batch.length < pageSize) break;
+    }
+    return matches;
+  }
+
+  /** Full-text search fallback when low-volume LoL/Valorant markets never appear in volume pages. */
+  private async searchGameMarkets(
+    game: Exclude<EsportsGame, 'cs2'>,
+    limit: number,
+    errors: string[],
+  ): Promise<Market[]> {
+    const queries =
+      game === 'dota2'
+        ? ['dota 2', 'dota2']
+        : game === 'lol'
+          ? ['league of legends', 'lck', 'lpl', 'lec']
+          : ['valorant', 'vct'];
+    const matches: Market[] = [];
+    for (const query of queries) {
+      if (matches.length >= limit) break;
+      let payload: unknown;
+      try {
+        payload = await this.fetch<unknown>('/public-search', {
+          q: query,
+          limit_per_type: String(Math.min(25, limit)),
+        });
+      } catch (error) {
+        errors.push(`search:${query}: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      for (const item of extractSearchMarkets(payload)) {
+        if (!marketMatchesGame(item, game) || !this.isTradableMarket(item)) continue;
+        matches.push(this.mapMarket(item));
+        if (matches.length >= limit) break;
+      }
+    }
+    return matches;
   }
 
   /**
@@ -192,6 +283,58 @@ export class PolymarketGammaClient {
     if (!Number.isFinite(endMs)) return true;
 
     return endMs >= Date.now() - 5 * 60 * 1000;
+  }
+}
+
+function marketMatchesGame(data: Record<string, unknown>, game: Exclude<EsportsGame, 'cs2'>) {
+  const text = [data.question, data.slug, data.description, ...(asStringArray(data.tags) ?? [])]
+    .map((value) => String(value ?? '').toLowerCase())
+    .join(' ');
+  if (game === 'dota2') return /\bdota\s*2?\b|\bdpc\b/.test(text);
+  if (game === 'lol') {
+    return (
+      /\bleague of legends\b|\bworlds\b|\blck\b|\blec\b|\blpl\b|\blcs\b|\bmsi\b/.test(text) ||
+      /(^|\b)lol(\b|:)/.test(text)
+    );
+  }
+  return /\bvalorant\b|\bvct\b|(^|\b)val(\b|:)/.test(text);
+}
+
+function extractSearchMarkets(payload: unknown): Record<string, unknown>[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const root = payload as Record<string, unknown>;
+  const buckets: unknown[] = [];
+  for (const key of ['markets', 'Market', 'market']) {
+    if (Array.isArray(root[key])) buckets.push(...(root[key] as unknown[]));
+  }
+  if (Array.isArray(root.events)) {
+    for (const event of root.events as unknown[]) {
+      if (!event || typeof event !== 'object') continue;
+      const markets = (event as Record<string, unknown>).markets;
+      if (Array.isArray(markets)) buckets.push(...markets);
+    }
+  }
+  return buckets.filter(
+    (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+  );
+}
+
+function dedupeMarkets(markets: Market[]): Market[] {
+  const unique = new Map<string, Market>();
+  for (const market of markets) {
+    if (!unique.has(market.conditionId)) unique.set(market.conditionId, market);
+  }
+  return [...unique.values()];
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value !== 'string') return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -67,9 +67,7 @@ test.describe('Sidebar content visibility (desktop)', () => {
     const groupLabels = page.getByTestId('app-sidebar').locator('div.tracking-wider');
     await expect(groupLabels).toHaveCount(3);
     const texts = await groupLabels.allTextContents();
-    expect(texts.map((t) => t.trim())).toEqual(
-      expect.arrayContaining(['Practice', 'Data', 'Advanced']),
-    );
+    expect(texts.map((t) => t.trim())).toEqual(['核心', '分析', '工具']);
   });
 
   test('all navigation links have non-empty text', async ({ page }) => {

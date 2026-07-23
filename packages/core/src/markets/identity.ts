@@ -1,4 +1,5 @@
 import type { AnalysisMarketKind, EsportsGame } from '../analysis/types';
+import type { MarketAnalysisWarning, MarketLiquidityStatus } from '../types/index';
 import type { SettledMarketKind } from '../utils/market-settlement';
 import { classifySettledMarketKind } from '../utils/market-settlement';
 
@@ -11,6 +12,10 @@ export interface CanonicalMarketIdentity {
   outcomes: Array<{ outcomeId: string; label: string }>;
   settlementRuleId: string;
   settlementSupported: boolean;
+  liquidityUsd: number | null;
+  liquidityStatus: MarketLiquidityStatus;
+  evidenceType: 'real' | 'synthetic';
+  warnings: MarketAnalysisWarning[];
 }
 
 export interface SettlementRuleDefinition {
@@ -65,27 +70,45 @@ export const SETTLEMENT_RULE_REGISTRY: SettlementRuleDefinition[] = [
     game: 'dota2',
     kind: 'match_winner',
     version: 'v1',
-    description: 'Reserved for OpenDota/GRID result reconciliation; runtime settler not enabled yet',
+    description: 'OpenDota single-game or GRID series winner from authoritative result state',
     authoritativeSources: ['opendota', 'grid'],
-    supported: false,
+    supported: true,
+  },
+  {
+    ruleId: 'dota2.handicap.v1',
+    game: 'dota2',
+    kind: 'handicap',
+    version: 'v1',
+    description: 'Dota series game handicap settled from the authoritative series score',
+    authoritativeSources: ['opendota', 'grid', 'liquipedia'],
+    supported: true,
+  },
+  {
+    ruleId: 'dota2.total_maps.v1',
+    game: 'dota2',
+    kind: 'total_maps',
+    version: 'v1',
+    description: 'Dota series total games settled from the authoritative series score',
+    authoritativeSources: ['opendota', 'grid', 'liquipedia'],
+    supported: true,
   },
   {
     ruleId: 'lol.match_winner.v1',
     game: 'lol',
     kind: 'match_winner',
     version: 'v1',
-    description: 'Series winner placeholder until live schedule adapter settles',
+    description: 'Series winner from GRID authoritative result state',
     authoritativeSources: ['grid'],
-    supported: false,
+    supported: true,
   },
   {
     ruleId: 'valorant.match_winner.v1',
     game: 'valorant',
     kind: 'match_winner',
     version: 'v1',
-    description: 'Series winner placeholder until live schedule adapter settles',
+    description: 'Series winner from GRID authoritative result state',
     authoritativeSources: ['grid'],
-    supported: false,
+    supported: true,
   },
 ];
 
@@ -93,8 +116,10 @@ export function findSettlementRule(
   game: EsportsGame,
   kind: AnalysisMarketKind | SettledMarketKind | 'unsupported',
 ): SettlementRuleDefinition | undefined {
-  return SETTLEMENT_RULE_REGISTRY.find((rule) => rule.game === game && rule.kind === kind)
-    ?? SETTLEMENT_RULE_REGISTRY.find((rule) => rule.game === '*' && rule.kind === kind);
+  return (
+    SETTLEMENT_RULE_REGISTRY.find((rule) => rule.game === game && rule.kind === kind) ??
+    SETTLEMENT_RULE_REGISTRY.find((rule) => rule.game === '*' && rule.kind === kind)
+  );
 }
 
 export function buildCanonicalMarketIdentity(input: {
@@ -105,12 +130,25 @@ export function buildCanonicalMarketIdentity(input: {
   kind?: AnalysisMarketKind;
   line?: number | null;
   outcomes: Array<{ outcomeId?: string; label: string }>;
+  liquidityUsd?: number;
+  tags?: string[];
 }): CanonicalMarketIdentity {
-  const kind = input.kind
-    ?? mapSettledKind(classifySettledMarketKind(input.question))
-    ?? 'match_winner';
+  const kind =
+    input.kind ?? mapSettledKind(classifySettledMarketKind(input.question)) ?? 'match_winner';
   const rule = findSettlementRule(input.game, kind);
-  const marketId = input.marketId ?? `${input.matchId}:${kind}${input.line != null ? `:${input.line}` : ''}`;
+  const marketId =
+    input.marketId ?? `${input.matchId}:${kind}${input.line != null ? `:${input.line}` : ''}`;
+  const synthetic = Boolean(
+    input.tags?.some((tag) => tag === 'local-sim' || tag === 'local-seed'),
+  );
+  const liquidity = Number(input.liquidityUsd);
+  const liquidityStatus: MarketLiquidityStatus = synthetic
+    ? 'synthetic'
+    : !Number.isFinite(liquidity) || liquidity < 0
+      ? 'unknown'
+      : liquidity < 1_000
+        ? 'low'
+        : 'normal';
   return {
     marketId,
     matchId: input.matchId,
@@ -123,6 +161,10 @@ export function buildCanonicalMarketIdentity(input: {
     })),
     settlementRuleId: rule?.ruleId ?? `${input.game}.${kind}.unsupported`,
     settlementSupported: Boolean(rule?.supported),
+    liquidityUsd: Number.isFinite(liquidity) ? Math.max(0, liquidity) : null,
+    liquidityStatus,
+    evidenceType: synthetic ? 'synthetic' : 'real',
+    warnings: liquidityStatus === 'low' ? ['low_liquidity'] : [],
   };
 }
 
@@ -131,6 +173,10 @@ export interface MarketAlignmentResult {
   status: 'aligned' | 'supported' | 'unsupported' | 'missing_market';
   detail: string;
   markets: CanonicalMarketIdentity[];
+  evidenceType: 'real' | 'synthetic' | 'mixed' | 'none';
+  realMarketCount: number;
+  syntheticMarketCount: number;
+  lowLiquidityMarketIds: string[];
 }
 
 export function alignMarketsForMatch(input: {
@@ -143,6 +189,7 @@ export function alignMarketsForMatch(input: {
     line?: number | null;
     outcomes: Array<{ outcomeId?: string; label: string }>;
     liquidityUsd?: number;
+    tags?: string[];
   }>;
 }): MarketAlignmentResult {
   if (input.markets.length === 0) {
@@ -151,18 +198,38 @@ export function alignMarketsForMatch(input: {
       status: 'missing_market',
       detail: 'no markets supplied for alignment',
       markets: [],
+      evidenceType: 'none',
+      realMarketCount: 0,
+      syntheticMarketCount: 0,
+      lowLiquidityMarketIds: [],
     };
   }
 
-  const markets = input.markets.map((market) => buildCanonicalMarketIdentity({
-    game: input.game,
-    matchId: input.matchId,
-    marketId: market.marketId,
-    question: market.question,
-    kind: market.kind,
-    line: market.line,
-    outcomes: market.outcomes,
-  }));
+  const markets = input.markets.map((market) =>
+    buildCanonicalMarketIdentity({
+      game: input.game,
+      matchId: input.matchId,
+      marketId: market.marketId,
+      question: market.question,
+      kind: market.kind,
+      line: market.line,
+      outcomes: market.outcomes,
+      liquidityUsd: market.liquidityUsd,
+      tags: market.tags,
+    }),
+  );
+
+  const realMarketCount = markets.filter((market) => market.evidenceType === 'real').length;
+  const syntheticMarketCount = markets.length - realMarketCount;
+  const evidenceType =
+    realMarketCount > 0 && syntheticMarketCount > 0
+      ? 'mixed'
+      : realMarketCount > 0
+        ? 'real'
+        : 'synthetic';
+  const lowLiquidityMarketIds = markets
+    .filter((market) => market.liquidityStatus === 'low')
+    .map((market) => market.marketId);
 
   const unsupported = markets.filter((market) => !market.settlementSupported);
   if (unsupported.length === markets.length) {
@@ -171,17 +238,25 @@ export function alignMarketsForMatch(input: {
       status: 'unsupported',
       detail: 'no settlement rules available',
       markets,
+      evidenceType,
+      realMarketCount,
+      syntheticMarketCount,
+      lowLiquidityMarketIds,
     };
   }
 
-  const lowLiquidity = input.markets.filter((market) => (market.liquidityUsd ?? 0) > 0 && (market.liquidityUsd ?? 0) < 1000);
   return {
     aligned: unsupported.length === 0,
     status: unsupported.length === 0 ? 'aligned' : 'supported',
-    detail: unsupported.length === 0
-      ? `${markets.length} markets with settlement rules${lowLiquidity.length ? ` · ${lowLiquidity.length} low liquidity` : ''}`
-      : `${markets.length - unsupported.length}/${markets.length} markets supported`,
+    detail:
+      unsupported.length === 0
+        ? `${markets.length} markets with settlement rules · ${evidenceType} evidence${lowLiquidityMarketIds.length ? ` · ${lowLiquidityMarketIds.length} low liquidity (< $1,000)` : ''}`
+        : `${markets.length - unsupported.length}/${markets.length} markets supported`,
     markets,
+    evidenceType,
+    realMarketCount,
+    syntheticMarketCount,
+    lowLiquidityMarketIds,
   };
 }
 

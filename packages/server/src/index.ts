@@ -49,42 +49,54 @@ const polymarketStream = sharedPolymarketStream;
 if (!isSidecar) {
   // In web mode, use full security
   const helmet = await import('helmet');
-  app.use(helmet.default({
-    contentSecurityPolicy: isDev ? false : undefined,
-    crossOriginEmbedderPolicy: false,
-  }));
+  app.use(
+    helmet.default({
+      contentSecurityPolicy: isDev ? false : undefined,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 }
 
-app.use(cors({
-  origin: isSidecar
-    ? (origin, callback) => callback(null, isAllowedSidecarOrigin(origin))
-    : (isDev ? true : (process.env.CORS_ORIGIN ?? 'http://localhost:5173')),
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
-  maxAge: 86400,
-}));
+app.use(
+  cors({
+    origin: isSidecar
+      ? (origin, callback) => callback(null, isAllowedSidecarOrigin(origin))
+      : isDev
+        ? true
+        : (process.env.CORS_ORIGIN ?? 'http://localhost:5173'),
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+    maxAge: 86400,
+  }),
+);
 
 // ============================================================
 // Rate limiting — defense in depth for both modes
 // ============================================================
 const rateLimit = (await import('express-rate-limit')).default;
-if (isSidecar) {
+if (process.env.NODE_ENV === 'test') {
+  // Isolated E2E servers must not accumulate per-process request limits across the whole suite.
+} else if (isSidecar) {
   // Sidecar: relaxed limits (single-user desktop, loopback only)
-  app.use(rateLimit({
-    windowMs: 60 * 1000,
-    max: 300,
-    standardHeaders: true,
-    legacyHeaders: false,
-  }));
+  app.use(
+    rateLimit({
+      windowMs: 60 * 1000,
+      max: 300,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
 } else {
   // Web mode: stricter limits
-  app.use(rateLimit({
-    windowMs: 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later' },
-  }));
+  app.use(
+    rateLimit({
+      windowMs: 60 * 1000,
+      max: 100,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests, please try again later' },
+    }),
+  );
 }
 
 // ============================================================

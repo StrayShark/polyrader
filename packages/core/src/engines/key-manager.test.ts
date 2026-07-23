@@ -33,6 +33,15 @@ describe('KeyManager', () => {
     expect(() => new KeyManager('short')).toThrow();
   });
 
+  it('should explain how to recover when a stored key uses another app key', () => {
+    const encrypted = manager.encrypt('sk-test-api-key-12345');
+    const otherManager = new KeyManager('b'.repeat(64));
+
+    expect(() => otherManager.decrypt(encrypted)).toThrow(
+      'Stored API key cannot be decrypted with this app key. Re-save the provider key in Settings.',
+    );
+  });
+
   it('should generate valid key', () => {
     const key = KeyManager.generateKey();
     expect(key).toHaveLength(64); // 32 bytes = 64 hex chars

@@ -14,6 +14,7 @@ interface SourceCatalogEntry {
   game: EsportsGame;
   sources: EsportsSourceDescriptor[];
   latestSync: EsportsSourceSyncResult | null;
+  identityCount: number;
 }
 
 export function EsportsDataSourcesPanel() {
@@ -97,6 +98,8 @@ export function EsportsDataSourcesPanel() {
                           time: new Date(entry.latestSync.finishedAt).toLocaleString(),
                         })
                         : t('settings.sourceNeverSynced')}
+                      {' · '}
+                      {t('settings.sourceIdentityCount', { count: entry.identityCount ?? 0 })}
                     </div>
                   </div>
                   <Button
@@ -111,7 +114,11 @@ export function EsportsDataSourcesPanel() {
                 </div>
                 <div className="divide-y divide-border/70 px-3">
                   {entry.sources.map((source) => (
-                    <div key={source.source} className="flex items-center gap-2 py-2">
+                    <div
+                      key={source.source}
+                      className="flex items-center gap-2 py-2"
+                      data-testid={`source-${entry.game}-${source.source}`}
+                    >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-xs font-medium">{source.label}</span>
@@ -125,12 +132,21 @@ export function EsportsDataSourcesPanel() {
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         </div>
-                        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">
                           {t(`settings.sourceAccess.${source.access}`)}
                         </div>
+                        {source.note && (
+                          <div className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground" title={source.note}>
+                            {source.note}
+                          </div>
+                        )}
                       </div>
-                      <Badge variant={sourceVariant(source.state)} className="shrink-0 text-[10px]">
-                        {t(`settings.sourceState.${source.state}`)}
+                      <Badge
+                        variant={sourceVariant(source.state)}
+                        className="shrink-0 text-[10px]"
+                        data-testid={`source-readiness-${entry.game}-${source.source}`}
+                      >
+                        {t(`settings.sourceReadiness.${source.readiness ?? source.state}`)}
                       </Badge>
                     </div>
                   ))}

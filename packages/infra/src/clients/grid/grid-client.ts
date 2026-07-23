@@ -15,6 +15,12 @@ import type { EsportsGame, Team, HeadToHead } from '@polyrader/core';
 
 /** CS:GO/CS2 title ID on GRID */
 const CS2_TITLE_ID = '1';
+const GRID_GAME_ALIASES: Record<EsportsGame, string[]> = {
+  cs2: ['counterstrike2', 'counterstrike', 'cs2'],
+  lol: ['leagueoflegends', 'lol'],
+  dota2: ['dota2'],
+  valorant: ['valorant'],
+};
 
 function gridCentralUrl(): string {
   return process.env.GRID_GRAPHQL_URL || 'https://api-op.grid.gg/central-data/graphql';
@@ -26,12 +32,21 @@ function gridStateUrl(): string {
 
 export function getGridTitleId(game: EsportsGame): string | null {
   if (game === 'cs2') return process.env.GRID_TITLE_ID_CS2 || CS2_TITLE_ID;
-  const key = game === 'lol'
-    ? 'GRID_TITLE_ID_LOL'
-    : game === 'dota2'
-      ? 'GRID_TITLE_ID_DOTA2'
-      : 'GRID_TITLE_ID_VALORANT';
+  const key =
+    game === 'lol'
+      ? 'GRID_TITLE_ID_LOL'
+      : game === 'dota2'
+        ? 'GRID_TITLE_ID_DOTA2'
+        : 'GRID_TITLE_ID_VALORANT';
   return process.env[key] || null;
+}
+
+function titleAliases(game: EsportsGame): string[] {
+  return GRID_GAME_ALIASES[game];
+}
+
+function normalizeTitleName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
 /** Rate limiter: 20 req/min for Open Access Central Data */
@@ -95,6 +110,11 @@ interface GridTeam {
   rating?: number;
 }
 
+interface GridTitle {
+  id: string;
+  name: string;
+}
+
 interface GridSeriesTeam {
   baseInfo: { id: string; name: string };
 }
@@ -131,13 +151,52 @@ interface GridSeriesState {
 // ─── Public API ──────────────────────────────────────────────────────────
 
 export class GridClient {
+  private readonly resolvedTitleIds = new Map<EsportsGame, string>();
+
+  async getTitleIdForGame(game: EsportsGame): Promise<string> {
+    const configured = getGridTitleId(game);
+    if (configured) return configured;
+    const cached = this.resolvedTitleIds.get(game);
+    if (cached) return cached;
+
+    const data = await graphql<{ titles: GridTitle[] }>(
+      gridCentralUrl(),
+      `
+        {
+          titles {
+            id
+            name
+          }
+        }
+      `,
+    );
+    const aliases = titleAliases(game);
+    const title = data.titles.find((item) => aliases.includes(normalizeTitleName(item.name)));
+    if (!title) {
+      const envKey =
+        game === 'lol'
+          ? 'GRID_TITLE_ID_LOL'
+          : game === 'dota2'
+            ? 'GRID_TITLE_ID_DOTA2'
+            : game === 'valorant'
+              ? 'GRID_TITLE_ID_VALORANT'
+              : 'GRID_TITLE_ID_CS2';
+      throw new Error(
+        `GRID title ${game} is not available to this account; configure ${envKey} only for an authorized title`,
+      );
+    }
+    this.resolvedTitleIds.set(game, title.id);
+    return title.id;
+  }
+
   /**
    * Search CS2 teams by name.
    * Returns teams sorted by name similarity to the query.
    */
-  async searchTeams(name: string, titleId = CS2_TITLE_ID): Promise<
-    Array<{ teamId: string; name: string; rank: number }>
-  > {
+  async searchTeams(
+    name: string,
+    titleId = CS2_TITLE_ID,
+  ): Promise<Array<{ teamId: string; name: string; rank: number }>> {
     const query = `
       query SearchTeams($titleId: ID!, $nameFilter: StringFilter!) {
         teams(filter: { titleId: $titleId, name: $nameFilter }, first: 10) {
@@ -183,11 +242,9 @@ export class GridClient {
     `;
 
     try {
-      const data = await graphql<{ team: GridTeam | null }>(
-        gridCentralUrl(),
-        query,
-        { id: teamId },
-      );
+      const data = await graphql<{ team: GridTeam | null }>(gridCentralUrl(), query, {
+        id: teamId,
+      });
 
       if (!data.team) return null;
 
@@ -278,13 +335,12 @@ export class GridClient {
   }
 
   async getUpcomingSeriesForGame(game: EsportsGame): ReturnType<GridClient['getUpcomingSeries']> {
-    const titleId = getGridTitleId(game);
-    if (!titleId) throw new Error(`GRID title ID is not configured for ${game}`);
+    const titleId = await this.getTitleIdForGame(game);
     return this.getUpcomingSeries(3, titleId, true);
   }
 
   isConfiguredForGame(game: EsportsGame): boolean {
-    return Boolean(process.env.GRID_API_KEY && getGridTitleId(game));
+    return Boolean(process.env.GRID_API_KEY && (game === 'cs2' || game in GRID_GAME_ALIASES));
   }
 
   /**
@@ -369,9 +425,7 @@ export class GridClient {
   /**
    * Get series state (match results, player stats) for a completed series.
    */
-  async getSeriesState(
-    seriesId: string,
-  ): Promise<{
+  async getSeriesState(seriesId: string): Promise<{
     finished: boolean;
     teamAWon: boolean;
     teamAScore: number;
@@ -382,6 +436,14 @@ export class GridClient {
       kills: number;
       deaths: number;
     }>;
+    teamPlayers: Array<
+      Array<{
+        id: string;
+        name: string;
+        kills: number;
+        deaths: number;
+      }>
+    >;
   } | null> {
     const query = `
       query SeriesState($id: ID!) {
@@ -405,11 +467,9 @@ export class GridClient {
     `;
 
     try {
-      const data = await graphql<{ seriesState: GridSeriesState | null }>(
-        gridStateUrl(),
-        query,
-        { id: seriesId },
-      );
+      const data = await graphql<{ seriesState: GridSeriesState | null }>(gridStateUrl(), query, {
+        id: seriesId,
+      });
 
       if (!data.seriesState) return null;
 
@@ -422,6 +482,7 @@ export class GridClient {
         teamAScore: teams[0]?.score ?? 0,
         teamBScore: teams[1]?.score ?? 0,
         players: allPlayers,
+        teamPlayers: teams.map((team) => team.players),
       };
     } catch {
       return null;
@@ -435,11 +496,7 @@ export class GridClient {
    * @param teamBId  GRID team ID
    * @param historyMonths  Months of history to consider (default 3)
    */
-  async getHeadToHead(
-    teamAId: string,
-    teamBId: string,
-    historyMonths = 3,
-  ): Promise<HeadToHead> {
+  async getHeadToHead(teamAId: string, teamBId: string, historyMonths = 3): Promise<HeadToHead> {
     const series = await this.getTeamSeries(teamAId, historyMonths);
     const h2hSeries = series.filter(
       (s) =>
@@ -486,6 +543,7 @@ export class GridClient {
   async getTeamRoster(
     teamId: string,
     historyMonths = 3,
+    titleId = CS2_TITLE_ID,
   ): Promise<
     Array<{
       playerId: string;
@@ -493,13 +551,16 @@ export class GridClient {
       name: string;
     }>
   > {
-    const series = await this.getTeamSeries(teamId, historyMonths);
+    const series = await this.getTeamSeries(teamId, historyMonths, titleId);
 
     // Get the most recent finished series with player data
     for (const s of series.slice().reverse()) {
       const state = await this.getSeriesState(s.seriesId);
       if (state && state.players.length > 0) {
-        return state.players.map((p) => ({
+        const teamIndex = s.teamAId === teamId ? 0 : s.teamBId === teamId ? 1 : -1;
+        const players = teamIndex >= 0 ? (state.teamPlayers[teamIndex] ?? []) : [];
+        if (players.length === 0) continue;
+        return players.map((p) => ({
           playerId: p.id,
           nickname: p.name,
           name: p.name,
@@ -508,6 +569,15 @@ export class GridClient {
     }
 
     return [];
+  }
+
+  async getTeamRosterForGame(
+    game: EsportsGame,
+    teamId: string,
+    historyMonths = 3,
+  ): ReturnType<GridClient['getTeamRoster']> {
+    const titleId = await this.getTitleIdForGame(game);
+    return this.getTeamRoster(teamId, historyMonths, titleId);
   }
 
   /** Check if GRID API is configured and accessible */
@@ -523,9 +593,7 @@ export class GridClient {
   }
 
   /** Normalize GRID format names to BO1/BO3/BO5 */
-  private normalizeFormat(
-    format: string | undefined,
-  ): 'BO1' | 'BO3' | 'BO5' {
+  private normalizeFormat(format: string | undefined): 'BO1' | 'BO3' | 'BO5' {
     if (!format) return 'BO3';
     const f = format.toLowerCase();
     if (f.includes('best-of-1') || f.includes('bo1')) return 'BO1';

@@ -16,5 +16,6 @@ export * from './strategy-profile-repository';
 export * from './cs2-match-snapshot-repository';
 export * from './esports-source-repository';
 export * from './analysis-run-repository';
+export * from './release-audit-repository';
 export * from './fact-repository';
 export * from './paper-policy-repository';

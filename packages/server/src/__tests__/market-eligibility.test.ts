@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Market } from '@polyrader/core';
-import { isOpenMarket } from '../services/market-eligibility';
+import { isLobbyVisibleMarket, isOpenMarket } from '../services/market-eligibility';
 
 function market(overrides: Partial<Market> = {}): Market {
   return {
@@ -35,5 +35,63 @@ describe('market eligibility', () => {
   it('rejects closed or resolved markets', () => {
     expect(isOpenMarket(market({ status: 'closed' }), now)).toBe(false);
     expect(isOpenMarket(market({ resolvedOutcome: 'A', resolvedPrice: 1 }), now)).toBe(false);
+  });
+
+  it('hides scheduled markets whose start is past the 15-minute grace window', () => {
+    expect(
+      isLobbyVisibleMarket(
+        market({
+          endDate: '2026-07-13T08:00:00.000Z',
+          match: {
+            matchId: 'hltv-1',
+            teamA: { teamId: 'a', name: 'A', rank: 1, logo: '', region: '' },
+            teamB: { teamId: 'b', name: 'B', rank: 2, logo: '', region: '' },
+            eventName: 'Test',
+            eventType: 'Online',
+            format: 'BO3',
+            scheduledAt: '2026-07-13T02:30:00.000Z',
+            status: 'scheduled',
+          },
+        }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps live markets and prematch markets inside the grace window', () => {
+    expect(
+      isLobbyVisibleMarket(
+        market({
+          match: {
+            matchId: 'hltv-live',
+            teamA: { teamId: 'a', name: 'A', rank: 1, logo: '', region: '' },
+            teamB: { teamId: 'b', name: 'B', rank: 2, logo: '', region: '' },
+            eventName: 'Test',
+            eventType: 'Online',
+            format: 'BO3',
+            scheduledAt: '2026-07-13T01:00:00.000Z',
+            status: 'live',
+          },
+        }),
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isLobbyVisibleMarket(
+        market({
+          match: {
+            matchId: 'hltv-grace',
+            teamA: { teamId: 'a', name: 'A', rank: 1, logo: '', region: '' },
+            teamB: { teamId: 'b', name: 'B', rank: 2, logo: '', region: '' },
+            eventName: 'Test',
+            eventType: 'Online',
+            format: 'BO3',
+            scheduledAt: '2026-07-13T02:50:00.000Z',
+            status: 'scheduled',
+          },
+        }),
+        now,
+      ),
+    ).toBe(true);
   });
 });

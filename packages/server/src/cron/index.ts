@@ -3,10 +3,22 @@ import { MarketService } from '../services/market-service';
 import { DailyService } from '../services/daily-service';
 import { AiConfigService } from '../services/ai-config-service';
 import { SignalService } from '../services/signal-service';
-import { HLTVCrawler, PolymarketGammaClient, MarketRepository, CsApiClient, GridClient, closeBrowser } from '@polyrader/infra';
+import {
+  HLTVCrawler,
+  PolymarketGammaClient,
+  MarketRepository,
+  CsApiClient,
+  GridClient,
+} from '@polyrader/infra';
 import { LLMRepository, EsportsRepository } from '@polyrader/infra';
 import { query, queryOne } from '@polyrader/infra';
-import { SettlementEngine, MatchStateMachine, EsportsEnricher, buildCanonicalMatchId, type EnricherSources } from '@polyrader/core';
+import {
+  SettlementEngine,
+  MatchStateMachine,
+  EsportsEnricher,
+  buildCanonicalMatchId,
+  type EnricherSources,
+} from '@polyrader/core';
 import type { SimulatedBet, Team, Player, HeadToHead } from '@polyrader/core';
 import { sharedWhaleIngestion } from '../services/whale-ingestion-service';
 import { WalletPerformanceService } from '../services/wallet-performance-service';
@@ -14,6 +26,9 @@ import { WalletFollowService } from '../services/wallet-follow-service';
 import { sharedSmartWalletDiscovery } from '../services/smart-wallet-discovery-service';
 import { SourceAlignmentService } from '../services/source-alignment-service';
 import { MatchReconciliationService } from '../services/match-reconciliation-service';
+import { Dota2MatchReconciliationService } from '../services/dota2-match-reconciliation-service';
+import { GridMatchReconciliationService } from '../services/grid-match-reconciliation-service';
+import { ClosingPriceService } from '../services/closing-price-service';
 import { trackTask } from '../services/task-tracker-service';
 import { autoTunePromptVariants } from '../services/prompt-ab-service';
 import { broadcast } from '../websocket';
@@ -36,7 +51,15 @@ const whaleIngestion = sharedWhaleIngestion;
 const walletPerformance = new WalletPerformanceService();
 const walletFollow = new WalletFollowService();
 const sourceAlignment = new SourceAlignmentService({ esportsRepo, llmRepo, hltv: hltvCrawler });
-const matchReconciliation = new MatchReconciliationService({ hltv: hltvCrawler, llmRepo, esportsRepo, marketRepo });
+const matchReconciliation = new MatchReconciliationService({
+  hltv: hltvCrawler,
+  llmRepo,
+  esportsRepo,
+  marketRepo,
+});
+const dota2MatchReconciliation = new Dota2MatchReconciliationService();
+const gridMatchReconciliation = new GridMatchReconciliationService();
+const closingPrices = new ClosingPriceService();
 whaleIngestion.setWalletFollowService(walletFollow);
 
 // Track which matches have already been auto-analyzed to avoid duplicates
@@ -132,292 +155,427 @@ export function startCronJobs(): void {
   // Polymarket: Refresh every 30 minutes
   // ============================================================
   cron.schedule('*/30 * * * *', () => {
-    void trackTask('polymarket-refresh', {
-      name: 'Polymarket 市场刷新',
-      category: 'market',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-    logger.info('Cron: Refreshing Polymarket markets');
-      const markets = await marketService.refreshMarkets();
-      ctx.log(`已刷新 ${markets.length} 个市场`);
-      ctx.setProgress(30, '更新比赛状态');
+    void trackTask(
+      'polymarket-refresh',
+      {
+        name: 'Polymarket 市场刷新',
+        category: 'market',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        logger.info('Cron: Refreshing Polymarket markets');
+        const markets = await marketService.refreshMarkets();
+        ctx.log(`已刷新 ${markets.length} 个市场`);
+        ctx.setProgress(30, '更新比赛状态');
 
-      // Update match states based on scheduled time and market status
-      const activeMatches = llmRepo.getActiveMatches();
-      let stateUpdates = 0;
-      for (const m of activeMatches) {
-        const matchId = String(m.match_id ?? '');
-        const scheduledAt = String(m.scheduled_at ?? '');
-        if (!matchId || !scheduledAt) continue;
-        // HLTV-backed matches are owned by the page-status reconciler below.
-        if (m.hltv_match_id) continue;
-        const marketStatus = (String(m.status ?? 'active') === 'settled') ? 'resolved' : 'active';
-        const newState = MatchStateMachine.determineState(scheduledAt, marketStatus as 'active' | 'closed' | 'resolved', false);
-        const currentStatus = String(m.status ?? '');
-        if (newState !== currentStatus && newState !== 'scheduled') {
-          llmRepo.updateMatchStatus(matchId, newState);
-          stateUpdates++;
-        }
-      }
-      if (stateUpdates > 0) {
-        logger.info('Cron: Match states updated', { count: stateUpdates });
-      }
-
-      ctx.setProgress(50, '电竞数据 enrich');
-      const filterConfig = esportsRepo.getAnalysisFilterConfig();
-      const historyMonths = filterConfig.historyMonths;
-      const minVolumeUsd = filterConfig.minVolumeUsd;
-      const sources = buildEnricherSources(historyMonths);
-      let enriched = 0;
-      let skipped = 0;
-      let skippedLowVolume = 0;
-      for (const market of markets) {
-        const q = market.question.toLowerCase();
-        if (!q.startsWith('counter-strike') && !q.includes('cs2') && !q.includes('csgo')) continue;
-        if (market.volume < minVolumeUsd) {
-          skippedLowVolume++;
-          continue;
-        }
-
-        try {
-          const result = await enricher.enrich(market, sources, historyMonths);
-          if (result.teamA && result.teamB) {
-            const matchId = market.conditionId;
-            let hltvMatchId: string | null = null;
-            try {
-              hltvMatchId = await hltvCrawler.findMatchIdByTeams(result.teamA.name, result.teamB.name);
-            } catch {
-              // best-effort HLTV link
-            }
-            const fallbackLineups = sourceAlignment.buildRosterFallbackLineups(result.teamA, result.teamB);
-            llmRepo.upsertMatch({
-              matchId,
-              teamAId: result.teamA.teamId,
-              teamBId: result.teamB.teamId,
-              teamAName: result.teamA.name,
-              teamBName: result.teamB.name,
-              eventName: result.parsed.eventName,
-              eventType: result.parsed.eventName.toLowerCase().includes('online') ? 'Online' : 'LAN',
-              format: result.parsed.format ?? 'BO3',
-              scheduledAt: market.endDate || new Date().toISOString(),
-              status: 'scheduled',
-              maps: [],
-              hasTeamData: true,
-              hltvMatchId,
-              lineups: fallbackLineups,
-              canonicalMatchId: buildCanonicalMatchId({
-                hltvMatchId,
-                teamAId: result.teamA.teamId,
-                teamBId: result.teamB.teamId,
-                teamAName: result.teamA.name,
-                teamBName: result.teamB.name,
-                eventName: result.parsed.eventName,
-                scheduledAt: market.endDate,
-              }),
-            });
-            marketRepo.upsert({
-              ...market,
-              canonicalMatchId: buildCanonicalMatchId({
-                hltvMatchId,
-                teamAId: result.teamA.teamId,
-                teamBId: result.teamB.teamId,
-                teamAName: result.teamA.name,
-                teamBName: result.teamB.name,
-                eventName: result.parsed.eventName,
-                scheduledAt: market.endDate,
-              }),
-            });
-            sourceAlignment.linkPolymarketMatch(matchId, market.question);
-            sourceAlignment.linkHltvMatch(matchId, hltvMatchId);
-            await sourceAlignment.syncLiquipediaTeamsForMatch(result.teamA, result.teamB);
-            if (hltvMatchId) {
-              await sourceAlignment.refreshHltvLineupForMatch({
-                match_id: matchId,
-                hltv_match_id: hltvMatchId,
-                team_a_id: result.teamA.teamId,
-                team_b_id: result.teamB.teamId,
-              });
-            }
-            enriched++;
-          } else {
-            skipped++;
+        // Update match states based on scheduled time and market status
+        const activeMatches = llmRepo.getActiveMatches();
+        let stateUpdates = 0;
+        for (const m of activeMatches) {
+          const matchId = String(m.match_id ?? '');
+          const scheduledAt = String(m.scheduled_at ?? '');
+          if (!matchId || !scheduledAt) continue;
+          // HLTV-backed matches are owned by the page-status reconciler below.
+          if (m.hltv_match_id) continue;
+          const marketStatus = String(m.status ?? 'active') === 'settled' ? 'resolved' : 'active';
+          const newState = MatchStateMachine.determineState(
+            scheduledAt,
+            marketStatus as 'active' | 'closed' | 'resolved',
+            false,
+          );
+          const currentStatus = String(m.status ?? '');
+          if (newState !== currentStatus && newState !== 'scheduled') {
+            llmRepo.updateMatchStatus(matchId, newState);
+            stateUpdates++;
           }
-        } catch (err) {
-          logger.warn('Cron: Market enrichment failed', { market: market.question.substring(0, 60), error: (err as Error).message });
         }
-      }
-      ctx.log(`Enrich 完成: ${enriched} 成功, ${skipped} 跳过, ${skippedLowVolume} 低成交量`);
-      ctx.setMetadata({ markets: markets.length, enriched, stateUpdates });
-      ctx.setProgress(100);
-    });
+        if (stateUpdates > 0) {
+          logger.info('Cron: Match states updated', { count: stateUpdates });
+        }
+
+        ctx.setProgress(50, '电竞数据 enrich');
+        const filterConfig = esportsRepo.getAnalysisFilterConfig();
+        const historyMonths = filterConfig.historyMonths;
+        const minVolumeUsd = filterConfig.minVolumeUsd;
+        const sources = buildEnricherSources(historyMonths);
+        let enriched = 0;
+        let skipped = 0;
+        let skippedLowVolume = 0;
+        for (const market of markets) {
+          const q = market.question.toLowerCase();
+          if (!q.startsWith('counter-strike') && !q.includes('cs2') && !q.includes('csgo'))
+            continue;
+          if (market.volume < minVolumeUsd) {
+            skippedLowVolume++;
+            continue;
+          }
+
+          try {
+            const result = await enricher.enrich(market, sources, historyMonths);
+            if (result.teamA && result.teamB) {
+              const matchId = market.conditionId;
+              let hltvMatchId: string | null = null;
+              try {
+                hltvMatchId = await hltvCrawler.findMatchIdByTeams(
+                  result.teamA.name,
+                  result.teamB.name,
+                );
+              } catch {
+                // best-effort HLTV link
+              }
+              const fallbackLineups = sourceAlignment.buildRosterFallbackLineups(
+                result.teamA,
+                result.teamB,
+              );
+              llmRepo.upsertMatch({
+                matchId,
+                teamAId: result.teamA.teamId,
+                teamBId: result.teamB.teamId,
+                teamAName: result.teamA.name,
+                teamBName: result.teamB.name,
+                eventName: result.parsed.eventName,
+                eventType: result.parsed.eventName.toLowerCase().includes('online')
+                  ? 'Online'
+                  : 'LAN',
+                format: result.parsed.format ?? 'BO3',
+                scheduledAt: market.endDate || new Date().toISOString(),
+                status: 'scheduled',
+                maps: [],
+                hasTeamData: true,
+                hltvMatchId,
+                lineups: fallbackLineups,
+                canonicalMatchId: buildCanonicalMatchId({
+                  hltvMatchId,
+                  teamAId: result.teamA.teamId,
+                  teamBId: result.teamB.teamId,
+                  teamAName: result.teamA.name,
+                  teamBName: result.teamB.name,
+                  eventName: result.parsed.eventName,
+                  scheduledAt: market.endDate,
+                }),
+              });
+              marketRepo.upsert({
+                ...market,
+                canonicalMatchId: buildCanonicalMatchId({
+                  hltvMatchId,
+                  teamAId: result.teamA.teamId,
+                  teamBId: result.teamB.teamId,
+                  teamAName: result.teamA.name,
+                  teamBName: result.teamB.name,
+                  eventName: result.parsed.eventName,
+                  scheduledAt: market.endDate,
+                }),
+              });
+              sourceAlignment.linkPolymarketMatch(matchId, market.question);
+              sourceAlignment.linkHltvMatch(matchId, hltvMatchId);
+              await sourceAlignment.syncLiquipediaTeamsForMatch(result.teamA, result.teamB);
+              if (hltvMatchId) {
+                await sourceAlignment.refreshHltvLineupForMatch({
+                  match_id: matchId,
+                  hltv_match_id: hltvMatchId,
+                  team_a_id: result.teamA.teamId,
+                  team_b_id: result.teamB.teamId,
+                });
+              }
+              enriched++;
+            } else {
+              skipped++;
+            }
+          } catch (err) {
+            logger.warn('Cron: Market enrichment failed', {
+              market: market.question.substring(0, 60),
+              error: (err as Error).message,
+            });
+          }
+        }
+        ctx.log(`Enrich 完成: ${enriched} 成功, ${skipped} 跳过, ${skippedLowVolume} 低成交量`);
+        ctx.setMetadata({ markets: markets.length, enriched, stateUpdates });
+        ctx.setProgress(100);
+      },
+    );
   });
 
   // ============================================================
   // Price polling: every minute (replaces removed Polymarket WS)
   // ============================================================
   cron.schedule('* * * * *', () => {
-    void trackTask('price-poll', {
-      name: '价格轮询',
-      category: 'market',
-      trigger: 'scheduled',
-      silent: true,
-    }, async (ctx) => {
-      const count = await marketService.pollAndBroadcastPrices(20);
-      if (count > 0) ctx.log(`更新了 ${count} 个市场价格`);
-      return { updated: count };
-    });
+    void trackTask(
+      'price-poll',
+      {
+        name: '价格轮询',
+        category: 'market',
+        trigger: 'scheduled',
+        silent: true,
+      },
+      async (ctx) => {
+        const count = await marketService.pollAndBroadcastPrices(20);
+        if (count > 0) ctx.log(`更新了 ${count} 个市场价格`);
+        const closing = closingPrices.captureDue();
+        if (closing.checked > 0) {
+          ctx.log(`关盘价: ${closing.captured}/${closing.checked} 已捕获`);
+        }
+        return { updated: count, closing };
+      },
+    );
   });
 
   // ============================================================
   // HLTV status, result and user practice settlement: every 10 minutes
   // ============================================================
   cron.schedule('*/10 * * * *', () => {
-    void trackTask('hltv-match-reconciliation', {
-      name: 'HLTV 状态与赛果对齐',
-      category: 'esports',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const report = await matchReconciliation.reconcileActiveMatches(
-        envNumber('POLYRADER_HLTV_STATUS_MAX_MATCHES', 25, 1, 100),
-      );
-      const activeMatches = llmRepo.getActiveMatches();
-      let lineupRefreshes = 0;
-      let lineupChecks = 0;
-      const maxLineupChecks = envNumber('POLYRADER_HLTV_LINEUP_MAX_MATCHES', 10, 0, 50);
-      for (const m of activeMatches) {
-        const hltvId = m.hltv_match_id ? String(m.hltv_match_id) : null;
-        if (!hltvId) continue;
-        if (process.env.POLYRADER_ENABLE_HLTV_LINEUP_REFRESH !== '0' && lineupChecks < maxLineupChecks) {
-          lineupChecks++;
-          const lineupResult = await sourceAlignment.refreshHltvLineupForMatch(m);
-          if (lineupResult.refreshed) lineupRefreshes++;
+    void trackTask(
+      'hltv-match-reconciliation',
+      {
+        name: 'HLTV 状态与赛果对齐',
+        category: 'esports',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const report = await matchReconciliation.reconcileActiveMatches(
+          envNumber('POLYRADER_HLTV_STATUS_MAX_MATCHES', 25, 1, 100),
+        );
+        const activeMatches = llmRepo.getActiveMatches();
+        let lineupRefreshes = 0;
+        let lineupChecks = 0;
+        const maxLineupChecks = envNumber('POLYRADER_HLTV_LINEUP_MAX_MATCHES', 10, 0, 50);
+        for (const m of activeMatches) {
+          const hltvId = m.hltv_match_id ? String(m.hltv_match_id) : null;
+          if (!hltvId) continue;
+          if (
+            process.env.POLYRADER_ENABLE_HLTV_LINEUP_REFRESH !== '0' &&
+            lineupChecks < maxLineupChecks
+          ) {
+            lineupChecks++;
+            const lineupResult = await sourceAlignment.refreshHltvLineupForMatch(m);
+            if (lineupResult.refreshed) lineupRefreshes++;
+          }
         }
-      }
-      for (const event of report.events) {
-        if (event.settledBets > 0 || event.resolvedMarkets > 0) {
-          broadcast('settlement', {
-            matchId: event.matchId,
-            outcome: event.winnerTeamName,
-            status: event.status,
-            settledCount: event.settledBets,
-            resolvedMarkets: event.resolvedMarkets,
-          });
+        for (const event of report.events) {
+          if (event.settledBets > 0 || event.resolvedMarkets > 0) {
+            broadcast('settlement', {
+              matchId: event.matchId,
+              outcome: event.winnerTeamName,
+              status: event.status,
+              settledCount: event.settledBets,
+              resolvedMarkets: event.resolvedMarkets,
+            });
+          }
         }
-      }
-      if (report.updated > 0) ctx.log(`校正 ${report.updated} 场比赛状态`);
-      if (report.settledBets > 0) ctx.log(`自动处理 ${report.settledBets} 笔用户练习单`);
-      if (lineupRefreshes > 0) ctx.log(`刷新 ${lineupRefreshes} 场 HLTV 阵容`);
-      return { ...report, lineupRefreshes };
-    });
+        if (report.updated > 0) ctx.log(`校正 ${report.updated} 场比赛状态`);
+        if (report.settledBets > 0) ctx.log(`自动处理 ${report.settledBets} 笔用户练习单`);
+        if (lineupRefreshes > 0) ctx.log(`刷新 ${lineupRefreshes} 场 HLTV 阵容`);
+        return { ...report, lineupRefreshes };
+      },
+    );
+  });
+
+  // ============================================================
+  // LoL / Valorant GRID result and practice settlement: every 10 minutes
+  // ============================================================
+  cron.schedule('*/10 * * * *', () => {
+    void trackTask(
+      'grid-match-reconciliation',
+      {
+        name: 'LoL / VALORANT 赛果与练习单结算',
+        category: 'esports',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const limit = envNumber('POLYRADER_GRID_STATUS_MAX_MATCHES', 25, 1, 100);
+        const reports = await Promise.all([
+          gridMatchReconciliation.reconcileOpenBets('lol', limit),
+          gridMatchReconciliation.reconcileOpenBets('valorant', limit),
+        ]);
+        for (const report of reports) {
+          for (const event of report.events) {
+            if (event.settledBets > 0 || event.resolvedMarkets > 0) {
+              broadcast('settlement', {
+                game: event.game,
+                matchId: event.matchId,
+                outcome: event.winnerTeamName,
+                source: event.source,
+                status: event.status,
+                settledCount: event.settledBets,
+                resolvedMarkets: event.resolvedMarkets,
+              });
+            }
+          }
+        }
+        const settledBets = reports.reduce((sum, report) => sum + report.settledBets, 0);
+        const resolvedMarkets = reports.reduce((sum, report) => sum + report.resolvedMarkets, 0);
+        if (settledBets > 0) ctx.log(`自动处理 ${settledBets} 笔 Riot 电竞练习单`);
+        if (resolvedMarkets > 0) ctx.log(`解析 ${resolvedMarkets} 个 Riot 电竞练习盘口`);
+        return {
+          settledBets,
+          resolvedMarkets,
+          checked: reports.reduce((sum, report) => sum + report.checked, 0),
+        };
+      },
+    );
+  });
+
+  // ============================================================
+  // Dota 2 authoritative result and practice settlement: every 10 minutes
+  // ============================================================
+  cron.schedule('*/10 * * * *', () => {
+    void trackTask(
+      'dota2-match-reconciliation',
+      {
+        name: 'Dota 2 赛果与练习单结算',
+        category: 'esports',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const report = await dota2MatchReconciliation.reconcileOpenBets(
+          envNumber('POLYRADER_DOTA2_STATUS_MAX_MATCHES', 25, 1, 100),
+        );
+        for (const event of report.events) {
+          if (event.settledBets > 0 || event.resolvedMarkets > 0) {
+            broadcast('settlement', {
+              game: 'dota2',
+              matchId: event.matchId,
+              outcome: event.winnerTeamName,
+              source: event.source,
+              status: event.status,
+              settledCount: event.settledBets,
+              resolvedMarkets: event.resolvedMarkets,
+            });
+          }
+        }
+        if (report.settledBets > 0) ctx.log(`自动处理 ${report.settledBets} 笔 Dota 2 练习单`);
+        if (report.resolvedMarkets > 0) ctx.log(`解析 ${report.resolvedMarkets} 个本地练习盘口`);
+        return { ...report };
+      },
+    );
   });
 
   // ============================================================
   // Whale ingestion: Scan Polygon chain every 5 minutes
   // ============================================================
   cron.schedule('*/5 * * * *', () => {
-    void trackTask('whale-ingestion', {
-      name: '巨鲸链上扫描',
-      category: 'whale',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const count = await whaleIngestion.scanRecentTrades();
-      broadcast('whales', { newTrades: count });
-      if (count > 0) {
-        ctx.log(`发现 ${count} 笔新交易`);
-        const whales = whaleIngestion.getRecentWhales(10);
-        for (const whale of whales) {
-          const trades = whaleIngestion.getRecentTrades(whale.address, 5);
-          for (const trade of trades) {
-            if (trade.amount >= 10000) {
-              const market = marketRepo.findByConditionId(trade.marketId);
-              broadcast('whale-trades', {
-                address: whale.address,
-                marketId: trade.marketId,
-                marketQuestion: market?.question ?? 'Unknown market',
-                side: trade.type,
-                outcome: trade.outcome,
-                size: trade.amount,
-                price: trade.price,
-                timestamp: trade.timestamp,
-              });
+    void trackTask(
+      'whale-ingestion',
+      {
+        name: '巨鲸链上扫描',
+        category: 'whale',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const count = await whaleIngestion.scanRecentTrades();
+        broadcast('whales', { newTrades: count });
+        if (count > 0) {
+          ctx.log(`发现 ${count} 笔新交易`);
+          const whales = whaleIngestion.getRecentWhales(10);
+          for (const whale of whales) {
+            const trades = whaleIngestion.getRecentTrades(whale.address, 5);
+            for (const trade of trades) {
+              if (trade.amount >= 10000) {
+                const market = marketRepo.findByConditionId(trade.marketId);
+                broadcast('whale-trades', {
+                  address: whale.address,
+                  marketId: trade.marketId,
+                  marketQuestion: market?.question ?? 'Unknown market',
+                  side: trade.type,
+                  outcome: trade.outcome,
+                  size: trade.amount,
+                  price: trade.price,
+                  timestamp: trade.timestamp,
+                });
+              }
             }
           }
         }
-      }
-      return { newTrades: count };
-    });
+        return { newTrades: count };
+      },
+    );
   });
 
   // ============================================================
   // Wallet performance: Recalculate win rates hourly
   // ============================================================
   cron.schedule('20 * * * *', () => {
-    void trackTask('wallet-performance', {
-      name: '钱包胜率重算',
-      category: 'whale',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const discovery = await sharedSmartWalletDiscovery.discoverTopWallets(12);
-      const result = await walletPerformance.recalculateAll();
-      if (result.addressesUpdated > 0) {
-        broadcast('whales', { performanceUpdated: result.addressesUpdated });
-        ctx.log(`已更新 ${result.addressesUpdated} 个地址的胜率统计`);
-      }
-      return { ...result, ...discovery } as Record<string, unknown>;
-    });
+    void trackTask(
+      'wallet-performance',
+      {
+        name: '钱包胜率重算',
+        category: 'whale',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const discovery = await sharedSmartWalletDiscovery.discoverTopWallets(12);
+        const result = await walletPerformance.recalculateAll();
+        if (result.addressesUpdated > 0) {
+          broadcast('whales', { performanceUpdated: result.addressesUpdated });
+          ctx.log(`已更新 ${result.addressesUpdated} 个地址的胜率统计`);
+        }
+        return { ...result, ...discovery } as Record<string, unknown>;
+      },
+    );
   });
 
   // ============================================================
   // Copy trade settlement: after markets resolve
   // ============================================================
   cron.schedule('35 * * * *', () => {
-    void trackTask('copy-trade-settlement', {
-      name: '纸面跟单结算',
-      category: 'whale',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const result = walletFollow.settleCopyTrades();
-      if (result.settled > 0) {
-        broadcast('copy-signals', { type: 'copy-trades:settled', settled: result.settled });
-        ctx.log(`已结算 ${result.settled} 笔纸面跟单`);
-      }
-      return result as Record<string, unknown>;
-    });
+    void trackTask(
+      'copy-trade-settlement',
+      {
+        name: '纸面跟单结算',
+        category: 'whale',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const result = walletFollow.settleCopyTrades();
+        if (result.settled > 0) {
+          broadcast('copy-signals', { type: 'copy-trades:settled', settled: result.settled });
+          ctx.log(`已结算 ${result.settled} 笔纸面跟单`);
+        }
+        return result as Record<string, unknown>;
+      },
+    );
   });
 
   // ============================================================
   // Live copy order status sync: every 2 minutes
   // ============================================================
   cron.schedule('*/2 * * * *', () => {
-    void trackTask('copy-trade-sync', {
-      name: '实盘跟单状态同步',
-      category: 'whale',
-      trigger: 'scheduled',
-      silent: true,
-    }, async (ctx) => {
-      const result = await walletFollow.syncLiveOrderStatuses();
-      if (result.updated > 0) {
-        ctx.log(`已同步 ${result.updated} 笔实盘跟单状态`);
-      }
-      return result as Record<string, unknown>;
-    });
+    void trackTask(
+      'copy-trade-sync',
+      {
+        name: '实盘跟单状态同步',
+        category: 'whale',
+        trigger: 'scheduled',
+        silent: true,
+      },
+      async (ctx) => {
+        const result = await walletFollow.syncLiveOrderStatuses();
+        if (result.updated > 0) {
+          ctx.log(`已同步 ${result.updated} 笔实盘跟单状态`);
+        }
+        return result as Record<string, unknown>;
+      },
+    );
   });
 
   // ============================================================
   // Signal snapshots: refresh active CS2 markets every 30 min
   // ============================================================
   cron.schedule('*/30 * * * *', () => {
-    void trackTask('signal-snapshot-refresh', {
-      name: '信号快照刷新',
-      category: 'signal',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const result = await signalService.refreshActiveSignalSnapshots(15);
-      if (result.refreshed > 0) {
-        ctx.log(`已刷新 ${result.refreshed} 个市场的信号快照`);
-      }
-      return result as Record<string, unknown>;
-    });
+    void trackTask(
+      'signal-snapshot-refresh',
+      {
+        name: '信号快照刷新',
+        category: 'signal',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const result = await signalService.refreshActiveSignalSnapshots(15);
+        if (result.refreshed > 0) {
+          ctx.log(`已刷新 ${result.refreshed} 个市场的信号快照`);
+        }
+        return result as Record<string, unknown>;
+      },
+    );
   });
 
   // ============================================================
@@ -426,14 +584,18 @@ export function startCronJobs(): void {
   // broadcasts opportunities via WebSocket 'arbitrage' channel.
   // ============================================================
   cron.schedule('*/2 * * * *', () => {
-    void trackTask('arbitrage-scan', {
-      name: '套利扫描',
-      category: 'signal',
-      trigger: 'scheduled',
-      silent: true,
-    }, async () => {
-      await signalService.scanAndBroadcastArbitrage();
-    });
+    void trackTask(
+      'arbitrage-scan',
+      {
+        name: '套利扫描',
+        category: 'signal',
+        trigger: 'scheduled',
+        silent: true,
+      },
+      async () => {
+        await signalService.scanAndBroadcastArbitrage();
+      },
+    );
   });
 
   // ============================================================
@@ -445,443 +607,114 @@ export function startCronJobs(): void {
   //   4. Store everything locally in SQLite
   // ============================================================
   cron.schedule('0 */2 * * *', () => {
-    void trackTask('esports-pipeline', {
-      name: '电竞数据管道',
-      category: 'esports',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-    logger.info('Cron: Starting esports data pipeline (GRID + CS API + HLTV)');
-      const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
-      ctx.setProgress(10, '拉取 CS API 比赛');
-      // --- Step 1: CS API (primary) — fetch recent matches ---
-      let matches: Array<{ matchId: string; teamAId: string; teamBId: string; teamAName: string; teamBName: string; event: string; eventType: 'LAN' | 'Online'; format: 'BO1' | 'BO3' | 'BO5'; date: string; maps: string[] }> = [];
-
-      try {
-        const csMatches = await csApiClient.getMatches(100, historyMonths);
-        matches = csMatches.map((m) => ({
-          matchId: m.matchId, teamAId: m.teamAId, teamBId: m.teamBId,
-          teamAName: m.teamAName, teamBName: m.teamBName,
-          event: m.event, eventType: m.eventType, format: m.format,
-          date: m.date, maps: m.maps,
-        }));
-        logger.info('Cron: CS API matches found', { count: matches.length });
-      } catch (err) {
-        logger.warn('Cron: CS API failed, trying HLTV', { error: (err as Error).message });
-      }
-
-      // --- Step 1a: GRID upcoming series (official schedule) ---
-      try {
-        const gridUpcoming = await gridClient.getUpcomingSeries(historyMonths);
-        const existingIds = new Set(matches.map((m) => m.matchId));
-        for (const m of gridUpcoming) {
-          if (!m.teamAId || !m.teamBId || existingIds.has(m.seriesId)) continue;
-          matches.push({
-            matchId: m.seriesId,
-            teamAId: m.teamAId,
-            teamBId: m.teamBId,
-            teamAName: m.teamAName,
-            teamBName: m.teamBName,
-            event: m.eventName,
-            eventType: 'Online' as const,
-            format: (m.format === 'BO1' || m.format === 'BO5' ? m.format : 'BO3') as 'BO1' | 'BO3' | 'BO5',
-            date: m.date,
-            maps: [],
-          });
-          existingIds.add(m.seriesId);
-        }
-        logger.info('Cron: GRID upcoming merged', { gridCount: gridUpcoming.length, total: matches.length });
-      } catch (err) {
-        logger.warn('Cron: GRID upcoming fetch failed (non-critical)', { error: (err as Error).message });
-      }
-
-      // --- Step 1b: HLTV fallback for upcoming matches (CS API is daily-refresh, no upcoming) ---
-      try {
-        const hltvMatches = await hltvCrawler.getMatches();
-        // Merge: only add HLTV matches not already in CS API results
-        const existingIds = new Set(matches.map((m) => m.matchId));
-        for (const m of hltvMatches) {
-          if (!existingIds.has(m.matchId)) {
-            matches.push({
-              matchId: m.matchId, teamAId: m.teamAId, teamBId: m.teamBId,
-              teamAName: m.teamAName, teamBName: m.teamBName,
-              event: m.event, eventType: m.eventType, format: m.format,
-              date: m.date, maps: [],
-            });
-          }
-        }
-        logger.info('Cron: HLTV matches merged', { hltvCount: hltvMatches.length, total: matches.length });
-      } catch (err) {
-        logger.warn('Cron: HLTV fetch failed (non-critical)', { error: (err as Error).message });
-      }
-
-      // --- Step 2: Store all matches in local DB ---
-      for (const m of matches) {
-        llmRepo.upsertMatch({
-          matchId: m.matchId,
-          teamAId: m.teamAId,
-          teamBId: m.teamBId,
-          teamAName: m.teamAName,
-          teamBName: m.teamBName,
-          eventName: m.event,
-          eventType: m.eventType,
-          format: m.format,
-          scheduledAt: m.date,
-          status: 'upcoming',
-          maps: m.maps,
-          hasTeamData: false,
-        });
-      }
-
-      // --- Step 3: Fetch team data for unique teams (CS API first, HLTV fallback) ---
-      const teamIds = new Set<string>();
-      for (const m of matches.slice(0, 40)) {
-        teamIds.add(m.teamAId);
-        teamIds.add(m.teamBId);
-      }
-
-      logger.info('Cron: Fetching team data', { count: teamIds.size });
-      for (const teamId of teamIds) {
-        try {
-          let team = await csApiClient.getTeam(teamId);
-          if (!team) {
-            team = await hltvCrawler.getTeam(teamId);
-          }
-          if (team) {
-            llmRepo.upsertTeam({
-              teamId: team.teamId,
-              name: team.name,
-              rank: team.rank,
-              region: team.region,
-              players: JSON.stringify(team.players),
-              recentForm: JSON.stringify(team.recentForm),
-              mapPool: JSON.stringify(team.mapPool),
-            });
-          }
-        } catch (err) {
-          logger.error('Cron: Team fetch failed', { teamId, error: (err as Error).message });
-        }
-      }
-
-      ctx.log(`完成: ${matches.length} 场比赛, ${teamIds.size} 支队伍`);
-      ctx.setMetadata({ matches: matches.length, teams: teamIds.size });
-      ctx.setProgress(100);
-    });
-  });
-
-  // ============================================================
-  // HLTV Rankings: Update every 6 hours
-  // ============================================================
-  cron.schedule('0 */6 * * *', () => {
-    void trackTask('hltv-rankings', {
-      name: 'HLTV 排名更新',
-      category: 'esports',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
-      let rankings: Array<{ rank: number; teamId: string; name: string }>;
-      try {
-        rankings = await csApiClient.getRankings(historyMonths);
-        if (rankings.length === 0) throw new Error('CS API returned no rankings');
-      } catch {
-        rankings = await hltvCrawler.getRankings();
-      }
-      for (const r of rankings) {
-        llmRepo.upsertTeam({
-          teamId: r.teamId,
-          name: r.name,
-          rank: r.rank,
-          region: '',
-          players: '[]',
-          recentForm: '{}',
-          mapPool: '{}',
-        });
-      }
-      ctx.log(`更新了 ${rankings.length} 支队伍排名`);
-      return { count: rankings.length };
-    });
-  });
-
-  // ============================================================
-  // Daily dashboard: Generate at 00:05 UTC
-  // ============================================================
-  cron.schedule('5 0 * * *', () => {
-    void trackTask('daily-dashboard', {
-      name: '每日看板生成',
-      category: 'system',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const dashboard = await dailyService.refreshDashboard();
-      broadcast('daily', dashboard);
-      ctx.log(`${dashboard.totalMatches} 场比赛, ${dashboard.highAttentionMatches.length} 条高关注推荐`);
-      return { totalMatches: dashboard.totalMatches };
-    });
-  });
-
-  // ============================================================
-  // Daily cleanup: Purge data older than configured history window (00:15 UTC)
-  // ============================================================
-  cron.schedule('15 0 * * *', () => {
-    void trackTask('data-cleanup', {
-      name: '历史数据清理',
-      category: 'system',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const config = esportsRepo.getAnalysisFilterConfig();
-      const counts = esportsRepo.cleanupOldData(config.historyMonths);
-      ctx.log(`清理 ${config.historyMonths} 个月前的数据`);
-      return counts as Record<string, unknown>;
-    });
-  });
-
-  // ============================================================
-  // Settlement check: Every 10 minutes, check for resolved markets
-  // ============================================================
-  cron.schedule('*/10 * * * *', () => {
-    void trackTask('settlement-check', {
-      name: '模拟单结算',
-      category: 'market',
-      trigger: 'scheduled',
-      silent: true,
-    }, async (ctx) => {
-      const pendingBets = llmRepo.getPendingBets();
-      const activeIds = [...new Set(pendingBets.map((b: SimulatedBet) => b.matchId))];
-
-      if (activeIds.length === 0) return;
-
-      let settledTotal = 0;
-      for (const conditionId of activeIds) {
-        try {
-          const market = await pmGammaClient.getMarket(conditionId);
-          if (!market || market.status !== 'resolved') continue;
-
-          // Determine winner from resolution data
-          // Look up match data to get actual team names
-          const matchData = llmRepo.getMatch(conditionId);
-          let winner: string | undefined;
-
-          if (matchData) {
-            const teamAName = matchData.team_a_name as string | undefined;
-            const teamBName = matchData.team_b_name as string | undefined;
-            // "Yes" = first team (teamA) won, "No" = second team (teamB) won
-            winner = market.resolvedOutcome === 'Yes' ? teamAName : teamBName;
-          }
-
-          // Fallback: extract from question text for CS2 format
-          // "Counter-Strike: TeamA vs TeamB (BO3) - ..."
-          if (!winner) {
-            const question = market.question ?? '';
-            const vsMatch = question.match(/:\s*(.+?)\s+vs\s+(.+?)(?:\s*\(|\s*-\s|$)/i);
-            if (vsMatch) {
-              winner = market.resolvedOutcome === 'Yes' ? vsMatch[1].trim() : vsMatch[2].trim();
-            }
-          }
-
-          if (!winner) continue;
-
-          const result = await settlementEngine.settleMarket(
-            conditionId,
-            winner,
-            market.resolvedPrice ?? 1.0,
-            async (mid) => llmRepo.getBetsByMatch(mid),
-            async (provider, stats) => {
-              // Merge with existing stats instead of overwriting
-              const existing = llmRepo.getStats(provider);
-              if (existing) {
-                const mergedPredictions = (Number(existing.totalPredictions) || 0) + (stats.totalPredictions || 0);
-                const mergedCorrect = (Number(existing.correctPredictions) || 0) + (stats.correctPredictions || 0);
-                const mergedPnl = (Number(existing.profitLoss) || 0) + (stats.profitLoss || 0);
-                llmRepo.upsertStats({
-                  provider,
-                  model: stats.model ?? 'default',
-                  totalPredictions: mergedPredictions,
-                  correctPredictions: mergedCorrect,
-                  accuracy: mergedPredictions > 0 ? mergedCorrect / mergedPredictions : 0,
-                  profitLoss: mergedPnl,
-                  roi: mergedPredictions > 0 ? mergedPnl / (mergedPredictions * 100) : 0,
-                  calibrationError: stats.calibrationError ?? 0,
-                  averageConfidence: existing.averageConfidence ?? 0,
-                  sharpeRatio: existing.sharpeRatio ?? 0,
-                  maxDrawdown: existing.maxDrawdown ?? 0,
-                  lastUpdated: stats.lastUpdated,
-                });
-              } else {
-                llmRepo.upsertStats({ ...stats, provider });
-              }
-            },
-            async (bet) => llmRepo.upsertBet(bet),
-          );
-
-          if (result.settledCount > 0) {
-            settledTotal += result.settledCount;
-            logger.info('Cron: Settlement processed', { conditionId, settledCount: result.settledCount, winner });
-
-            // Update match state to 'settled' via state machine
-            llmRepo.updateMatchStatus(conditionId, 'settled');
-
-            // Broadcast with fields matching frontend SettlementEvent interface
-            broadcast('settlement', {
-              marketId: conditionId,
-              question: market.question ?? '',
-              outcome: winner,
-              pnl: result.providerResults.reduce((s, r) => s + r.pnl, 0),
-              settledCount: result.settledCount,
-            });
-          }
-        } catch {
-          // Individual market check failure is non-critical
-        }
-      }
-      if (settledTotal > 0) ctx.log(`结算 ${settledTotal} 笔模拟单`);
-    });
-  });
-
-  // ============================================================
-  // LLM Auto-Analysis: Check every 15 minutes for matches starting soon
-  // Triggers LLM analysis for matches starting within 30 minutes
-  // that haven't been analyzed yet
-  // ============================================================
-  cron.schedule('*/15 * * * *', () => {
-    void trackTask('llm-auto-analysis', {
-      name: 'LLM 自动分析',
-      category: 'ai',
-      trigger: 'scheduled',
-    }, async (ctx) => {
-      const upcoming = llmRepo.getUpcomingMatches(50);
-      const now = Date.now();
-
-      // Prune analyzed matches older than 24h to bound memory growth
-      for (const [id, ts] of analyzedMatches) {
-        if (now - ts > 24 * 60 * 60 * 1000) analyzedMatches.delete(id);
-      }
-
-      // Hoist config check out of the loop — provider config does not change per-match
-      const configs = llmRepo.getAllConfigs();
-      const enabledCount = configs.filter((c: { isEnabled: boolean; apiKey: string }) => c.isEnabled && c.apiKey).length;
-
-      let analyzedCount = 0;
-      for (const match of upcoming as Array<Record<string, unknown>>) {
-        const matchId = match.match_id as string;
-        const teamAId = match.team_a_id as string;
-        const teamBId = match.team_b_id as string;
-        const teamAName = match.team_a_name as string;
-        const teamBName = match.team_b_name as string;
-        const hasTeamData = match.has_team_data as boolean;
-        const scheduledAt = match.scheduled_at as string | null;
-
-        if (!hasTeamData) continue;
-
-        const scheduledTime = scheduledAt ? new Date(scheduledAt).getTime() : 0;
-        if (scheduledTime === 0) continue;
-
-        const matchState = MatchStateMachine.determineState(scheduledAt!, 'active', false);
-        const freqs = MatchStateMachine.getUpdateFrequencies(matchState);
-
-        if (matchState !== 'scheduled' && matchState !== 'pre_match') continue;
-        if (freqs.llm === 0) continue;
-
-        const lastAnalyzed = analyzedMatches.get(matchId);
-        if (lastAnalyzed && freqs.llm > 0 && now - lastAnalyzed < freqs.llm * 1000) {
-          continue;
-        }
-
-        if (enabledCount === 0) continue;
-
-        const timeUntilStart = scheduledTime - now;
-        logger.info('Cron: Auto-analyzing match', {
-          match: `${teamAName} vs ${teamBName}`,
-          state: matchState,
-          startsInMin: Math.round(timeUntilStart / 60000),
-        });
+    void trackTask(
+      'esports-pipeline',
+      {
+        name: '电竞数据管道',
+        category: 'esports',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        logger.info('Cron: Starting esports data pipeline (GRID + CS API + HLTV)');
+        const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
+        ctx.setProgress(10, '拉取 CS API 比赛');
+        // --- Step 1: CS API (primary) — fetch recent matches ---
+        let matches: Array<{
+          matchId: string;
+          teamAId: string;
+          teamBId: string;
+          teamAName: string;
+          teamBName: string;
+          event: string;
+          eventType: 'LAN' | 'Online';
+          format: 'BO1' | 'BO3' | 'BO5';
+          date: string;
+          maps: string[];
+        }> = [];
 
         try {
-          const aggregation = await aiConfigService.analyze(matchId, teamAId, teamBId);
-          analyzedMatches.set(matchId, now);
-
-          // Broadcast analysis result to frontend
-          broadcast('analysis', {
-            matchId,
-            teamA: teamAName,
-            teamB: teamBName,
-            aggregation,
-            providerCount: aggregation.results.length,
-          });
-
-          logger.info('Cron: Auto-analysis complete', { match: `${teamAName} vs ${teamBName}`, providers: aggregation.results.length });
-          analyzedCount++;
-          ctx.log(`已分析: ${teamAName} vs ${teamBName}`);
-        } catch (err) {
-          logger.error('Cron: Auto-analysis failed', { matchId, error: (err as Error).message });
-        }
-      }
-      return { analyzedCount, candidates: upcoming.length };
-    });
-  });
-
-  // ============================================================
-  // Initial run: Execute immediately on startup
-  // ============================================================
-  logger.info('Cron: Running initial data fetch');
-  setTimeout(() => {
-    void trackTask('startup-init', {
-      name: '启动初始化',
-      category: 'system',
-      trigger: 'startup',
-    }, async (ctx) => {
-      ctx.setProgress(10, '加载 Polymarket 市场');
-      const markets = await marketService.refreshMarkets();
-      ctx.log(`已加载 ${markets.length} 个市场`);
-      ctx.setProgress(40, '加载电竞数据');
-      const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
-      let matchesLoaded = 0;
-      let teamsLoaded = 0;
-      try {
-        const csMatches = await csApiClient.getMatches(100, historyMonths);
-        for (const m of csMatches) {
-          llmRepo.upsertMatch({
+          const csMatches = await csApiClient.getMatches(100, historyMonths);
+          matches = csMatches.map((m) => ({
             matchId: m.matchId,
             teamAId: m.teamAId,
             teamBId: m.teamBId,
             teamAName: m.teamAName,
             teamBName: m.teamBName,
-            eventName: m.event,
+            event: m.event,
             eventType: m.eventType,
             format: m.format,
-            scheduledAt: m.date,
-            status: 'finished',
+            date: m.date,
             maps: m.maps,
-            hasTeamData: true,
+          }));
+          logger.info('Cron: CS API matches found', { count: matches.length });
+        } catch (err) {
+          logger.warn('Cron: CS API failed, trying HLTV', { error: (err as Error).message });
+        }
+
+        // --- Step 1a: GRID upcoming series (official schedule) ---
+        try {
+          const gridUpcoming = await gridClient.getUpcomingSeries(historyMonths);
+          const existingIds = new Set(matches.map((m) => m.matchId));
+          for (const m of gridUpcoming) {
+            if (!m.teamAId || !m.teamBId || existingIds.has(m.seriesId)) continue;
+            matches.push({
+              matchId: m.seriesId,
+              teamAId: m.teamAId,
+              teamBId: m.teamBId,
+              teamAName: m.teamAName,
+              teamBName: m.teamBName,
+              event: m.eventName,
+              eventType: 'Online' as const,
+              format: (m.format === 'BO1' || m.format === 'BO5' ? m.format : 'BO3') as
+                | 'BO1'
+                | 'BO3'
+                | 'BO5',
+              date: m.date,
+              maps: [],
+            });
+            existingIds.add(m.seriesId);
+          }
+          logger.info('Cron: GRID upcoming merged', {
+            gridCount: gridUpcoming.length,
+            total: matches.length,
+          });
+        } catch (err) {
+          logger.warn('Cron: GRID upcoming fetch failed (non-critical)', {
+            error: (err as Error).message,
           });
         }
-        matchesLoaded = csMatches.length;
-        const teamIds = new Set<string>();
-        for (const m of csMatches.slice(0, 30)) {
-          teamIds.add(m.teamAId);
-          teamIds.add(m.teamBId);
-        }
-        for (const teamId of teamIds) {
-          try {
-            const team = await csApiClient.getTeam(teamId);
-            if (team) {
-              llmRepo.upsertTeam({
-                teamId: team.teamId,
-                name: team.name,
-                rank: team.rank,
-                region: team.region,
-                players: JSON.stringify(team.players),
-                recentForm: JSON.stringify(team.recentForm),
-                mapPool: JSON.stringify(team.mapPool),
-              });
-              teamsLoaded++;
-            }
-          } catch { /* best-effort */ }
-        }
-      } catch (err) {
-        ctx.log(`CS API 失败: ${(err as Error).message}`, 'warn');
-      }
 
-      if (matchesLoaded === 0) {
-        const hltvMatches = await hltvCrawler.getMatches();
-        for (const m of hltvMatches) {
+        // --- Step 1b: HLTV fallback for upcoming matches (CS API is daily-refresh, no upcoming) ---
+        try {
+          const hltvMatches = await hltvCrawler.getMatches();
+          // Merge: only add HLTV matches not already in CS API results
+          const existingIds = new Set(matches.map((m) => m.matchId));
+          for (const m of hltvMatches) {
+            if (!existingIds.has(m.matchId)) {
+              matches.push({
+                matchId: m.matchId,
+                teamAId: m.teamAId,
+                teamBId: m.teamBId,
+                teamAName: m.teamAName,
+                teamBName: m.teamBName,
+                event: m.event,
+                eventType: m.eventType,
+                format: m.format,
+                date: m.date,
+                maps: [],
+              });
+            }
+          }
+          logger.info('Cron: HLTV matches merged', {
+            hltvCount: hltvMatches.length,
+            total: matches.length,
+          });
+        } catch (err) {
+          logger.warn('Cron: HLTV fetch failed (non-critical)', { error: (err as Error).message });
+        }
+
+        // --- Step 2: Store all matches in local DB ---
+        for (const m of matches) {
           llmRepo.upsertMatch({
             matchId: m.matchId,
             teamAId: m.teamAId,
@@ -893,57 +726,471 @@ export function startCronJobs(): void {
             format: m.format,
             scheduledAt: m.date,
             status: 'upcoming',
-            maps: [],
+            maps: m.maps,
             hasTeamData: false,
           });
         }
-        matchesLoaded = hltvMatches.length;
-      }
-      ctx.log(`电竞数据: ${matchesLoaded} 场, ${teamsLoaded} 队`);
 
-      ctx.setProgress(80, '预热缓存');
-      const topMarkets = await marketService.getMarkets(20, 0);
-      for (const market of topMarkets.slice(0, 5)) {
-        try {
-          await marketService.getOrderBook(market.conditionId);
-        } catch { /* non-critical */ }
-      }
-      llmRepo.getTopTeams(10);
-      ctx.setProgress(100);
-      return { markets: markets.length, matchesLoaded, teamsLoaded };
-    });
-  }, 2000);
+        // --- Step 3: Fetch team data for unique teams (CS API first, HLTV fallback) ---
+        const teamIds = new Set<string>();
+        for (const m of matches.slice(0, 40)) {
+          teamIds.add(m.teamAId);
+          teamIds.add(m.teamBId);
+        }
 
-  // Cleanup Playwright browser on process exit
-  process.on('beforeExit', () => {
-    closeBrowser().catch(() => { /* ignore */ });
+        logger.info('Cron: Fetching team data', { count: teamIds.size });
+        for (const teamId of teamIds) {
+          try {
+            let team = await csApiClient.getTeam(teamId);
+            if (!team) {
+              team = await hltvCrawler.getTeam(teamId);
+            }
+            if (team) {
+              llmRepo.upsertTeam({
+                teamId: team.teamId,
+                name: team.name,
+                rank: team.rank,
+                region: team.region,
+                players: JSON.stringify(team.players),
+                recentForm: JSON.stringify(team.recentForm),
+                mapPool: JSON.stringify(team.mapPool),
+              });
+            }
+          } catch (err) {
+            logger.error('Cron: Team fetch failed', { teamId, error: (err as Error).message });
+          }
+        }
+
+        ctx.log(`完成: ${matches.length} 场比赛, ${teamIds.size} 支队伍`);
+        ctx.setMetadata({ matches: matches.length, teams: teamIds.size });
+        ctx.setProgress(100);
+      },
+    );
   });
+
+  // ============================================================
+  // HLTV Rankings: Update every 6 hours
+  // ============================================================
+  cron.schedule('0 */6 * * *', () => {
+    void trackTask(
+      'hltv-rankings',
+      {
+        name: 'HLTV 排名更新',
+        category: 'esports',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
+        let rankings: Array<{ rank: number; teamId: string; name: string }>;
+        try {
+          rankings = await csApiClient.getRankings(historyMonths);
+          if (rankings.length === 0) throw new Error('CS API returned no rankings');
+        } catch {
+          rankings = await hltvCrawler.getRankings();
+        }
+        for (const r of rankings) {
+          llmRepo.upsertTeam({
+            teamId: r.teamId,
+            name: r.name,
+            rank: r.rank,
+            region: '',
+            players: '[]',
+            recentForm: '{}',
+            mapPool: '{}',
+          });
+        }
+        ctx.log(`更新了 ${rankings.length} 支队伍排名`);
+        return { count: rankings.length };
+      },
+    );
+  });
+
+  // ============================================================
+  // Daily dashboard: Generate at 00:05 UTC
+  // ============================================================
+  cron.schedule('5 0 * * *', () => {
+    void trackTask(
+      'daily-dashboard',
+      {
+        name: '每日看板生成',
+        category: 'system',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const dashboard = await dailyService.refreshDashboard();
+        broadcast('daily', dashboard);
+        ctx.log(
+          `${dashboard.totalMatches} 场比赛, ${dashboard.highAttentionMatches.length} 条高关注推荐`,
+        );
+        return { totalMatches: dashboard.totalMatches };
+      },
+    );
+  });
+
+  // ============================================================
+  // Daily cleanup: Purge data older than configured history window (00:15 UTC)
+  // ============================================================
+  cron.schedule('15 0 * * *', () => {
+    void trackTask(
+      'data-cleanup',
+      {
+        name: '历史数据清理',
+        category: 'system',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const config = esportsRepo.getAnalysisFilterConfig();
+        const counts = esportsRepo.cleanupOldData(config.historyMonths);
+        ctx.log(`清理 ${config.historyMonths} 个月前的数据`);
+        return counts as Record<string, unknown>;
+      },
+    );
+  });
+
+  // ============================================================
+  // Settlement check: Every 10 minutes, check for resolved markets
+  // ============================================================
+  cron.schedule('*/10 * * * *', () => {
+    void trackTask(
+      'settlement-check',
+      {
+        name: '模拟单结算',
+        category: 'market',
+        trigger: 'scheduled',
+        silent: true,
+      },
+      async (ctx) => {
+        const pendingBets = llmRepo.getPendingBets();
+        const activeIds = [...new Set(pendingBets.map((b: SimulatedBet) => b.matchId))];
+
+        if (activeIds.length === 0) return;
+
+        let settledTotal = 0;
+        for (const conditionId of activeIds) {
+          try {
+            const market = await pmGammaClient.getMarket(conditionId);
+            if (!market || market.status !== 'resolved') continue;
+
+            // Determine winner from resolution data
+            // Look up match data to get actual team names
+            const matchData = llmRepo.getMatch(conditionId);
+            let winner: string | undefined;
+
+            if (matchData) {
+              const teamAName = matchData.team_a_name as string | undefined;
+              const teamBName = matchData.team_b_name as string | undefined;
+              // "Yes" = first team (teamA) won, "No" = second team (teamB) won
+              winner = market.resolvedOutcome === 'Yes' ? teamAName : teamBName;
+            }
+
+            // Fallback: extract from question text for CS2 format
+            // "Counter-Strike: TeamA vs TeamB (BO3) - ..."
+            if (!winner) {
+              const question = market.question ?? '';
+              const vsMatch = question.match(/:\s*(.+?)\s+vs\s+(.+?)(?:\s*\(|\s*-\s|$)/i);
+              if (vsMatch) {
+                winner = market.resolvedOutcome === 'Yes' ? vsMatch[1].trim() : vsMatch[2].trim();
+              }
+            }
+
+            if (!winner) continue;
+
+            const result = await settlementEngine.settleMarket(
+              conditionId,
+              winner,
+              market.resolvedPrice ?? 1.0,
+              async (mid) => llmRepo.getBetsByMatch(mid),
+              async (provider, stats) => {
+                // Merge with existing stats instead of overwriting
+                const existing = llmRepo.getStats(provider);
+                if (existing) {
+                  const mergedPredictions =
+                    (Number(existing.totalPredictions) || 0) + (stats.totalPredictions || 0);
+                  const mergedCorrect =
+                    (Number(existing.correctPredictions) || 0) + (stats.correctPredictions || 0);
+                  const mergedPnl = (Number(existing.profitLoss) || 0) + (stats.profitLoss || 0);
+                  llmRepo.upsertStats({
+                    provider,
+                    model: stats.model ?? 'default',
+                    totalPredictions: mergedPredictions,
+                    correctPredictions: mergedCorrect,
+                    accuracy: mergedPredictions > 0 ? mergedCorrect / mergedPredictions : 0,
+                    profitLoss: mergedPnl,
+                    roi: mergedPredictions > 0 ? mergedPnl / (mergedPredictions * 100) : 0,
+                    calibrationError: stats.calibrationError ?? 0,
+                    averageConfidence: existing.averageConfidence ?? 0,
+                    sharpeRatio: existing.sharpeRatio ?? 0,
+                    maxDrawdown: existing.maxDrawdown ?? 0,
+                    lastUpdated: stats.lastUpdated,
+                  });
+                } else {
+                  llmRepo.upsertStats({ ...stats, provider });
+                }
+              },
+              async (bet) => llmRepo.upsertBet(bet),
+            );
+
+            if (result.settledCount > 0) {
+              settledTotal += result.settledCount;
+              logger.info('Cron: Settlement processed', {
+                conditionId,
+                settledCount: result.settledCount,
+                winner,
+              });
+
+              // Update match state to 'settled' via state machine
+              llmRepo.updateMatchStatus(conditionId, 'settled');
+
+              // Broadcast with fields matching frontend SettlementEvent interface
+              broadcast('settlement', {
+                marketId: conditionId,
+                question: market.question ?? '',
+                outcome: winner,
+                pnl: result.providerResults.reduce((s, r) => s + r.pnl, 0),
+                settledCount: result.settledCount,
+              });
+            }
+          } catch {
+            // Individual market check failure is non-critical
+          }
+        }
+        if (settledTotal > 0) ctx.log(`结算 ${settledTotal} 笔模拟单`);
+      },
+    );
+  });
+
+  // ============================================================
+  // LLM Auto-Analysis: Check every 15 minutes for matches starting soon
+  // Triggers LLM analysis for matches starting within 30 minutes
+  // that haven't been analyzed yet
+  // ============================================================
+  cron.schedule('*/15 * * * *', () => {
+    void trackTask(
+      'llm-auto-analysis',
+      {
+        name: 'LLM 自动分析',
+        category: 'ai',
+        trigger: 'scheduled',
+      },
+      async (ctx) => {
+        const upcoming = llmRepo.getUpcomingMatches(50);
+        const now = Date.now();
+
+        // Prune analyzed matches older than 24h to bound memory growth
+        for (const [id, ts] of analyzedMatches) {
+          if (now - ts > 24 * 60 * 60 * 1000) analyzedMatches.delete(id);
+        }
+
+        // Hoist config check out of the loop — provider config does not change per-match
+        const configs = llmRepo.getAllConfigs();
+        const enabledCount = configs.filter(
+          (c: { isEnabled: boolean; apiKey: string }) => c.isEnabled && c.apiKey,
+        ).length;
+
+        let analyzedCount = 0;
+        for (const match of upcoming as Array<Record<string, unknown>>) {
+          const matchId = match.match_id as string;
+          const teamAId = match.team_a_id as string;
+          const teamBId = match.team_b_id as string;
+          const teamAName = match.team_a_name as string;
+          const teamBName = match.team_b_name as string;
+          const hasTeamData = match.has_team_data as boolean;
+          const scheduledAt = match.scheduled_at as string | null;
+
+          if (!hasTeamData) continue;
+
+          const scheduledTime = scheduledAt ? new Date(scheduledAt).getTime() : 0;
+          if (scheduledTime === 0) continue;
+
+          const matchState = MatchStateMachine.determineState(scheduledAt!, 'active', false);
+          const freqs = MatchStateMachine.getUpdateFrequencies(matchState);
+
+          if (matchState !== 'scheduled' && matchState !== 'pre_match') continue;
+          if (freqs.llm === 0) continue;
+
+          const lastAnalyzed = analyzedMatches.get(matchId);
+          if (lastAnalyzed && freqs.llm > 0 && now - lastAnalyzed < freqs.llm * 1000) {
+            continue;
+          }
+
+          if (enabledCount === 0) continue;
+
+          const timeUntilStart = scheduledTime - now;
+          logger.info('Cron: Auto-analyzing match', {
+            match: `${teamAName} vs ${teamBName}`,
+            state: matchState,
+            startsInMin: Math.round(timeUntilStart / 60000),
+          });
+
+          try {
+            const aggregation = await aiConfigService.analyze(matchId, teamAId, teamBId);
+            analyzedMatches.set(matchId, now);
+
+            // Broadcast analysis result to frontend
+            broadcast('analysis', {
+              matchId,
+              teamA: teamAName,
+              teamB: teamBName,
+              aggregation,
+              providerCount: aggregation.results.length,
+            });
+
+            logger.info('Cron: Auto-analysis complete', {
+              match: `${teamAName} vs ${teamBName}`,
+              providers: aggregation.results.length,
+            });
+            analyzedCount++;
+            ctx.log(`已分析: ${teamAName} vs ${teamBName}`);
+          } catch (err) {
+            logger.error('Cron: Auto-analysis failed', { matchId, error: (err as Error).message });
+          }
+        }
+        return { analyzedCount, candidates: upcoming.length };
+      },
+    );
+  });
+
+  // ============================================================
+  // Initial run: Execute immediately on startup
+  // ============================================================
+  logger.info('Cron: Running initial data fetch');
+  setTimeout(() => {
+    void trackTask(
+      'startup-init',
+      {
+        name: '启动初始化',
+        category: 'system',
+        trigger: 'startup',
+      },
+      async (ctx) => {
+        ctx.setProgress(10, '加载 Polymarket 市场');
+        const markets = await marketService.refreshMarkets();
+        ctx.log(`已加载 ${markets.length} 个市场`);
+        ctx.setProgress(40, '加载电竞数据');
+        const historyMonths = esportsRepo.getAnalysisFilterConfig().historyMonths;
+        let matchesLoaded = 0;
+        let teamsLoaded = 0;
+        try {
+          const csMatches = await csApiClient.getMatches(100, historyMonths);
+          for (const m of csMatches) {
+            llmRepo.upsertMatch({
+              matchId: m.matchId,
+              teamAId: m.teamAId,
+              teamBId: m.teamBId,
+              teamAName: m.teamAName,
+              teamBName: m.teamBName,
+              eventName: m.event,
+              eventType: m.eventType,
+              format: m.format,
+              scheduledAt: m.date,
+              status: 'finished',
+              maps: m.maps,
+              hasTeamData: true,
+            });
+          }
+          matchesLoaded = csMatches.length;
+          const teamIds = new Set<string>();
+          for (const m of csMatches.slice(0, 30)) {
+            teamIds.add(m.teamAId);
+            teamIds.add(m.teamBId);
+          }
+          for (const teamId of teamIds) {
+            try {
+              const team = await csApiClient.getTeam(teamId);
+              if (team) {
+                llmRepo.upsertTeam({
+                  teamId: team.teamId,
+                  name: team.name,
+                  rank: team.rank,
+                  region: team.region,
+                  players: JSON.stringify(team.players),
+                  recentForm: JSON.stringify(team.recentForm),
+                  mapPool: JSON.stringify(team.mapPool),
+                });
+                teamsLoaded++;
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+        } catch (err) {
+          ctx.log(`CS API 失败: ${(err as Error).message}`, 'warn');
+        }
+
+        if (matchesLoaded === 0) {
+          const hltvMatches = await hltvCrawler.getMatches();
+          for (const m of hltvMatches) {
+            llmRepo.upsertMatch({
+              matchId: m.matchId,
+              teamAId: m.teamAId,
+              teamBId: m.teamBId,
+              teamAName: m.teamAName,
+              teamBName: m.teamBName,
+              eventName: m.event,
+              eventType: m.eventType,
+              format: m.format,
+              scheduledAt: m.date,
+              status: 'upcoming',
+              maps: [],
+              hasTeamData: false,
+            });
+          }
+          matchesLoaded = hltvMatches.length;
+        }
+        ctx.log(`电竞数据: ${matchesLoaded} 场, ${teamsLoaded} 队`);
+
+        ctx.setProgress(80, '预热缓存');
+        const topMarkets = await marketService.getMarkets(20, 0);
+        for (const market of topMarkets.slice(0, 5)) {
+          try {
+            await marketService.getOrderBook(market.conditionId);
+          } catch {
+            /* non-critical */
+          }
+        }
+        llmRepo.getTopTeams(10);
+        ctx.setProgress(100);
+        return { markets: markets.length, matchesLoaded, teamsLoaded };
+      },
+    );
+  }, 2000);
 
   if (process.env.POLYRADER_AUTO_TUNE_SIGNALS === '1') {
     cron.schedule('0 4 * * 0', () => {
-      void trackTask('auto-tune-signals', {
-        name: '信号权重自动调优',
-        category: 'signal',
-        trigger: 'scheduled',
-      }, async () => {
-        const result = signalService.applySuggestedWeights({ minSampleSize: 15, maxStepRatio: 0.35 });
-        logger.info('Cron: Auto-tuned signal weights', { applied: result.applied });
-        return result;
-      });
+      void trackTask(
+        'auto-tune-signals',
+        {
+          name: '信号权重自动调优',
+          category: 'signal',
+          trigger: 'scheduled',
+        },
+        async () => {
+          const result = signalService.applySuggestedWeights({
+            minSampleSize: 15,
+            maxStepRatio: 0.35,
+          });
+          logger.info('Cron: Auto-tuned signal weights', { applied: result.applied });
+          return result;
+        },
+      );
     });
   }
 
   if (process.env.POLYRADER_AUTO_TUNE_PROMPTS === '1') {
     cron.schedule('0 5 * * 0', () => {
-      void trackTask('auto-tune-prompts', {
-        name: 'Prompt A/B 自动调权',
-        category: 'ai',
-        trigger: 'scheduled',
-      }, async () => {
-        const result = autoTunePromptVariants(llmRepo);
-        logger.info('Cron: Auto-tuned prompt traffic weights', { applied: result.applied });
-        return result;
-      });
+      void trackTask(
+        'auto-tune-prompts',
+        {
+          name: 'Prompt A/B 自动调权',
+          category: 'ai',
+          trigger: 'scheduled',
+        },
+        async () => {
+          const result = autoTunePromptVariants(llmRepo);
+          logger.info('Cron: Auto-tuned prompt traffic weights', { applied: result.applied });
+          return result;
+        },
+      );
     });
   }
 

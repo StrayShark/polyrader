@@ -23,14 +23,14 @@ import { useFeatureFlagStore } from '../stores/feature-flag-store';
 
 const navigation = [
   {
-    group: 'Practice',
+    group: 'nav.groupCore',
     items: [
       { to: '/', icon: Trophy, labelKey: 'nav.lobby' },
       { to: '/bankroll', icon: Wallet, labelKey: 'nav.bankroll' },
     ],
   },
   {
-    group: 'Data',
+    group: 'nav.groupAnalysis',
     items: [
       { to: '/strategy', icon: FlaskConical, labelKey: 'nav.strategy' },
       { to: '/analysis/report', icon: FileJson2, labelKey: 'nav.analysisReport' },
@@ -38,7 +38,7 @@ const navigation = [
     ],
   },
   {
-    group: 'Advanced',
+    group: 'nav.groupTools',
     items: [
       { to: '/daily', icon: Ticket, labelKey: 'nav.daily' },
       { to: '/esports', icon: Activity, labelKey: 'nav.esports' },
@@ -98,7 +98,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
             <div key={group.group} className="mb-2">
               {!collapsed && (
                 <div className="px-4 py-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  {group.group}
+                  {t(group.group)}
                 </div>
               )}
               {group.items

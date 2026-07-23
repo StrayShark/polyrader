@@ -5,7 +5,7 @@ import { setTheme, waitForMainHeading } from './fixtures/theme';
 
 /**
  * P1 UI audit fixes:
- * 1. AI stats page — ProductModeNotice (simulation)
+ * 1. Match detail — no duplicate practice surface
  * 2. CopyFollowPanel — design-system Input (not raw <input>)
  * 3. Sidebar — distinct icons per nav item (label-based check)
  * 4. Whales follow tab — onboarding guide when no followed wallets
@@ -17,15 +17,14 @@ test.describe('P1 UI audit fixes', () => {
     await setTheme(page, 'dark');
   });
 
-  test('match detail practice tab shows simulation mode notice', async ({ page }) => {
+  test('match detail uses one odds surface and no repeated mode notice', async ({ page }) => {
     await setupMatchDetailMocks(page);
     await page.goto('/#/match/spirit-vs-g2-bo3');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
-    await page.getByRole('tab', { name: /模拟|Practice/i }).click();
-    const notice = page.getByRole('note');
-    await expect(notice.getByText(/模拟投注|Paper Trading/i)).toBeVisible();
-    await expect(notice.getByText(/不会向 Polymarket|No real Polymarket/i)).toBeVisible();
+    await expect(page.getByRole('tab', { name: /模拟|Practice/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Spirit \d/ })).toBeVisible();
+    await expect(page.getByRole('note')).toHaveCount(0);
   });
 
   test('follow tab shows onboarding guide when wallet list is empty', async ({ page }) => {

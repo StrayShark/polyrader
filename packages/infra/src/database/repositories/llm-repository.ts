@@ -1,5 +1,13 @@
 import { query, queryOne } from '../connection';
-import type { LLMConfig, LLMStats, SimulatedBet, LLMProvider, PromptVariant, LLMAnalysisResult, EquityCurvePoint } from '@polyrader/core';
+import type {
+  LLMConfig,
+  LLMStats,
+  SimulatedBet,
+  LLMProvider,
+  PromptVariant,
+  LLMAnalysisResult,
+  EquityCurvePoint,
+} from '@polyrader/core';
 
 export class LLMRepository {
   // --- LLM Config ---
@@ -12,9 +20,7 @@ export class LLMRepository {
   }
 
   getAllConfigs(): LLMConfig[] {
-    const rows = query<Record<string, unknown>>(
-      `SELECT * FROM llm_configs ORDER BY provider`,
-    );
+    const rows = query<Record<string, unknown>>(`SELECT * FROM llm_configs ORDER BY provider`);
     return rows.map(this.mapConfig);
   }
 
@@ -54,9 +60,7 @@ export class LLMRepository {
   }
 
   getAllStats(): LLMStats[] {
-    const rows = query<Record<string, unknown>>(
-      `SELECT * FROM llm_stats ORDER BY accuracy DESC`,
-    );
+    const rows = query<Record<string, unknown>>(`SELECT * FROM llm_stats ORDER BY accuracy DESC`);
     return rows.map(this.mapStats);
   }
 
@@ -134,7 +138,8 @@ export class LLMRepository {
     const placeholders = providers.map(() => '?').join(',');
     const rows = query<Record<string, unknown>>(
       `SELECT * FROM simulated_bets WHERE provider IN (${placeholders}) ORDER BY placed_at DESC LIMIT ?`,
-      ...providers, limit,
+      ...providers,
+      limit,
     );
     return rows.map(this.mapBet);
   }
@@ -180,10 +185,7 @@ export class LLMRepository {
   }
 
   getBetById(id: string): SimulatedBet | null {
-    const rows = query<Record<string, unknown>>(
-      `SELECT * FROM simulated_bets WHERE id = ?`,
-      id,
-    );
+    const rows = query<Record<string, unknown>>(`SELECT * FROM simulated_bets WHERE id = ?`, id);
     return rows.length > 0 ? this.mapBet(rows[0]) : null;
   }
 
@@ -214,14 +216,16 @@ export class LLMRepository {
       query(
         `INSERT OR IGNORE INTO teams (team_id, name, rank, region, players, recent_form, map_pool, updated_at)
          VALUES (?, ?, 999, '', '[]', '{}', '{}', datetime('now'))`,
-        match.teamAId, match.teamAName,
+        match.teamAId,
+        match.teamAName,
       );
     }
     if (match.teamBId) {
       query(
         `INSERT OR IGNORE INTO teams (team_id, name, rank, region, players, recent_form, map_pool, updated_at)
          VALUES (?, ?, 999, '', '[]', '{}', '{}', datetime('now'))`,
-        match.teamBId, match.teamBName,
+        match.teamBId,
+        match.teamBName,
       );
     }
 
@@ -297,7 +301,11 @@ export class LLMRepository {
 
   getUpcomingMatches(limit = 50): Array<Record<string, unknown>> {
     return query<Record<string, unknown>>(
-      `SELECT * FROM matches WHERE status IN ('scheduled', 'pre_match', 'upcoming') ORDER BY scheduled_at ASC LIMIT ?`,
+      `SELECT * FROM matches
+       WHERE status IN ('scheduled', 'pre_match', 'upcoming')
+         AND datetime(scheduled_at) >= datetime('now', '-15 minutes')
+       ORDER BY datetime(scheduled_at) ASC
+       LIMIT ?`,
       limit,
     );
   }
@@ -375,17 +383,13 @@ export class LLMRepository {
   }
 
   getTeam(teamId: string): Record<string, unknown> | null {
-    return queryOne<Record<string, unknown>>(
-      `SELECT * FROM teams WHERE team_id = ?`,
-      teamId,
-    ) ?? null;
+    return (
+      queryOne<Record<string, unknown>>(`SELECT * FROM teams WHERE team_id = ?`, teamId) ?? null
+    );
   }
 
   getTopTeams(limit = 10): Array<Record<string, unknown>> {
-    return query<Record<string, unknown>>(
-      `SELECT * FROM teams ORDER BY rank ASC LIMIT ?`,
-      limit,
-    );
+    return query<Record<string, unknown>>(`SELECT * FROM teams ORDER BY rank ASC LIMIT ?`, limit);
   }
 
   // --- Prompt Variants (A/B testing) ---
@@ -438,10 +442,7 @@ export class LLMRepository {
   }
 
   deleteVariant(variantId: string): void {
-    query(
-      `DELETE FROM prompt_variants WHERE variant_id = ? AND is_control = 0`,
-      variantId,
-    );
+    query(`DELETE FROM prompt_variants WHERE variant_id = ? AND is_control = 0`, variantId);
   }
 
   insertAnalysis(matchId: string, result: LLMAnalysisResult, variantId?: string): void {
@@ -633,9 +634,19 @@ export class LLMRepository {
     totalPromptTokens: number;
     totalCompletionTokens: number;
     totalTokens: number;
-    monthly: Array<{ month: string; promptTokens: number; completionTokens: number; totalTokens: number }>;
+    monthly: Array<{
+      month: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }>;
   } {
-    const rows = query<{ prompt_tokens: number; completion_tokens: number; total_tokens: number; month: string }>(
+    const rows = query<{
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+      month: string;
+    }>(
       `SELECT
          CAST(json_extract(token_usage, '$.promptTokens') AS INTEGER) AS prompt_tokens,
          CAST(json_extract(token_usage, '$.completionTokens') AS INTEGER) AS completion_tokens,
@@ -649,12 +660,15 @@ export class LLMRepository {
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
     let totalTokens = 0;
-    const monthMap = new Map<string, { promptTokens: number; completionTokens: number; totalTokens: number }>();
+    const monthMap = new Map<
+      string,
+      { promptTokens: number; completionTokens: number; totalTokens: number }
+    >();
 
     for (const r of rows) {
       const pt = r.prompt_tokens ?? 0;
       const ct = r.completion_tokens ?? 0;
-      const tt = r.total_tokens ?? (pt + ct);
+      const tt = r.total_tokens ?? pt + ct;
       totalPromptTokens += pt;
       totalCompletionTokens += ct;
       totalTokens += tt;
@@ -678,7 +692,10 @@ export class LLMRepository {
    * Refresh quota_used and cost_estimate for a provider based on aggregated token usage.
    * Called after each analysis to keep usage stats current.
    */
-  refreshQuota(provider: LLMProvider, pricing: { inputPricePerM: number; outputPricePerM: number }): void {
+  refreshQuota(
+    provider: LLMProvider,
+    pricing: { inputPricePerM: number; outputPricePerM: number },
+  ): void {
     const summary = this.getTokenUsageSummary(provider);
     const cost =
       (summary.totalPromptTokens / 1_000_000) * pricing.inputPricePerM +
@@ -696,7 +713,10 @@ export class LLMRepository {
    * Get all analysis snapshots for a match, ordered by time.
    * Used for the 24h win-rate timeline visualization (PRD §9.2).
    */
-  getAnalysesByMatch(matchId: string, sinceHours = 24): Array<{
+  getAnalysesByMatch(
+    matchId: string,
+    sinceHours = 24,
+  ): Array<{
     analysisId: string;
     createdAt: string;
     provider: LLMProvider;
@@ -757,7 +777,11 @@ export class LLMRepository {
     );
     return rows.map((row) => {
       let keyFactors: string[] = [];
-      try { keyFactors = JSON.parse(String(row.key_factors ?? '[]')); } catch { /* malformed */ }
+      try {
+        keyFactors = JSON.parse(String(row.key_factors ?? '[]'));
+      } catch {
+        /* malformed */
+      }
       return {
         analysisId: String(row.id),
         matchId: String(row.match_id ?? ''),

@@ -4,13 +4,29 @@
  */
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const serverDir = join(__dirname, '..');
 const distDir = join(serverDir, 'dist');
+const migrationDir = join(serverDir, '..', 'infra', 'src', 'database', 'migrations');
+const standaloneMigrationsPath = join(serverDir, 'src', 'standalone-migrations.ts');
+
+const migrationFiles = readdirSync(migrationDir)
+  .filter((fileName) => /^\d+.*\.sql$/.test(fileName))
+  .sort();
+const standaloneMigrationsSource = readFileSync(standaloneMigrationsPath, 'utf8');
+const missingEmbeddedMigrations = migrationFiles.filter(
+  (fileName) => !standaloneMigrationsSource.includes(`'${fileName}'`),
+);
+
+if (missingEmbeddedMigrations.length > 0) {
+  throw new Error(
+    `Standalone migration manifest is missing: ${missingEmbeddedMigrations.join(', ')}`,
+  );
+}
 
 // Step 1: esbuild bundle (use Node API to avoid shell/path issues on Windows)
 const bannerJs = 'import{createRequire}from"module";const require=createRequire(import.meta.url);';
@@ -27,11 +43,15 @@ await build({
 
 // Step 2: bun compile to standalone binary
 console.log('[2/2] Running bun compile...');
-execFileSync('bun', ['build', '--compile', 'src/index.ts', '--outfile=dist/polyrader-server'], {
-  stdio: 'inherit',
-  cwd: serverDir,
-  shell: process.platform === 'win32', // Need shell on Windows to find bun
-});
+execFileSync(
+  'bun',
+  ['build', '--compile', 'src/standalone.ts', '--outfile=dist/polyrader-server'],
+  {
+    stdio: 'inherit',
+    cwd: serverDir,
+    shell: process.platform === 'win32', // Need shell on Windows to find bun
+  },
+);
 
 // Verify output
 const isWindows = process.platform === 'win32';

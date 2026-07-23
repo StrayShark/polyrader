@@ -191,6 +191,104 @@ export function normalizeCs2MatchFacts(
   };
 }
 
+/** Deterministic complete CS2 facts used only by explicit test/development validation. */
+export function buildCs2FixtureFacts(now = new Date()): NormalizedMatchFacts {
+  const observedAt = now.toISOString();
+  const startsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
+  const teamAPlayers = cs2FixturePlayers('navi', ['b1t', 'w0nderful', 'iM', 'Aleksib', 'jL']);
+  const teamBPlayers = cs2FixturePlayers('faze', ['broky', 'rain', 'frozen', 'karrigan', 'EliGE']);
+  const recentA = cs2FixtureRecent('FaZe Clan', 7);
+  const recentB = cs2FixtureRecent('Natus Vincere', 6);
+  const snapshots: SourceSnapshotLike[] = [
+    {
+      game: 'cs2',
+      source: 'hltv',
+      entityType: 'match',
+      externalId: '2395534',
+      name: 'Natus Vincere vs FaZe Clan',
+      startsAt,
+      status: 'scheduled',
+      payload: {
+        teamAId: 'navi',
+        teamBId: 'faze',
+        teamAName: 'Natus Vincere',
+        teamBName: 'FaZe Clan',
+        eventName: 'Deterministic CS2 Practice Cup',
+        format: 'BO3',
+        maps: ['Mirage', 'Nuke', 'Inferno'],
+        lineups: {
+          teamA: { players: teamAPlayers },
+          teamB: { players: teamBPlayers },
+        },
+      },
+      observedAt,
+    },
+    {
+      game: 'cs2',
+      source: 'hltv',
+      entityType: 'team',
+      externalId: 'navi',
+      name: 'Natus Vincere',
+      status: 'active',
+      payload: {
+        rank: 3,
+        region: 'EU',
+        players: teamAPlayers,
+        recentForm: { last10Matches: recentA, winRate: 0.7, streak: 2, averageRating: 1.11 },
+        mapPool: { maps: cs2FixtureMaps(0.64) },
+      },
+      observedAt,
+    },
+    {
+      game: 'cs2',
+      source: 'hltv',
+      entityType: 'team',
+      externalId: 'faze',
+      name: 'FaZe Clan',
+      status: 'active',
+      payload: {
+        rank: 6,
+        region: 'EU',
+        players: teamBPlayers,
+        recentForm: { last10Matches: recentB, winRate: 0.6, streak: 1, averageRating: 1.07 },
+        mapPool: { maps: cs2FixtureMaps(0.58) },
+      },
+      observedAt,
+    },
+  ];
+  return normalizeCs2MatchFacts(snapshots, { now })!;
+}
+
+function cs2FixturePlayers(teamId: string, names: string[]): Array<Record<string, unknown>> {
+  return names.map((nickname, index) => ({
+    playerId: `${teamId}-${index + 1}`,
+    nickname,
+    rating: Number((1.04 + (4 - index) * 0.02).toFixed(2)),
+    kdRatio: Number((1.01 + (4 - index) * 0.03).toFixed(2)),
+    headshotPercent: 42 + index * 3,
+    mapsPlayed: 30 + index,
+    role: index === 1 ? 'AWPer' : index === 3 ? 'IGL' : 'Rifler',
+  }));
+}
+
+function cs2FixtureRecent(opponent: string, wins: number): Array<Record<string, unknown>> {
+  return Array.from({ length: 10 }, (_, index) => ({
+    opponent: index === 0 ? opponent : `Fixture Opponent ${index + 1}`,
+    result: index < wins ? 'win' : 'loss',
+    score: index < wins ? '2-1' : '1-2',
+    date: `2026-07-${String(20 - index).padStart(2, '0')}`,
+    event: 'Fixture League',
+  }));
+}
+
+function cs2FixtureMaps(baseWinRate: number) {
+  return ['Mirage', 'Nuke', 'Inferno'].map((map, index) => ({
+    map,
+    winRate: Math.max(0, baseWinRate - index * 0.04),
+    matchesPlayed: 10 - index,
+  }));
+}
+
 function pickPreferred(
   items: SourceSnapshotLike[],
   order: string[],

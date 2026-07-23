@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BarChart3, BookOpen, ClipboardList, Wallet } from 'lucide-react';
+import { BarChart3, BookOpen, ClipboardList, FlaskConical, Wallet } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
@@ -10,6 +10,9 @@ const LedgerSection = lazy(() =>
 const PaperOrdersSection = lazy(() =>
   import('./paper-orders-page').then((module) => ({ default: module.PaperOrdersPage })),
 );
+const SimulationSection = lazy(() =>
+  import('./simulation-page').then((module) => ({ default: module.SimulationPage })),
+);
 const PerformanceSection = lazy(() =>
   import('./performance-page').then((module) => ({ default: module.PerformancePage })),
 );
@@ -17,11 +20,17 @@ const ReviewSection = lazy(() =>
   import('./review-page').then((module) => ({ default: module.ReviewPage })),
 );
 
-type AccountSection = 'ledger' | 'orders' | 'performance' | 'review';
+type AccountSection = 'ledger' | 'simulation' | 'orders' | 'performance' | 'review';
 
 function getAccountSection(value: string | null): AccountSection {
-  if (value === 'orders' || value === 'performance' || value === 'review') return value;
-  if (value === 'simulation') return 'orders';
+  if (
+    value === 'simulation' ||
+    value === 'orders' ||
+    value === 'performance' ||
+    value === 'review'
+  ) {
+    return value;
+  }
   return 'ledger';
 }
 
@@ -67,6 +76,10 @@ export function AccountWorkspacePage() {
             <Wallet className="h-4 w-4" />
             {t('accountWorkspace.ledger')}
           </TabsTrigger>
+          <TabsTrigger value="simulation" className="gap-2">
+            <FlaskConical className="h-4 w-4" />
+            {t('accountWorkspace.simulation')}
+          </TabsTrigger>
           <TabsTrigger value="orders" className="gap-2">
             <ClipboardList className="h-4 w-4" />
             {t('accountWorkspace.orders')}
@@ -85,11 +98,14 @@ export function AccountWorkspacePage() {
           <TabsContent value="ledger" className="mt-0">
             <LedgerSection embedded />
           </TabsContent>
+          <TabsContent value="simulation" className="mt-0">
+            <SimulationSection embedded />
+          </TabsContent>
           <TabsContent value="orders" className="mt-0">
-            <PaperOrdersSection />
+            <PaperOrdersSection embedded />
           </TabsContent>
           <TabsContent value="performance" className="mt-0">
-            <PerformanceSection />
+            <PerformanceSection embedded />
           </TabsContent>
           <TabsContent value="review" className="mt-0">
             <ReviewSection embedded />

@@ -1,8 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-const SERVER_PORT = 3001;
-const WEB_PORT = 5174;
-const integrationDb = 'data/e2e-integration-test.db';
+const SERVER_PORT = Number(process.env.POLYRADER_E2E_SERVER_PORT ?? 13101);
+const WEB_PORT = Number(process.env.POLYRADER_E2E_WEB_PORT ?? 15174);
+const API_BASE = `http://127.0.0.1:${SERVER_PORT}`;
+const integrationDb =
+  process.env.POLYRADER_E2E_DATABASE_URL ??
+  join(tmpdir(), `polyrader-e2e-integration-${process.pid}.db`);
+
+process.env.POLYRADER_E2E_API_BASE = API_BASE;
 
 export default defineConfig({
   testDir: './e2e-integration',
@@ -13,7 +20,7 @@ export default defineConfig({
   reporter: 'list',
   timeout: 60_000,
   use: {
-    baseURL: `http://localhost:${WEB_PORT}`,
+    baseURL: `http://127.0.0.1:${WEB_PORT}`,
     trace: 'on-first-retry',
     viewport: { width: 1280, height: 720 },
   },
@@ -27,7 +34,7 @@ export default defineConfig({
     {
       command: 'npm run dev --workspace=@polyrader/server',
       url: `http://127.0.0.1:${SERVER_PORT}/api/health`,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 90_000,
       env: {
         ...process.env,
@@ -42,10 +49,15 @@ export default defineConfig({
       },
     },
     {
-      command: `npm run dev -- --port ${WEB_PORT}`,
-      url: `http://localhost:${WEB_PORT}`,
-      reuseExistingServer: !process.env.CI,
+      command: `npm run dev -- --host 127.0.0.1 --port ${WEB_PORT}`,
+      url: `http://127.0.0.1:${WEB_PORT}`,
+      reuseExistingServer: false,
       timeout: 60_000,
+      env: {
+        ...process.env,
+        POLYRADER_API_PROXY_TARGET: API_BASE,
+        POLYRADER_WS_PROXY_TARGET: `ws://127.0.0.1:${SERVER_PORT}`,
+      },
     },
   ],
 });

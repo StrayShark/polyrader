@@ -18,7 +18,7 @@ describe('match-helpers', () => {
         event_name: 'IEM Katowice',
         event_type: 'LAN',
         format: 'BO3',
-        scheduled_at: '2024-01-15T10:00:00Z',
+        scheduled_at: '2026-12-01T10:00:00Z',
         status: 'upcoming',
       };
 
@@ -35,7 +35,10 @@ describe('match-helpers', () => {
     });
 
     it('uses defaults for missing fields', () => {
-      const result = buildMatchInfo({});
+      const result = buildMatchInfo({
+        scheduled_at: '2026-12-01T10:00:00Z',
+        status: 'upcoming',
+      });
 
       expect(result.matchId).toBe('');
       expect(result.teamA.name).toBe('');

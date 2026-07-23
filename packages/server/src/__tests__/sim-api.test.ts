@@ -24,12 +24,18 @@ function createSimApp() {
   app.put('/api/sim/account/:id', (req, res) => simCtrl.updateAccount(req, res));
   app.get('/api/sim/bankroll', (req, res) => simCtrl.getBankroll(req, res));
   app.get('/api/sim/bets', (req, res) => simCtrl.listBets(req, res));
-  app.post('/api/sim/bets', validate(placeSimBetBodySchema), (req, res) => simCtrl.placeBet(req, res));
+  app.post('/api/sim/bets', validate(placeSimBetBodySchema), (req, res) =>
+    simCtrl.placeBet(req, res),
+  );
   app.get('/api/sim/bets/:id', (req, res) => simCtrl.getBet(req, res));
-  app.patch('/api/sim/bets/:id/settle', validate(settleSimBetBodySchema), (req, res) => simCtrl.settleBet(req, res));
+  app.patch('/api/sim/bets/:id/settle', validate(settleSimBetBodySchema), (req, res) =>
+    simCtrl.settleBet(req, res),
+  );
   app.get('/api/sim/reviews', (req, res) => simCtrl.listReviews(req, res));
   app.get('/api/sim/bets/:id/review', (req, res) => simCtrl.getReview(req, res));
-  app.post('/api/sim/bets/:id/review', validate(createSimReviewBodySchema), (req, res) => simCtrl.createOrUpdateReview(req, res));
+  app.post('/api/sim/bets/:id/review', validate(createSimReviewBodySchema), (req, res) =>
+    simCtrl.createOrUpdateReview(req, res),
+  );
   app.get('/api/sim/bets/:id/snapshots', (req, res) => simCtrl.getSnapshotsForBet(req, res));
 
   return app;
@@ -81,6 +87,9 @@ describe('/api/sim/* integration', () => {
       .send({
         betType: 'single',
         stake: 100,
+        provider: 'api-test',
+        game: 'cs2',
+        marketKind: 'match_winner',
         legs: [{ selection: 'Team A', odds: 2.0, matchId: 'match-1', marketId: 'market-1' }],
         userProbability: 0.6,
         reasoning: 'Practice bet via API',
@@ -89,6 +98,10 @@ describe('/api/sim/* integration', () => {
 
     expect(res.body.data.bet.status).toBe('open');
     expect(res.body.data.bet.userProbability).toBe(0.6);
+    expect(res.body.data.bet.provider).toBe('api-test');
+    expect(res.body.data.bet.game).toBe('cs2');
+    expect(res.body.data.bet.marketKind).toBe('match_winner');
+    expect(res.body.data.bet.policyVersion).toBe('paper.v1.2.0');
     expect(res.body.data.legs).toHaveLength(1);
   });
 
@@ -153,10 +166,7 @@ describe('/api/sim/* integration', () => {
 
     const betId = placed.body.data.bet.id;
 
-    await request(app)
-      .patch(`/api/sim/bets/${betId}/settle`)
-      .send({ result: 'lost' })
-      .expect(200);
+    await request(app).patch(`/api/sim/bets/${betId}/settle`).send({ result: 'lost' }).expect(200);
 
     const review = await request(app)
       .post(`/api/sim/bets/${betId}/review`)

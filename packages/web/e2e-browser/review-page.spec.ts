@@ -112,7 +112,7 @@ test.describe('Review page', () => {
     await page.goto('/#/bankroll?section=review');
 
     await expect(page.getByRole('heading', { name: /我的账本|My Ledger/ })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /复盘中心|Review Center/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /复盘|Review/ })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('cell', { name: /spirit-vs-g2/ })).toBeVisible();
     await expect(page.getByText('$100.00').first()).toBeVisible();
 

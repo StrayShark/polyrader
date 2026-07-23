@@ -87,6 +87,16 @@ describe('Layout: Sidebar uniqueness', () => {
     const overlay = container.querySelector('.fixed.inset-0.z-40');
     expect(overlay).toBeNull();
   });
+
+  it('only renders the bet slip on event and match routes', () => {
+    const { queryByTestId } = renderAppLayout('/analysis/report');
+    expect(queryByTestId('desktop-bet-slip')).toBeNull();
+  });
+
+  it('hides the global bankroll summary inside the ledger workspace', () => {
+    const { queryByTestId } = renderAppLayout('/bankroll');
+    expect(queryByTestId('virtual-bankroll-bar')).toBeNull();
+  });
 });
 
 describe('Layout: Top bar', () => {
@@ -97,6 +107,13 @@ describe('Layout: Top bar', () => {
     expect(topbar.className).toContain('border-b');
     expect(topbar.className).toContain('border-solid');
     expect(topbar.style.borderBottomColor).toContain('color-mix');
+  });
+
+  it('does not repeat the product mode in the global shell', () => {
+    const { queryByText } = renderAppLayout('/');
+    expect(queryByText('Practice Mode')).toBeNull();
+    expect(queryByText('练习账户')).toBeNull();
+    expect(queryByText('SQLite 已同步')).toBeNull();
   });
 });
 

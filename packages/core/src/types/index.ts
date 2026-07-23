@@ -51,6 +51,7 @@ export type EsportsSourceId =
   | 'grid'
   | 'riot'
   | 'riot-data-dragon'
+  | 'valorant-api'
   | 'opendota'
   | 'steam'
   | 'stratz'
@@ -59,6 +60,14 @@ export type EsportsSourceId =
 
 export type EsportsSourceAccess = 'public' | 'api_key' | 'licensed' | 'reference_only';
 export type EsportsSourceState = 'ready' | 'unconfigured' | 'reference_only' | 'degraded' | 'error';
+export type EsportsSourceReadiness =
+  | 'unconfigured'
+  | 'key_configured'
+  | 'title_resolved'
+  | 'schedule_available'
+  | 'data_available'
+  | 'reference_only'
+  | 'error';
 export type EsportsSourceEntityType = 'match' | 'team' | 'player' | 'event' | 'patch' | 'content';
 
 export interface EsportsSourceDescriptor {
@@ -67,10 +76,58 @@ export interface EsportsSourceDescriptor {
   label: string;
   access: EsportsSourceAccess;
   state: EsportsSourceState;
+  readiness: EsportsSourceReadiness;
   configured: boolean;
   capabilities: string[];
   docsUrl: string;
   note?: string;
+}
+
+export type EsportsMatchIdentityScope = 'series' | 'game';
+
+export interface EsportsMatchSourceIdentity {
+  id?: number;
+  game: EsportsGame;
+  canonicalMatchId: string;
+  scope: EsportsMatchIdentityScope;
+  source: EsportsSourceId;
+  externalId: string;
+  parentCanonicalMatchId?: string;
+  eventId?: string;
+  teamAId?: string;
+  teamBId?: string;
+  startsAt?: string;
+  confidence: number;
+  observedAt: string;
+}
+
+export type EsportsTeamAliasStatus =
+  | 'candidate'
+  | 'confirmed'
+  | 'conflict'
+  | 'unmatched'
+  | 'rejected';
+
+/** Auditable cross-source team identity evidence. Confirmed rows are manual decisions. */
+export interface EsportsTeamAlias {
+  id?: number;
+  game: EsportsGame;
+  source: EsportsSourceId;
+  sourceTeamId?: string;
+  alias: string;
+  normalizedAlias: string;
+  canonicalTeamId?: string;
+  targetSource: EsportsSourceId;
+  targetTeamId?: string;
+  status: EsportsTeamAliasStatus;
+  method: string;
+  confidence: number;
+  candidateTeamIds: string[];
+  evidence: Record<string, unknown>;
+  observedAt: string;
+  confirmedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface EsportsSourceSnapshot {
@@ -177,8 +234,8 @@ export interface LineupPlayer {
   rating: number;
   role: PlayerRole;
   isStandin: boolean;
-  impactScore: number;   // 0-100, composite impact rating
-  mapsOnRecord: number;  // how many maps played with this team
+  impactScore: number; // 0-100, composite impact rating
+  mapsOnRecord: number; // how many maps played with this team
 }
 
 export type PlayerRole = 'AWPer' | 'Rifler' | 'IGL' | 'Support' | 'Entry' | 'Lurker' | 'Coach';
@@ -186,8 +243,8 @@ export type PlayerRole = 'AWPer' | 'Rifler' | 'IGL' | 'Support' | 'Entry' | 'Lur
 /** Team roster — all registered players, used to detect lineup changes */
 export interface Roster {
   teamId: string;
-  activePlayers: Player[];      // current 5-man roster
-  substitutes: Player[];        // bench/substitute players
+  activePlayers: Player[]; // current 5-man roster
+  substitutes: Player[]; // bench/substitute players
   historicalLineups: HistoricalLineup[];
   updatedAt: string;
 }
@@ -196,7 +253,7 @@ export interface HistoricalLineup {
   matchId: string;
   date: string;
   opponent: string;
-  players: string[];  // player nicknames
+  players: string[]; // player nicknames
   result: 'win' | 'loss';
 }
 
@@ -268,10 +325,10 @@ export interface LineupAnalysis {
 export interface LineupStrength {
   totalRating: number;
   averageRating: number;
-  impactScore: number;       // 0-100
-  synergyScore: number;      // 0-100, based on maps played together
-  standinPenalty: number;    // penalty for standins
-  roleCompleteness: number;  // 0-1, all roles covered
+  impactScore: number; // 0-100
+  synergyScore: number; // 0-100, based on maps played together
+  standinPenalty: number; // penalty for standins
+  roleCompleteness: number; // 0-1, all roles covered
   missingKeyRoles: PlayerRole[];
 }
 
@@ -284,8 +341,8 @@ export interface KeyAbsence {
 }
 
 export interface WinProbability {
-  teamA: number;  // 0-1
-  teamB: number;  // 0-1
+  teamA: number; // 0-1
+  teamB: number; // 0-1
 }
 
 export interface FactorBreakdown {
@@ -298,12 +355,12 @@ export interface FactorBreakdown {
 }
 
 export interface FactorScore {
-  weight: number;       // 该因子权重
-  rawScore: number;     // 原始评分 0-1
+  weight: number; // 该因子权重
+  rawScore: number; // 原始评分 0-1
   weightedScore: number; // 加权后评分
-  teamA: number;        // Team A 得分
-  teamB: number;        // Team B 得分
-  confidence: number;   // 该因子置信度
+  teamA: number; // Team A 得分
+  teamB: number; // Team B 得分
+  confidence: number; // 该因子置信度
 }
 
 export interface BetRecommendation {
@@ -317,7 +374,20 @@ export interface BetRecommendation {
 // LLM Analysis
 // ============================================================
 
-export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'xai' | 'groq' | 'qwen' | 'moonshot' | 'zhipu' | 'doubao' | 'minimax' | 'hunyuan' | 'user';
+export type LLMProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'deepseek'
+  | 'xai'
+  | 'groq'
+  | 'qwen'
+  | 'moonshot'
+  | 'zhipu'
+  | 'doubao'
+  | 'minimax'
+  | 'hunyuan'
+  | 'user';
 
 export interface LLMAnalysisResult {
   provider: LLMProvider;
@@ -443,7 +513,7 @@ export interface ConsensusResult {
 }
 
 export interface KellyAllocation {
-  teamAAllocation: number;  // 建议分配比例
+  teamAAllocation: number; // 建议分配比例
   teamBAllocation: number;
   recommendedBet: 'team_a' | 'team_b' | 'skip';
   kellyFraction: number;
@@ -505,7 +575,7 @@ export interface WhaleDetail extends Whale {
 }
 
 export interface SuspiciousScore {
-  total: number;       // 0-100
+  total: number; // 0-100
   volumeAnomaly: number;
   timingAnomaly: number;
   patternAnomaly: number;
@@ -851,15 +921,15 @@ export interface DailyDashboard {
 
 export interface ScoredMatch {
   market: Market;
-  attentionScore: number;   // 0-100
+  attentionScore: number; // 0-100
   confidenceScore: number;
   deviationScore: number;
   volumeScore: number;
   whaleScore: number;
   tierScore: number;
   recommendation: 'high' | 'medium' | 'low';
-  llmPrediction?: number;   // 0-1, from lightweight LLM pre-analysis
-  llmSource?: string;       // provider name used for pre-analysis
+  llmPrediction?: number; // 0-1, from lightweight LLM pre-analysis
+  llmSource?: string; // provider name used for pre-analysis
 }
 
 export interface DeviationAlert {
@@ -869,7 +939,7 @@ export interface DeviationAlert {
   predictedProb: number;
   deviation: number;
   direction: 'overvalued' | 'undervalued';
-  llmProb?: number;         // LLM pre-analysis probability
+  llmProb?: number; // LLM pre-analysis probability
 }
 
 export interface WhaleAlert {
@@ -888,7 +958,7 @@ export interface WhaleAlert {
 export interface LLMConfig {
   provider: LLMProvider;
   model: string;
-  apiKey: string;        // encrypted
+  apiKey: string; // encrypted
   isEnabled: boolean;
   isConnected: boolean;
   lastTestedAt?: string;
@@ -949,7 +1019,7 @@ export interface SimulatedBet {
 }
 
 export interface CalibrationPoint {
-  confidenceBucket: number;  // 0-10, 10-20, ..., 90-100
+  confidenceBucket: number; // 0-10, 10-20, ..., 90-100
   sampleCount: number;
   accuracy: number;
   provider: LLMProvider;
@@ -986,7 +1056,7 @@ export interface ProviderSimulationStats {
   totalStaked: number;
   totalPnl: number;
   roi: number;
-  currentEquity: number;       // initialCapital + totalPnl
+  currentEquity: number; // initialCapital + totalPnl
   initialCapital: number;
   maxDrawdown: number;
   sharpeRatio: number;
@@ -1235,10 +1305,10 @@ export type RiskTolerance = 'conservative' | 'balanced' | 'aggressive';
  */
 export interface BankrollConfig {
   totalCapital: number;
-  targetReturnRate: number;   // e.g. 0.15 = 15% target ROI
+  targetReturnRate: number; // e.g. 0.15 = 15% target ROI
   riskTolerance: RiskTolerance;
-  maxBetFraction: number;     // max % of bankroll on a single match (0-1)
-  maxTotalExposure: number;   // max % of bankroll exposed at once (0-1)
+  maxBetFraction: number; // max % of bankroll on a single match (0-1)
+  maxTotalExposure: number; // max % of bankroll exposed at once (0-1)
   updatedAt: string;
 }
 
@@ -1247,12 +1317,12 @@ export interface BankrollConfig {
  */
 export interface BankrollState {
   totalCapital: number;
-  usedCapital: number;        // locked in pending bets
-  availableCapital: number;   // totalCapital - usedCapital
-  realizedPnL: number;        // cumulative settled profit/loss
-  netCapital: number;         // availableCapital + realizedPnL
+  usedCapital: number; // locked in pending bets
+  availableCapital: number; // totalCapital - usedCapital
+  realizedPnL: number; // cumulative settled profit/loss
+  netCapital: number; // availableCapital + realizedPnL
   targetReturnRate: number;
-  targetProfit: number;       // netCapital * targetReturnRate
+  targetProfit: number; // netCapital * targetReturnRate
   riskTolerance: RiskTolerance;
 }
 
@@ -1261,14 +1331,14 @@ export interface BankrollState {
  */
 export interface AllocationOpportunity {
   matchId: string;
-  matchLabel: string;         // "TeamA vs TeamB"
-  team: string;               // recommended side
-  winProbability: number;     // 0-1
-  odds: number;               // decimal odds
-  kellyFraction: number;      // 0-1, from aggregation
+  matchLabel: string; // "TeamA vs TeamB"
+  team: string; // recommended side
+  winProbability: number; // 0-1
+  odds: number; // decimal odds
+  kellyFraction: number; // 0-1, from aggregation
   consensusLevel: ConsensusResult['level'];
-  confidence: number;         // 0-1
-  expectedValue: number;      // EV as a fraction
+  confidence: number; // 0-1
+  expectedValue: number; // EV as a fraction
 }
 
 /**
@@ -1278,11 +1348,11 @@ export interface MatchAllocation {
   matchId: string;
   matchLabel: string;
   team: string;
-  amount: number;             // USDC to bet
-  fraction: number;           // % of available capital (0-1)
+  amount: number; // USDC to bet
+  fraction: number; // % of available capital (0-1)
   winProbability: number;
   odds: number;
-  expectedReturn: number;     // expected profit on this bet
+  expectedReturn: number; // expected profit on this bet
   kellyFraction: number;
 }
 
@@ -1293,9 +1363,9 @@ export interface AllocationPlan {
   allocations: MatchAllocation[];
   totalAllocated: number;
   remainingCapital: number;
-  expectedReturn: number;     // sum of expected returns
-  expectedROI: number;        // expectedReturn / totalAllocated
-  portfolioRisk: number;      // estimated risk score 0-1
+  expectedReturn: number; // sum of expected returns
+  expectedROI: number; // expectedReturn / totalAllocated
+  portfolioRisk: number; // estimated risk score 0-1
   reasoning: string;
   generatedAt: string;
   source: 'algorithmic' | 'llm';
@@ -1425,9 +1495,21 @@ export interface SimBet {
   runId?: string;
   reportId?: string;
   policyVersion?: string;
+  provider?: string;
   game?: string;
   marketKind?: string;
   edgeAtEntry?: number;
+  closingOdds?: number;
+  closingProbability?: number;
+  closingCapturedAt?: string;
+  closingSource?: string;
+  closingBoundaryAt?: string;
+  closingLatencySeconds?: number;
+  closingAttemptCount?: number;
+  closingLastAttemptAt?: string;
+  clvUnavailableReason?: string;
+  clv?: number;
+  clvStatus?: 'pending' | 'captured' | 'unavailable';
   placedAt: string;
   settledAt?: string;
 }
@@ -1590,6 +1672,7 @@ export interface PlaceSimBetInput {
   runId?: string;
   reportId?: string;
   policyVersion?: string;
+  provider?: string;
   game?: string;
   marketKind?: string;
   edgeAtEntry?: number;
@@ -1602,7 +1685,6 @@ export interface PlaceSimBetLegInput {
   odds: number;
   source?: string;
 }
-
 
 // ============================================================
 // Phase C — Training & Strategy Profiles

@@ -488,8 +488,13 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
                     <TableCell className="px-4 py-2 text-xs">
                       <BetStatusBadge status={bet.status} />
                     </TableCell>
-                    <TableCell className={cn('px-4 py-2 text-xs tabular-nums text-right', bet.pnl >= 0 ? 'text-green' : 'text-red')}>
-                      {bet.pnl >= 0 ? '+' : ''}{formatCurrency(bet.pnl)}
+                    <TableCell className={cn(
+                      'px-4 py-2 text-right text-xs tabular-nums',
+                      bet.status === 'settled' && (bet.pnl >= 0 ? 'text-green' : 'text-red'),
+                    )}>
+                      {bet.status === 'settled'
+                        ? `${bet.pnl >= 0 ? '+' : ''}${formatCurrency(bet.pnl)}`
+                        : '—'}
                     </TableCell>
                   </TableRow>
                 ))}

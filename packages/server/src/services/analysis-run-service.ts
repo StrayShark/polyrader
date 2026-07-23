@@ -2,6 +2,7 @@ import type {
   AnalysisReport,
   AnalysisRequestEnvelope,
   AnalysisResponseV1,
+  EsportsGame,
   PaperDecisionResult,
   PaperPolicyProfile,
 } from '@polyrader/core';
@@ -13,7 +14,7 @@ import {
   findSettlementRule,
   validateWithOptionalRepair,
 } from '@polyrader/core';
-import { AnalysisRunRepository } from '@polyrader/infra';
+import { AnalysisRunRepository, PaperRiskLimitError } from '@polyrader/infra';
 import { randomUUID } from 'crypto';
 import { PaperPolicyService } from './paper-policy-service';
 import { SimBetService } from './sim-bet-service';
@@ -59,6 +60,9 @@ export interface AnalysisRunDetail {
     policyVersion?: string;
     game?: string;
     marketKind?: string;
+    clvStatus?: string;
+    closingOdds?: number;
+    clv?: number;
     placedAt: string;
     settledAt?: string;
   } | null;
@@ -70,11 +74,14 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
   envelope: AnalysisRequestEnvelope;
   response: AnalysisResponseV1;
 } {
+  const now = options?.now ?? new Date();
+  const generatedAt = now.toISOString();
+  const startsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
   const runId = buildRunId({
     game: 'cs2',
     matchId: '2395534',
     marketId: 'match-winner',
-    now: options?.now ?? new Date('2026-07-21T12:00:00.000Z'),
+    now,
     nonce: options?.nonce ?? 'a1b2',
   });
 
@@ -84,12 +91,12 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
     promptVersion: 'cs2.match-winner.v1.0.0',
     game: 'cs2',
     locale: 'zh-CN',
-    generatedAt: '2026-07-21T12:00:00.000Z',
+    generatedAt,
     match: {
       matchId: '2395534',
       eventId: 'iem-cologne-2026',
       eventName: 'IEM Cologne',
-      startsAt: '2026-07-21T20:00:00.000Z',
+      startsAt,
       format: 'BO3',
       status: 'scheduled',
       participants: [
@@ -106,7 +113,7 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
         { outcomeId: 'faze', label: 'FaZe Clan', marketProbability: 0.44 },
       ],
       liquidityUsd: 8200,
-      observedAt: '2026-07-21T11:59:30.000Z',
+      observedAt: new Date(now.getTime() - 30 * 1000).toISOString(),
     },
     dataSnapshot: {
       dataSnapshotHash: 'sha256:cs2-fixture-navi-faze',
@@ -117,7 +124,7 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
           factId: 'team-a-rating',
           entityType: 'team',
           source: 'hltv',
-          observedAt: '2026-07-21T11:50:00.000Z',
+          observedAt: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
           field: 'rating',
           value: 1.12,
         },
@@ -125,7 +132,7 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
           factId: 'team-a-mirage',
           entityType: 'team',
           source: 'hltv',
-          observedAt: '2026-07-21T11:40:00.000Z',
+          observedAt: new Date(now.getTime() - 20 * 60 * 1000).toISOString(),
           field: 'map_winrate',
           value: 0.64,
         },
@@ -133,7 +140,7 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
           factId: 'lineup-confirmed',
           entityType: 'match',
           source: 'liquipedia',
-          observedAt: '2026-07-21T11:30:00.000Z',
+          observedAt: new Date(now.getTime() - 30 * 60 * 1000).toISOString(),
           field: 'lineup_confirmed',
           value: true,
         },
@@ -201,6 +208,331 @@ export function buildCs2AnalysisFixture(options?: { nonce?: string; now?: Date }
   return { envelope, response };
 }
 
+/** Deterministic Dota 2 fixture for the Sprint 2 paper-order and settlement loop. */
+export function buildDota2AnalysisFixture(options?: { nonce?: string; now?: Date }): {
+  envelope: AnalysisRequestEnvelope;
+  response: AnalysisResponseV1;
+} {
+  const now = options?.now ?? new Date();
+  const generatedAt = now.toISOString();
+  const observedAt = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const matchId = '8906069414';
+  const runId = buildRunId({
+    game: 'dota2',
+    matchId,
+    marketId: 'match-winner',
+    now,
+    nonce: options?.nonce ?? 'd2a1',
+  });
+
+  const envelope: AnalysisRequestEnvelope = {
+    contractVersion: 'analysis.v1',
+    runId,
+    promptVersion: 'dota2.match-winner.v1.0.0',
+    game: 'dota2',
+    locale: 'zh-CN',
+    generatedAt,
+    match: {
+      matchId,
+      eventId: 'dota2-sprint-2',
+      eventName: 'Dota 2 Practice Series',
+      startsAt: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
+      format: 'BO1',
+      status: 'scheduled',
+      participants: [
+        { participantId: 'liquid', name: 'Team Liquid', side: 'a' },
+        { participantId: 'falcons', name: 'Team Falcons', side: 'b' },
+      ],
+    },
+    market: {
+      marketId: `local-dota2-${matchId}`,
+      kind: 'match_winner',
+      line: null,
+      evidenceType: 'synthetic',
+      liquidityStatus: 'synthetic',
+      outcomes: [
+        { outcomeId: 'liquid', label: 'Team Liquid', marketProbability: 0.52 },
+        { outcomeId: 'falcons', label: 'Team Falcons', marketProbability: 0.48 },
+      ],
+      liquidityUsd: 0,
+      observedAt: generatedAt,
+    },
+    dataSnapshot: {
+      dataSnapshotHash: 'sha256:dota2-fixture-liquid-falcons-v2',
+      completeness: 0.95,
+      freshnessSeconds: 600,
+      facts: [
+        {
+          factId: 'team-a-rating',
+          entityType: 'team',
+          source: 'opendota',
+          observedAt,
+          field: 'rating',
+          value: 1542.5,
+        },
+        {
+          factId: 'team-b-rating',
+          entityType: 'team',
+          source: 'opendota',
+          observedAt,
+          field: 'rating',
+          value: 1510.2,
+        },
+        {
+          factId: 'patch-current',
+          entityType: 'patch',
+          source: 'opendota',
+          observedAt,
+          field: 'patch',
+          value: '7.41',
+        },
+        {
+          factId: 'team-a-roster',
+          entityType: 'team',
+          source: 'opendota',
+          observedAt,
+          field: 'roster',
+          value: ['Liquid 1', 'Liquid 2', 'Liquid 3', 'Liquid 4', 'Liquid 5'],
+        },
+        {
+          factId: 'draft-context',
+          entityType: 'match',
+          source: 'opendota',
+          observedAt,
+          field: 'draft_context',
+          value: { status: 'pre_match', picksBans: [] },
+        },
+      ],
+      missing: [],
+    },
+    policy: {
+      minimumCompleteness: 0.7,
+      maximumFreshnessSeconds: 3600,
+      minimumConfidence: 0.6,
+      minimumEdge: 0.05,
+      lowLiquidityThresholdUsd: 1000,
+      allowedActions: ['recommend_outcome', 'pass'],
+    },
+  };
+
+  const response: AnalysisResponseV1 = {
+    contractVersion: 'analysis-response.v1',
+    runId,
+    prediction: {
+      outcomes: [
+        { outcomeId: 'liquid', probability: 0.62 },
+        { outcomeId: 'falcons', probability: 0.38 },
+      ],
+    },
+    confidence: {
+      score: 0.72,
+      grade: 'medium',
+      reasonCodes: ['PRE_MATCH_DRAFT'],
+    },
+    recommendation: { action: 'recommend_outcome', outcomeId: 'liquid' },
+    evidence: [
+      {
+        factIds: ['team-a-rating', 'team-b-rating'],
+        direction: 'supports',
+        impact: 'medium',
+        summary: 'OpenDota team ratings give Team Liquid a modest baseline advantage.',
+      },
+      {
+        factIds: ['patch-current', 'team-a-roster'],
+        direction: 'supports',
+        impact: 'low',
+        summary: 'Patch and roster context are present in the frozen snapshot.',
+      },
+    ],
+    risks: [
+      {
+        code: 'PRE_MATCH_DRAFT',
+        severity: 'medium',
+        summary: 'The final draft is unavailable before the game begins.',
+      },
+      {
+        code: 'LOW_LIQUIDITY',
+        severity: 'high',
+        summary: 'The local practice market has no external liquidity.',
+      },
+    ],
+    rationaleSummary: 'Team Liquid has a measured edge, with stake reduced for zero liquidity.',
+  };
+
+  return { envelope, response };
+}
+
+export function buildLolAnalysisFixture(options?: { nonce?: string; now?: Date }): {
+  envelope: AnalysisRequestEnvelope;
+  response: AnalysisResponseV1;
+} {
+  return buildGridGameAnalysisFixture('lol', options);
+}
+
+export function buildValorantAnalysisFixture(options?: { nonce?: string; now?: Date }): {
+  envelope: AnalysisRequestEnvelope;
+  response: AnalysisResponseV1;
+} {
+  return buildGridGameAnalysisFixture('valorant', options);
+}
+
+function buildGridGameAnalysisFixture(
+  game: Extract<EsportsGame, 'lol' | 'valorant'>,
+  options?: { nonce?: string; now?: Date },
+): { envelope: AnalysisRequestEnvelope; response: AnalysisResponseV1 } {
+  const now = options?.now ?? new Date();
+  const generatedAt = now.toISOString();
+  const observedAt = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const isLol = game === 'lol';
+  const matchId = isLol ? 'lck-104' : 'vct-82';
+  const teamA = isLol ? { id: 't1', name: 'T1' } : { id: 'sen', name: 'Sentinels' };
+  const teamB = isLol
+    ? { id: 'hle', name: 'Hanwha Life Esports' }
+    : { id: 'g2', name: 'G2 Esports' };
+  const event = isLol
+    ? { id: 'lck-2026-summer', name: 'LCK' }
+    : { id: 'vct-2026-americas', name: 'VCT Americas' };
+  const runId = buildRunId({
+    game,
+    matchId,
+    marketId: 'match-winner',
+    now,
+    nonce: options?.nonce ?? (isLol ? 'lol3' : 'val3'),
+  });
+  const contextFactId = isLol ? 'patch-current' : 'map-pool-current';
+
+  const envelope: AnalysisRequestEnvelope = {
+    contractVersion: 'analysis.v1',
+    runId,
+    promptVersion: `${game}.match-winner.v1.0.0`,
+    game,
+    locale: 'zh-CN',
+    generatedAt,
+    match: {
+      matchId,
+      eventId: event.id,
+      eventName: event.name,
+      startsAt: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
+      format: 'BO3',
+      status: 'scheduled',
+      participants: [
+        { participantId: teamA.id, name: teamA.name, side: 'a' },
+        { participantId: teamB.id, name: teamB.name, side: 'b' },
+      ],
+    },
+    market: {
+      marketId: `local-${game}-${matchId}`,
+      kind: 'match_winner',
+      line: null,
+      outcomes: [
+        { outcomeId: teamA.id, label: teamA.name, marketProbability: 0.5 },
+        { outcomeId: teamB.id, label: teamB.name, marketProbability: 0.5 },
+      ],
+      liquidityUsd: 0,
+      observedAt: generatedAt,
+    },
+    dataSnapshot: {
+      dataSnapshotHash: `sha256:${game}-sprint-3-fixture`,
+      completeness: 0.9,
+      freshnessSeconds: 600,
+      facts: [
+        {
+          factId: 'team-a-roster',
+          entityType: 'roster',
+          source: 'grid',
+          observedAt,
+          field: 'players',
+          value: Array.from({ length: 5 }, (_, index) => `${teamA.name} ${index + 1}`),
+        },
+        {
+          factId: 'team-b-roster',
+          entityType: 'roster',
+          source: 'grid',
+          observedAt,
+          field: 'players',
+          value: Array.from({ length: 5 }, (_, index) => `${teamB.name} ${index + 1}`),
+        },
+        {
+          factId: contextFactId,
+          entityType: isLol ? 'patch' : 'map',
+          source: isLol ? 'riot-data-dragon' : 'riot',
+          observedAt,
+          field: isLol ? 'patch' : 'map_pool',
+          value: isLol
+            ? '16.14.1'
+            : ['Ascent', 'Bind', 'Haven', 'Lotus', 'Split', 'Icebox', 'Sunset'],
+        },
+      ],
+      missing: [isLol ? 'draft' : 'agent_bans'],
+    },
+    policy: {
+      minimumCompleteness: 0.7,
+      maximumFreshnessSeconds: 3600,
+      minimumConfidence: 0.6,
+      minimumEdge: 0.05,
+      lowLiquidityThresholdUsd: 1000,
+      allowedActions: ['recommend_outcome', 'pass'],
+    },
+  };
+
+  const response: AnalysisResponseV1 = {
+    contractVersion: 'analysis-response.v1',
+    runId,
+    prediction: {
+      outcomes: [
+        { outcomeId: teamA.id, probability: 0.59 },
+        { outcomeId: teamB.id, probability: 0.41 },
+      ],
+    },
+    confidence: {
+      score: 0.68,
+      grade: 'medium',
+      reasonCodes: [isLol ? 'DRAFT_UNAVAILABLE' : 'AGENT_BANS_UNAVAILABLE'],
+    },
+    recommendation: { action: 'recommend_outcome', outcomeId: teamA.id },
+    evidence: [
+      {
+        factIds: ['team-a-roster', 'team-b-roster'],
+        direction: 'supports',
+        impact: 'medium',
+        summary: 'Both starting rosters are present in the frozen GRID snapshot.',
+      },
+      {
+        factIds: [contextFactId],
+        direction: 'supports',
+        impact: 'low',
+        summary: isLol
+          ? 'The current Riot patch is attached to the match facts.'
+          : 'The current Riot map pool is attached to the match facts.',
+      },
+    ],
+    risks: [
+      {
+        code: isLol ? 'DRAFT_UNAVAILABLE' : 'AGENT_BANS_UNAVAILABLE',
+        severity: 'medium',
+        summary: isLol
+          ? 'Champion draft is unavailable before the series begins.'
+          : 'Agent selections and map veto are unavailable before the series begins.',
+      },
+      {
+        code: 'LOW_LIQUIDITY',
+        severity: 'high',
+        summary: 'The local practice market has no external liquidity.',
+      },
+    ],
+    rationaleSummary: `${teamA.name} has a modest fixture edge with uncertainty reduced by the zero-liquidity policy.`,
+  };
+
+  return { envelope, response };
+}
+
+export function buildAnalysisFixture(game: EsportsGame, options?: { nonce?: string; now?: Date }) {
+  if (game === 'dota2') return buildDota2AnalysisFixture(options);
+  if (game === 'lol') return buildLolAnalysisFixture(options);
+  if (game === 'valorant') return buildValorantAnalysisFixture(options);
+  return buildCs2AnalysisFixture(options);
+}
+
 export class AnalysisRunService {
   private repo = new AnalysisRunRepository();
   private paperPolicy = new PaperPolicyService();
@@ -252,6 +584,7 @@ export class AnalysisRunService {
     const detail = this.getDetail(input.runId);
     if (!detail) throw new Error(`Analysis run ${input.runId} not found`);
     if (!detail.envelope) throw new Error(`Prompt envelope missing for run ${input.runId}`);
+    if (detail.report && detail.decision) return detail;
 
     this.repo.updateRunStatus(input.runId, { status: 'provider_running' });
     this.repo.addEvent(input.runId, 'provider', 'running', 'response ingest started');
@@ -415,6 +748,7 @@ export class AnalysisRunService {
             runId: input.runId,
             reportId,
             policyVersion: decision.policyVersion,
+            provider: detail.run.provider ?? 'analysis.v1',
             game: detail.envelope!.game,
             marketKind: detail.envelope!.market.kind,
             edgeAtEntry: decision.edgeAtEntry ?? undefined,
@@ -434,11 +768,17 @@ export class AnalysisRunService {
         this.repo.attachBetToDecision(decisionRowId, placedBetId);
         this.repo.addEvent(input.runId, 'paper_order', 'passed', `sim bet ${placedBetId}`);
       } catch (err) {
+        if (err instanceof PaperRiskLimitError && decisionRowId) {
+          this.repo.rejectPaperDecision(decisionRowId, err.code);
+        }
         this.repo.addEvent(
           input.runId,
           'paper_order',
           'failed',
-          (err as Error).message.slice(0, 240),
+          `${err instanceof PaperRiskLimitError ? `${err.code} · ` : ''}${(err as Error).message}`.slice(
+            0,
+            240,
+          ),
         );
       }
     }
@@ -446,8 +786,9 @@ export class AnalysisRunService {
     return this.getDetail(input.runId)!;
   }
 
-  /** End-to-end CS2 fixture: create prompt artifacts, ingest valid response, decide paper order. */
-  runCs2FixturePipeline(options?: {
+  /** End-to-end fixture: freeze prompt artifacts, validate response and decide a paper order. */
+  runFixturePipeline(options?: {
+    game?: EsportsGame;
     invalid?: boolean;
     provider?: string;
     model?: string;
@@ -455,21 +796,26 @@ export class AnalysisRunService {
     nonce?: string;
     now?: Date;
   }): AnalysisRunDetail {
-    const { envelope, response } = buildCs2AnalysisFixture({
+    const game = options?.game ?? 'cs2';
+    const { envelope, response } = buildAnalysisFixture(game, {
       nonce: options?.nonce,
       now: options?.now,
     });
     const created = this.createRun({
       envelope,
       provider: options?.provider ?? 'fixture',
-      model: options?.model ?? 'cs2-fixture-v1',
+      model: options?.model ?? `${game}-fixture-v1`,
+      gameAdapterVersion: `${game}.fixture.v1`,
+      marketAdapterVersion: 'market.v1',
     });
     if (!created) throw new Error('Failed to create fixture run');
 
     const raw = options?.invalid
       ? JSON.stringify({
           ...response,
-          prediction: { outcomes: [{ outcomeId: 'navi', probability: 1 }] },
+          prediction: {
+            outcomes: [{ outcomeId: response.prediction.outcomes[0]?.outcomeId, probability: 1 }],
+          },
         })
       : JSON.stringify(response);
 
@@ -484,6 +830,16 @@ export class AnalysisRunService {
       totalTokens: 1580,
       settlementRulesAvailable: true,
     });
+  }
+
+  runCs2FixturePipeline(options?: {
+    invalid?: boolean;
+    provider?: string;
+    model?: string;
+    nonce?: string;
+    now?: Date;
+  }): AnalysisRunDetail {
+    return this.runFixturePipeline({ ...options, game: 'cs2' });
   }
 
   getDetail(runId: string): AnalysisRunDetail | null {
@@ -552,6 +908,9 @@ export class AnalysisRunService {
             policyVersion: linked.policyVersion,
             game: linked.game,
             marketKind: linked.marketKind,
+            clvStatus: linked.clvStatus,
+            closingOdds: linked.closingOdds,
+            clv: linked.clv,
             placedAt: linked.placedAt,
             settledAt: linked.settledAt,
           }

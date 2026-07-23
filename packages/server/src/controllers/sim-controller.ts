@@ -38,7 +38,9 @@ export class SimController {
   getBankroll(req: Request, res: Response): void {
     try {
       const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : 'default';
-      const granularity = (typeof req.query.granularity === 'string' ? req.query.granularity : 'day') as 'day' | 'week' | 'month' | 'all';
+      const granularity = (
+        typeof req.query.granularity === 'string' ? req.query.granularity : 'day'
+      ) as 'day' | 'week' | 'month' | 'all';
       const summary = this.bankrollService.getSummary(accountId, granularity);
       res.json({ data: summary });
     } catch (err) {
@@ -90,6 +92,15 @@ export class SimController {
     }
   }
 
+  captureClosingPrice(req: Request, res: Response): void {
+    try {
+      const bet = this.betService.captureClosingPrice(req.params.id, req.body);
+      res.json({ data: bet });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  }
+
   // Reviews
   listReviews(req: Request, res: Response): void {
     try {
@@ -98,7 +109,10 @@ export class SimController {
       const tags = Array.isArray(tagsRaw)
         ? tagsRaw.map(String)
         : typeof tagsRaw === 'string' && tagsRaw.length > 0
-          ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
+          ? tagsRaw
+              .split(',')
+              .map((t) => t.trim())
+              .filter(Boolean)
           : undefined;
       const reviews = this.reviewService.listSettledForReview(accountId, {
         result: req.query.result as 'all' | 'won' | 'lost' | 'push' | undefined,
@@ -124,7 +138,10 @@ export class SimController {
       const tags = Array.isArray(tagsRaw)
         ? tagsRaw.map(String)
         : typeof tagsRaw === 'string' && tagsRaw.length > 0
-          ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
+          ? tagsRaw
+              .split(',')
+              .map((t) => t.trim())
+              .filter(Boolean)
           : undefined;
       const summary = this.reviewService.getSummary(accountId, {
         result: req.query.result as 'all' | 'won' | 'lost' | 'push' | undefined,

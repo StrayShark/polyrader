@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  alignMarketsForMatch,
-  buildCanonicalMarketIdentity,
-  findSettlementRule,
-} from './identity';
+import { alignMarketsForMatch, buildCanonicalMarketIdentity, findSettlementRule } from './identity';
 
 describe('market identity + settlement rules', () => {
   it('builds canonical CS2 match-winner identity with settlement support', () => {
@@ -21,7 +17,7 @@ describe('market identity + settlement rules', () => {
     expect(findSettlementRule('cs2', 'match_winner')?.ruleId).toBe('cs2.match_winner.v1');
   });
 
-  it('blocks Dota boards until the runtime result settler is implemented', () => {
+  it('supports Dota 2 match-winner markets through OpenDota or GRID settlement', () => {
     const result = alignMarketsForMatch({
       game: 'dota2',
       matchId: '8906069414',
@@ -36,8 +32,86 @@ describe('market identity + settlement rules', () => {
         },
       ],
     });
-    expect(result.aligned).toBe(false);
-    expect(result.status).toBe('unsupported');
-    expect(findSettlementRule('dota2', 'match_winner')?.supported).toBe(false);
+    expect(result.aligned).toBe(true);
+    expect(result.status).toBe('aligned');
+    expect(findSettlementRule('dota2', 'match_winner')).toMatchObject({
+      supported: true,
+      authoritativeSources: ['opendota', 'grid'],
+    });
   });
+
+  it('aligns Dota winner, handicap and total markets independently', () => {
+    const result = alignMarketsForMatch({
+      game: 'dota2',
+      matchId: 'series-1',
+      markets: [
+        {
+          question: 'Liquid vs Falcons (BO3) - Match Winner',
+          outcomes: [{ label: 'Liquid' }, { label: 'Falcons' }],
+          liquidityUsd: 5_000,
+        },
+        {
+          question: 'Map Handicap Liquid -1.5 vs Falcons (BO3)',
+          outcomes: [{ label: 'Liquid -1.5' }, { label: 'Falcons +1.5' }],
+          liquidityUsd: 800,
+        },
+        {
+          question: 'Total Maps 2.5: Liquid vs Falcons (BO3)',
+          outcomes: [{ label: 'Over 2.5' }, { label: 'Under 2.5' }],
+          liquidityUsd: 3_000,
+        },
+      ],
+    });
+
+    expect(result.aligned).toBe(true);
+    expect(result.markets.map((market) => market.kind)).toEqual([
+      'match_winner',
+      'handicap',
+      'total_maps',
+    ]);
+    expect(result.lowLiquidityMarketIds).toHaveLength(1);
+    expect(result.markets[1]).toMatchObject({
+      settlementRuleId: 'dota2.handicap.v1',
+      liquidityStatus: 'low',
+      warnings: ['low_liquidity'],
+    });
+  });
+
+  it('marks local Dota markets as synthetic instead of real low-liquidity evidence', () => {
+    const result = alignMarketsForMatch({
+      game: 'dota2',
+      matchId: 'series-2',
+      markets: [
+        {
+          kind: 'match_winner',
+          outcomes: [{ label: 'A' }, { label: 'B' }],
+          liquidityUsd: 0,
+          tags: ['practice', 'local-sim'],
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      evidenceType: 'synthetic',
+      realMarketCount: 0,
+      syntheticMarketCount: 1,
+      lowLiquidityMarketIds: [],
+    });
+    expect(result.markets[0].liquidityStatus).toBe('synthetic');
+  });
+
+  it.each(['lol', 'valorant'] as const)(
+    'supports %s match-winner markets through GRID settlement',
+    (game) => {
+      const market = buildCanonicalMarketIdentity({
+        game,
+        matchId: `${game}:series-1`,
+        kind: 'match_winner',
+        outcomes: [{ label: 'Team A' }, { label: 'Team B' }],
+      });
+
+      expect(market.settlementSupported).toBe(true);
+      expect(findSettlementRule(game, 'match_winner')?.authoritativeSources).toEqual(['grid']);
+    },
+  );
 });

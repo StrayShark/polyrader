@@ -1,17 +1,12 @@
-import { FlaskConical, FileText, Eye, Copy } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { Badge } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
 import { cn } from '../utils/cn';
 
-export type ProductMode = 'simulation' | 'paper-copy' | 'live-copy' | 'live-order' | 'read-only' | 'analysis-only';
+export type ProductMode = 'read-only';
 
-const MODE_META: Record<ProductMode, { icon: typeof FlaskConical; badge: 'yellow' | 'green' | 'red' | 'default' }> = {
-  simulation: { icon: FlaskConical, badge: 'yellow' },
-  'paper-copy': { icon: Copy, badge: 'yellow' },
-  'live-copy': { icon: Copy, badge: 'red' },
-  'live-order': { icon: Copy, badge: 'red' },
+const MODE_META: Record<ProductMode, { icon: typeof Eye; badge: 'default' }> = {
   'read-only': { icon: Eye, badge: 'default' },
-  'analysis-only': { icon: FileText, badge: 'default' },
 };
 
 interface ProductModeNoticeProps {
@@ -19,7 +14,7 @@ interface ProductModeNoticeProps {
   className?: string;
 }
 
-/** Clarifies whether a surface records paper trades, simulates, or is read-only. */
+/** Marks the external account surface that is intentionally read-only. */
 export function ProductModeNotice({ mode, className }: ProductModeNoticeProps) {
   const { t } = useI18n();
   const meta = MODE_META[mode];

@@ -20,10 +20,7 @@ export class MarketRepository {
   }
 
   findBySlug(slug: string): Market | null {
-    const row = queryOne<Record<string, unknown>>(
-      `SELECT * FROM markets WHERE slug = ?`,
-      slug,
-    );
+    const row = queryOne<Record<string, unknown>>(`SELECT * FROM markets WHERE slug = ?`, slug);
     return row ? this.mapRow(row) : null;
   }
 
@@ -123,12 +120,9 @@ export class MarketRepository {
   isCs2MarketRecord(market: Market | null | undefined): boolean {
     if (!market) return false;
     if (market.match) return true;
-    const text = [
-      market.question,
-      market.slug,
-      market.description,
-      ...(market.tags ?? []),
-    ].filter(Boolean).join(' ');
+    const text = [market.question, market.slug, market.description, ...(market.tags ?? [])]
+      .filter(Boolean)
+      .join(' ');
     return isCs2Text(text);
   }
 
@@ -141,11 +135,7 @@ export class MarketRepository {
   }
 
   insertPriceHistory(conditionId: string, price: number): void {
-    query(
-      `INSERT INTO price_history (condition_id, price) VALUES (?, ?)`,
-      conditionId,
-      price,
-    );
+    query(`INSERT INTO price_history (condition_id, price) VALUES (?, ?)`, conditionId, price);
   }
 
   insertPriceHistoryIfChanged(conditionId: string, price: number, epsilon = 0.0001): boolean {
@@ -159,16 +149,24 @@ export class MarketRepository {
   }
 
   resolveLocalMarkets(canonicalMatchId: string, winnerSelection: string): Market[] {
-    const markets = this.findByCanonicalMatchId(canonicalMatchId)
-      .filter((market) => market.tags.includes('local-sim') && isSeriesWinnerMarket(market));
+    const markets = this.findByCanonicalMatchId(canonicalMatchId).filter(
+      (market) =>
+        market.status !== 'resolved' &&
+        market.tags.includes('local-sim') &&
+        isSeriesWinnerMarket(market),
+    );
     const normalizedWinner = normalizeSelection(winnerSelection);
     const resolved: Market[] = [];
     for (const market of markets) {
-      const winnerIndex = market.outcomes.findIndex((outcome) => normalizeSelection(outcome) === normalizedWinner);
+      const winnerIndex = market.outcomes.findIndex(
+        (outcome) => normalizeSelection(outcome) === normalizedWinner,
+      );
       if (winnerIndex < 0) continue;
       const next: Market = {
         ...market,
-        outcomePrices: market.outcomes.map((_outcome, index) => index === winnerIndex ? '1.00' : '0.00'),
+        outcomePrices: market.outcomes.map((_outcome, index) =>
+          index === winnerIndex ? '1.00' : '0.00',
+        ),
         status: 'resolved',
         resolvedOutcome: market.outcomes[winnerIndex],
         resolvedPrice: 1,
@@ -186,8 +184,12 @@ export class MarketRepository {
     maps: Array<{ mapNumber: number; winnerTeamName: string }>,
   ): Market[] {
     const byMap = new Map(maps.map((map) => [map.mapNumber, map.winnerTeamName]));
-    const markets = this.findByCanonicalMatchId(canonicalMatchId)
-      .filter((market) => market.tags.includes('local-sim') && isMapWinnerMarket(market));
+    const markets = this.findByCanonicalMatchId(canonicalMatchId).filter(
+      (market) =>
+        market.status !== 'resolved' &&
+        market.tags.includes('local-sim') &&
+        isMapWinnerMarket(market),
+    );
     const resolved: Market[] = [];
     for (const market of markets) {
       const mapNumber = parsePolymarketMatch(market.question)?.mapNumber;
@@ -195,11 +197,15 @@ export class MarketRepository {
       const winnerSelection = byMap.get(mapNumber);
       if (!winnerSelection) continue;
       const normalizedWinner = normalizeSelection(winnerSelection);
-      const winnerIndex = market.outcomes.findIndex((outcome) => normalizeSelection(outcome) === normalizedWinner);
+      const winnerIndex = market.outcomes.findIndex(
+        (outcome) => normalizeSelection(outcome) === normalizedWinner,
+      );
       if (winnerIndex < 0) continue;
       const next: Market = {
         ...market,
-        outcomePrices: market.outcomes.map((_outcome, index) => index === winnerIndex ? '1.00' : '0.00'),
+        outcomePrices: market.outcomes.map((_outcome, index) =>
+          index === winnerIndex ? '1.00' : '0.00',
+        ),
         status: 'resolved',
         resolvedOutcome: market.outcomes[winnerIndex],
         resolvedPrice: 1,
@@ -212,8 +218,9 @@ export class MarketRepository {
   }
 
   closeLocalMarkets(canonicalMatchId: string): Market[] {
-    const markets = this.findByCanonicalMatchId(canonicalMatchId)
-      .filter((market) => market.tags.includes('local-sim'));
+    const markets = this.findByCanonicalMatchId(canonicalMatchId).filter((market) =>
+      market.tags.includes('local-sim'),
+    );
     for (const market of markets) this.upsert({ ...market, status: 'closed' });
     return markets;
   }
@@ -222,7 +229,8 @@ export class MarketRepository {
     if (!match.canonicalMatchId) return [];
     const candidates = this.findByCanonicalMatchId(match.canonicalMatchId);
     const direct = this.findByConditionId(match.matchId);
-    if (direct && !candidates.some((market) => market.conditionId === direct.conditionId)) candidates.push(direct);
+    if (direct && !candidates.some((market) => market.conditionId === direct.conditionId))
+      candidates.push(direct);
     const aligned: Market[] = [];
     for (const market of candidates) {
       if (!market.tags.includes('local-sim') || !isSeriesWinnerMarket(market)) continue;
@@ -249,7 +257,11 @@ export class MarketRepository {
 
   private parseJson(val: unknown): unknown {
     if (typeof val === 'string') {
-      try { return JSON.parse(val) as unknown; } catch { return null; }
+      try {
+        return JSON.parse(val) as unknown;
+      } catch {
+        return null;
+      }
     }
     if (typeof val === 'object' && val !== null) {
       return val;
@@ -274,9 +286,12 @@ export class MarketRepository {
       startDate: row.start_date as string,
       status: row.status as Market['status'],
       tags: (this.parseJson(row.tags) as string[]) ?? [],
-      match: row.match_info ? this.parseJson(row.match_info) as MatchInfo | undefined : undefined,
+      match: row.match_info ? (this.parseJson(row.match_info) as MatchInfo | undefined) : undefined,
       resolvedOutcome: row.resolved_outcome ? String(row.resolved_outcome) : undefined,
-      resolvedPrice: row.resolved_price === null || row.resolved_price === undefined ? undefined : Number(row.resolved_price),
+      resolvedPrice:
+        row.resolved_price === null || row.resolved_price === undefined
+          ? undefined
+          : Number(row.resolved_price),
     };
   }
 }
@@ -287,8 +302,13 @@ function normalizeSelection(value: string): string {
 
 function isSeriesWinnerMarket(market: Market): boolean {
   const parsed = parsePolymarketMatch(market.question);
-  return !!parsed && !parsed.isMapMarket
-    && !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(market.question);
+  return (
+    !!parsed &&
+    !parsed.isMapMarket &&
+    !/\b(handicap|spread|total|rounds?|correct\s+score|scoreline|pistol|map\s*\d+)\b/i.test(
+      market.question,
+    )
+  );
 }
 
 function isMapWinnerMarket(market: Market): boolean {
@@ -299,9 +319,9 @@ function isMapWinnerMarket(market: Market): boolean {
 function isCs2Text(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
-    normalized.includes('counter-strike')
-    || normalized.includes('cs2')
-    || normalized.includes('csgo')
-    || normalized.includes('cs 2')
+    normalized.includes('counter-strike') ||
+    normalized.includes('cs2') ||
+    normalized.includes('csgo') ||
+    normalized.includes('cs 2')
   );
 }

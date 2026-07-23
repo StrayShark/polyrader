@@ -7,6 +7,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export function runMigrations(): void {
   const db = getDb();
+  const runtime = globalThis as typeof globalThis & {
+    __POLYRADER_MIGRATION_SOURCES__?: Record<string, string>;
+  };
 
   // Ensure _migrations table exists (created by first migration, but we need it to check)
   db.exec(`
@@ -55,6 +58,11 @@ export function runMigrations(): void {
     '035_paper_policy_profiles.sql',
     '036_fact_adapter_version.sql',
     '037_paper_policy_freshness.sql',
+    '038_paper_risk_and_clv.sql',
+    '039_performance_observability.sql',
+    '040_release_audit_history.sql',
+    '041_esports_match_source_identities.sql',
+    '042_esports_team_aliases.sql',
   ];
 
   for (const name of migrations) {
@@ -67,7 +75,9 @@ export function runMigrations(): void {
       continue;
     }
 
-    const sql = readFileSync(join(__dirname, 'migrations', name), 'utf-8');
+    const sql =
+      runtime.__POLYRADER_MIGRATION_SOURCES__?.[name] ??
+      readFileSync(join(__dirname, 'migrations', name), 'utf-8');
 
     console.log(`Running migration: ${name}`);
     const runMigration = db.transaction(() => {
@@ -82,7 +92,13 @@ export function runMigrations(): void {
 }
 
 // Run directly
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const runtime = globalThis as typeof globalThis & {
+  __POLYRADER_MIGRATION_SOURCES__?: Record<string, string>;
+};
+if (
+  process.argv[1] === fileURLToPath(import.meta.url) &&
+  !runtime.__POLYRADER_MIGRATION_SOURCES__
+) {
   runMigrations();
   closeDb();
   console.log('Done');

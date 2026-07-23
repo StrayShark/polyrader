@@ -8,7 +8,6 @@ import { StatsSkeleton, TableSkeleton } from '../components/Skeletons';
 import { CalibrationChart } from '../components/CalibrationChart';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, CardTitle, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Button } from '@/components/ui';
-import { ProductModeNotice } from '../components/ProductModeNotice';
 import type { UserStats, SimulatedBet, CalibrationPoint } from '@polyrader/core/browser';
 
 export function AiStatsPage() {
@@ -81,8 +80,6 @@ export function AiStatsPage() {
           {t('common.refresh')}
         </Button>
       </div>
-
-      <ProductModeNotice mode="simulation" />
 
       <DataState
         isLoading={isLoading}

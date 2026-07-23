@@ -17,6 +17,24 @@ export const priceHistoryQuerySchema = z.object({
   interval: z.enum(['1h', '6h', '1d']).default('1h'),
 });
 
+const performanceDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+
+export const performanceQuerySchema = z
+  .object({
+    accountId: z.string().min(1).max(100).optional(),
+    game: z.string().min(1).max(32).optional(),
+    provider: z.string().min(1).max(100).optional(),
+    marketKind: z.string().min(1).max(100).optional(),
+    policyVersion: z.string().min(1).max(100).optional(),
+    promptVersion: z.string().min(1).max(100).optional(),
+    from: performanceDateSchema.optional(),
+    to: performanceDateSchema.optional(),
+  })
+  .refine((value) => !value.from || !value.to || value.from <= value.to, {
+    message: '`from` must be on or before `to`',
+    path: ['from'],
+  });
+
 // ============================================================
 // AI Analysis schemas
 // ============================================================
@@ -174,10 +192,61 @@ export const esportsGameParamsSchema = z.object({
   game: z.enum(['cs2', 'lol', 'dota2', 'valorant']),
 });
 
+export const esportsGameMatchParamsSchema = z.object({
+  game: z.enum(['lol', 'dota2', 'valorant']),
+  matchId: z.string().min(1, 'matchId is required'),
+});
+
 export const esportsSourceSnapshotsQuerySchema = z.object({
   entityType: z.enum(['match', 'team', 'player', 'event', 'patch', 'content']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
+
+export const esportsMatchIdentitiesQuerySchema = z.object({
+  canonicalMatchId: z.string().trim().min(1).max(240).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const esportsTeamAliasesQuerySchema = z.object({
+  status: z
+    .enum(['candidate', 'confirmed', 'conflict', 'unmatched', 'rejected'])
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+const esportsSourceIdSchema = z.enum([
+  'hltv',
+  'liquipedia',
+  'grid',
+  'riot',
+  'riot-data-dragon',
+  'valorant-api',
+  'opendota',
+  'steam',
+  'stratz',
+  'vlr',
+  'oracles-elixir',
+]);
+
+export const reviewEsportsTeamAliasBodySchema = z
+  .object({
+    source: esportsSourceIdSchema,
+    sourceTeamId: z.string().trim().max(160).optional(),
+    alias: z.string().trim().min(1).max(160),
+    targetSource: esportsSourceIdSchema.default('opendota'),
+    targetTeamId: z.string().trim().min(1).max(160).optional(),
+    status: z.enum(['confirmed', 'conflict', 'rejected']),
+    evidence: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.status === 'confirmed' && !value.targetTeamId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['targetTeamId'],
+        message: 'targetTeamId is required for a confirmed alias',
+      });
+    }
+  });
 
 export const esportsTeamSearchQuerySchema = z.object({
   q: z.string().trim().min(2).max(120),
@@ -248,6 +317,11 @@ export const placeBetBodySchema = z.object({
   amount: z.number().min(10).max(10000),
   odds: z.number().min(1.01).max(100),
   reasoning: z.string().optional(),
+  provider: z.string().min(1).max(64).optional(),
+  game: z.enum(['cs2', 'lol', 'dota2', 'valorant']).optional(),
+  marketKind: z
+    .enum(['match_winner', 'map_winner', 'handicap', 'total_maps', 'correct_score'])
+    .optional(),
 });
 
 export const placeMarketOrderBodySchema = z.object({
@@ -387,6 +461,9 @@ export const placeSimBetBodySchema = z.object({
   accountId: z.string().optional(),
   matchId: z.string().optional(),
   marketId: z.string().optional(),
+  provider: z.string().min(1).max(100).optional(),
+  game: z.enum(['cs2', 'lol', 'dota2', 'valorant']).optional(),
+  marketKind: z.string().min(1).max(100).optional(),
   betType: z.enum(['single', 'parlay']).default('single'),
   stake: z.number().min(1).max(1000000),
   legs: z
@@ -413,6 +490,15 @@ export const settleSimBetBodySchema = z.object({
   pnl: z.number().optional(),
 });
 
+export const captureClosingPriceBodySchema = z.object({
+  closingOdds: z.number().gt(1).max(1000),
+  source: z.string().min(1).max(64).default('manual'),
+  capturedAt: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)))
+    .optional(),
+});
+
 export const createSimReviewBodySchema = z.object({
   errorTags: z.array(z.string()).optional(),
   note: z.string().optional(),
@@ -434,6 +520,7 @@ export const reviewListQuerySchema = z.object({
 
 export type PlaceSimBetBody = z.infer<typeof placeSimBetBodySchema>;
 export type SettleSimBetBody = z.infer<typeof settleSimBetBodySchema>;
+export type CaptureClosingPriceBody = z.infer<typeof captureClosingPriceBodySchema>;
 export type CreateSimReviewBody = z.infer<typeof createSimReviewBodySchema>;
 export type ReviewListQuery = z.infer<typeof reviewListQuerySchema>;
 
@@ -606,6 +693,8 @@ export const analysisEnvelopeSchema = z
         marketId: z.string().min(1),
         kind: z.enum(['match_winner', 'map_winner', 'handicap', 'total_maps', 'correct_score']),
         line: z.number().nullable(),
+        evidenceType: z.enum(['real', 'synthetic']).optional(),
+        liquidityStatus: z.enum(['normal', 'low', 'unknown', 'synthetic']).optional(),
         outcomes: z.array(analysisMarketOutcomeSchema).min(2).max(16),
         liquidityUsd: z.number().min(0),
         observedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value))),
@@ -695,6 +784,7 @@ export const ingestAnalysisResponseBodySchema = z.object({
 
 export const analysisFixtureBodySchema = z
   .object({
+    game: z.enum(['cs2', 'lol', 'dota2', 'valorant']).optional(),
     invalid: z.boolean().optional(),
     provider: z.string().max(64).optional(),
     model: z.string().max(128).optional(),

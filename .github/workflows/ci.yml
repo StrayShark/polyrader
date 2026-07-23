@@ -58,8 +58,24 @@ jobs:
         run: cd packages/web && npx playwright install chromium
       - name: E2E tests
         run: cd packages/web && npm run test:e2e
+      - name: Upload Sprint F visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint-f-visual-matrix
+          path: packages/web/test-results/**/sprint-f-*.png
+          if-no-files-found: warn
+          retention-days: 14
       - name: Integration E2E tests
         run: cd packages/web && npm run test:e2e:integration
+      - name: Upload Sprint G release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint-g-release-diagnostics
+          path: packages/web/test-results/**/sprint-g-release-gates*.json
+          if-no-files-found: warn
+          retention-days: 14
 
   live-trading-smoke:
     name: Live Trading Smoke
@@ -168,3 +184,42 @@ jobs:
         run: |
           PORT=13999 POLYRADER_DATA_DIR=/tmp/bun-smoke-test POLYRADER_ENCRYPTION_KEY=test-key timeout 3 ./packages/server/dist/${{ matrix.artifact }} || true
           echo "Smoke test completed"
+
+  tauri-sidecar-smoke:
+    name: Tauri Sidecar and DB Smoke (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: npm ci
+      - run: npm run build:server
+      - name: Run packaged sidecar smoke
+        shell: bash
+        run: |
+          mkdir -p artifacts "$RUNNER_TEMP/polyrader-tauri-smoke"
+          PORT=13998 \
+          POLYRADER_DATA_DIR="$RUNNER_TEMP/polyrader-tauri-smoke" \
+          POLYRADER_ENCRYPTION_KEY=ci-tauri-smoke-key \
+          POLYRADER_SKIP_CRON=1 \
+          POLYRADER_SKIP_STREAM=1 \
+          POLYRADER_SKIP_EXTERNAL_HEALTH=1 \
+          ./packages/server/dist/polyrader-server > artifacts/sidecar.log 2>&1 &
+          SIDECAR_PID=$!
+          trap 'kill "$SIDECAR_PID" 2>/dev/null || true' EXIT
+          TAURI_SIDECAR_PORT=13998 \
+          TAURI_SMOKE_OUTPUT=artifacts/tauri-smoke.json \
+          npm run test:tauri:smoke
+      - name: Upload Tauri sidecar diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-sidecar-smoke-macos
+          path: artifacts/tauri-smoke.json
+          if-no-files-found: error
+          retention-days: 14

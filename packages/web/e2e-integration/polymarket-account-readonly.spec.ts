@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const API = 'http://127.0.0.1:3001';
+const API = process.env.POLYRADER_E2E_API_BASE ?? 'http://127.0.0.1:13101';
 const enabled = process.env.POLYMARKET_ACCOUNT_E2E === '1';
 
 test.describe('Integration — Polymarket account read-only', () => {

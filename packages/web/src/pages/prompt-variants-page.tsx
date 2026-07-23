@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlaskConical, Plus, RefreshCw, Pencil, Trash2, GitCompare } from 'lucide-react';
+import { Plus, RefreshCw, Pencil, Trash2, GitCompare } from 'lucide-react';
 import { usePromptVariantStore } from '../stores/prompt-variant-store';
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
@@ -253,12 +253,6 @@ export function PromptVariantsPage() {
         skeleton={<TableSkeleton rows={5} cols={5} />}
       >
         <Card>
-          <CardHeader className="border-b px-6 py-3">
-            <div className="flex items-center gap-2">
-              <FlaskConical className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-medium">{t('promptVariants.title')}</h2>
-            </div>
-          </CardHeader>
           <Table>
             <TableHeader>
               <TableRow>

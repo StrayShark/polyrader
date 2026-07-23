@@ -17,9 +17,9 @@ export function mapLegacyMatchStatus(dbStatus: string, scheduledAt: string): Mat
   const start = new Date(scheduledAt).getTime();
   const now = Date.now();
   const oneHourMs = 60 * 60 * 1000;
-  if (!Number.isNaN(start) && now >= start - oneHourMs && now < start) {
-    return 'pre_match';
-  }
+  if (Number.isNaN(start)) return 'scheduled';
+  if (now >= start) return 'live';
+  if (now >= start - oneHourMs) return 'pre_match';
   return 'scheduled';
 }
 

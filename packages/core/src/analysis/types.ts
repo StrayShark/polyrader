@@ -76,6 +76,8 @@ export interface AnalysisRequestEnvelope {
     marketId: string;
     kind: AnalysisMarketKind;
     line: number | null;
+    evidenceType?: 'real' | 'synthetic';
+    liquidityStatus?: 'normal' | 'low' | 'unknown' | 'synthetic';
     outcomes: AnalysisMarketOutcome[];
     liquidityUsd: number;
     observedAt: string;
@@ -138,6 +140,12 @@ export interface AnalysisReport {
   matchId: string;
   marketId: string;
   marketKind: AnalysisMarketKind;
+  marketContext?: {
+    line: number | null;
+    evidenceType: 'real' | 'synthetic' | 'unknown';
+    liquidityStatus: 'normal' | 'low' | 'unknown' | 'synthetic';
+    liquidityUsd: number;
+  };
   contractVersion: string;
   promptVersion: string;
   provider?: string;
@@ -181,6 +189,11 @@ export interface PaperPolicyProfile {
   minimumEdge: number;
   lowLiquidityThresholdUsd: number;
   maxSingleStake: number;
+  maxDailyStake: number;
+  maxOpenExposure: number;
+  maxGameExposure: number;
+  maxProviderExposure: number;
+  maxMarketKindExposure: number;
   stakeMode: 'fixed' | 'proportional' | 'fractional_kelly' | 'no_bet';
   fixedStake: number;
   bankrollFraction: number;
@@ -288,13 +301,18 @@ export const ANALYSIS_OUTPUT_SCHEMA = {
 } as const;
 
 export const DEFAULT_PAPER_POLICY: PaperPolicyProfile = {
-  policyVersion: 'paper.v1.1.0',
+  policyVersion: 'paper.v1.2.0',
   minimumCompleteness: 0.7,
   maximumFreshnessSeconds: 60 * 60,
   minimumConfidence: 0.6,
   minimumEdge: 0.05,
   lowLiquidityThresholdUsd: 1000,
   maxSingleStake: 100,
+  maxDailyStake: 600,
+  maxOpenExposure: 600,
+  maxGameExposure: 300,
+  maxProviderExposure: 400,
+  maxMarketKindExposure: 500,
   stakeMode: 'fixed',
   fixedStake: 25,
   bankrollFraction: 0.02,

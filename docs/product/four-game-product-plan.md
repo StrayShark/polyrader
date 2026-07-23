@@ -1,7 +1,7 @@
 # Four-Game LLM Simbook Product Plan
 
 Status: Current product plan
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 ## 1. Product Positioning
 
@@ -67,13 +67,13 @@ acceptance.
 
 ### Main navigation
 
-| Area | Responsibility |
-| --- | --- |
-| Event Lobby | Four-game match and market discovery |
-| Validation Lab | Board release status and source-to-order test runs |
-| My Ledger | Equity, simulated orders, settlement, and review |
-| Strategy Lab | Deterministic policy and signal calibration |
-| Settings | LLM keys, data sources, database, theme, and language |
+| Area           | Responsibility                                        |
+| -------------- | ----------------------------------------------------- |
+| Event Lobby    | Four-game match and market discovery                  |
+| Validation Lab | Board release status and source-to-order test runs    |
+| My Ledger      | Equity, simulated orders, settlement, and review      |
+| Strategy Lab   | Deterministic policy and signal calibration           |
+| Settings       | LLM keys, data sources, database, theme, and language |
 
 Advanced model evaluation is reached from the ledger and reports, not exposed as a
 large collection of unrelated primary-navigation pages.
@@ -123,6 +123,29 @@ Each game segment displays:
 - `skipped`
 
 The page must never collapse all failures into “Load failed.”
+
+Current Sprint 3 boundary:
+
+- LoL and Valorant support GRID title auto-discovery, future-series snapshots, bounded
+  roster enrichment, game-specific normalized facts, local match-winner markets,
+  standard analysis fixtures, deterministic paper orders, and GRID result settlement.
+- An empty licensed schedule is a valid source response but not a valid game board. The
+  Validation Lab must show the empty-schedule reason and keep the board `needs_data`.
+- Deterministic fixture completion proves implementation behavior only. A live board
+  remains unreleased until current source, market, provider, settlement, and statistics
+  evidence all pass without fixture fallback.
+- Dota Sprint 3 persists an auditable cross-source team alias registry with manual
+  confirmation/rejection timestamps and conflict history. Automatic sync cannot overwrite
+  a manual review result. Liquipedia and OpenDota current rosters
+  merge by stable player ID and normalized nickname; coaches, inactive players, and
+  historical match participants cannot be used to manufacture a five-player lineup.
+- Dota match-winner, game-handicap, and total-games markets align independently to the
+  canonical series. Real liquidity below USD 1,000 is always marked `low_liquidity` and
+  remains observe-only. Local practice markets are always `synthetic` evidence and keep
+  the real-source release gate blocked.
+- Validation Lab exposes market settlement rules, evidence type, alias candidate review,
+  and bounded OpenDota target-enrichment counts/errors. This review UI never confirms a
+  mapping automatically.
 
 ## 6. Standard Analysis Report UI
 
@@ -254,12 +277,12 @@ settled orders shows a small-sample warning; fewer than 10 suppresses rankings.
 
 ## 9. Board-Specific Minimum Facts
 
-| Board | Minimum analysis facts | Board-specific additions |
-| --- | --- | --- |
-| CS2 | Match, teams, current roster, rank, recent form | Map pool, veto, side, player rating |
-| LoL | Match, teams, current roster, patch | Positions, champion pool, draft when available |
-| Dota 2 | Match, teams, current roster, rating, patch | Positions, hero pool, draft when available |
-| Valorant | Match, teams, current roster, map pool | Agent composition, map record, side splits |
+| Board    | Minimum analysis facts                          | Board-specific additions                       |
+| -------- | ----------------------------------------------- | ---------------------------------------------- |
+| CS2      | Match, teams, current roster, rank, recent form | Map pool, veto, side, player rating            |
+| LoL      | Match, teams, current roster, patch             | Positions, champion pool, draft when available |
+| Dota 2   | Match, teams, current roster, rating, patch     | Positions, hero pool, draft when available     |
+| Valorant | Match, teams, current roster, map pool          | Agent composition, map record, side splits     |
 
 Facts not available from a supported source remain missing. The model must not infer
 them from team reputation.
@@ -273,36 +296,76 @@ them from team reputation.
 - A standard report surface with Report, Prompt, Response, and Timeline tabs.
 - A four-game source catalog, immutable source snapshots, normalized fact storage,
   and Validation Lab preflight states.
+- Source readiness is capability-based: credentials, game-title resolution, and future
+  schedule availability are separate states. A configured key is never labeled ready
+  until the required schedule query succeeds.
+- Migration 041 persists source-native game/series IDs under a canonical series
+  hierarchy. GRID and Liquipedia schedule records use a team/time identity, while each
+  OpenDota game retains its native ID and optional parent series.
 - A deterministic, versioned `PaperDecisionEngine` and canonical `sim_bets` linkage
   for eligible reports; pass and rejection decisions are retained for audit.
 - A unified Portfolio, Paper Orders, Performance, and Review account workspace.
 - Performance summaries for settled sample count, Wilson interval, Brier Score, ECE,
-  ROI, PnL, equity, maximum drawdown, and game/provider/market groupings.
+  log loss, ROI, PnL, equity, maximum drawdown, return volatility/Sharpe, and
+  game/provider/market/policy/prompt/event-tier/data-quality/confidence/edge groupings.
+- Shared Performance filters for game, provider, market kind, policy version, prompt
+  version, and UTC placed-date range. KPI cards, the filtered equity curve, and every
+  attribution table use the same canonical `sim_bets` scope.
+- Closing-price observability for source coverage, capture latency, attempt count, and
+  stable unavailable reasons, with explicit low-sample warnings below 10/30 settlements.
+- A nine-stage release-gate service and Validation Lab summary that evaluate fixture
+  and current-source evidence independently for CS2, LoL, Dota 2, and Valorant. A
+  fixture-complete board is labeled `fixture_ready`, never `verified`.
+- A current-source release audit that synchronizes sources, freezes the current
+  snapshot, executes the provider only after facts and market alignment pass, and
+  reports machine-readable blockers without manufacturing closing or settlement data.
+- Persisted release-audit history with source/facts/market/provider stage durations,
+  stable provider-failure categories, linked decision/order lifecycle status, and a
+  redacted diagnostic export that omits credentials and account data.
+- Segment-to-report/order drill-down for every performance attribution row, with
+  rankings suppressed until the 10/30 authoritative-settlement thresholds are met.
+- Migration 038-041 replay/restart coverage, a read-only Tauri sidecar smoke, and a
+  390/768/1440 visual matrix whose 15 screenshots are uploaded by CI.
 
 ### Partial
 
-- CS2 has the only proven real prompt-to-paper-order chain. Its current facts are
-  stale under the active one-hour policy and must refresh before another order.
-- Dota 2 has real match/team/player snapshots and normalized facts, but no supported
-  runtime settlement loop or aligned publishable market.
-- LoL has patch and roster source support but no complete normalized future match.
-  Valorant has roster source support but no complete normalized future match.
-- Market identity is game-aware, but runtime settlement support is currently limited
-  to CS2 match/map/handicap/total markets.
-- Performance attribution lacks real settled samples, log loss, closing-price CLV,
-  volatility/Sharpe, and complete prompt/policy/data-quality filtering.
-- Paper policy covers edge, confidence, completeness, freshness, liquidity, and stake
-  sizing, but not yet daily, per-game, per-provider, total-open-exposure, or
-  market-kind limits.
+- CS2 has the only proven real-provider prompt-to-paper-order chain. Its current-source
+  smoke now refreshes inside the active one-hour policy, while low-completeness samples
+  remain blocked until ranking, form, map, player, and market inputs are present.
+- A current CS2 audit now proactively enriches rank, form, map pool, both rosters and
+  ten player records to a 100% fact board before provider execution. The observed
+  practice market was unaligned and zero-liquidity, so policy rejection is retained as
+  the correct result and does not count as a paper order or settled sample.
+- Dota 2 has public Liquipedia future schedules and recent scored series, bounded
+  current-roster retrieval, OpenDota match/player/patch context, game-aware identity,
+  public no-key Gamma market discovery, and optional authorized GRID/DB paths. Its shared
+  eligibility contract and deterministic synthetic-practice analysis/order loop are green.
+  GRID still lacks Dota title rights and current samples lack complete facts/aligned eligible
+  markets, so the live board is not released.
+- LoL and Valorant have public future schedules, recent scored results, bounded roster
+  retrieval, and public patch/map/character context in addition to deterministic
+  fixtures. GRID currently returns no series, but this no longer blocks ingestion;
+  analysis completeness, aligned markets, and authoritative settlement remain open.
+- Market identity is game-aware. Runtime settlement covers CS2 match/map/handicap/total
+  markets plus match winner for Dota 2, LoL, and Valorant.
+- Performance attribution now includes closing-price CLV, source coverage, log loss,
+  volatility/Sharpe, prompt/policy filters, event-tier/data-quality/confidence/edge
+  bands, and report/order drill-down. It still lacks enough real settled samples for
+  comparison rankings or calibration tuning.
+- `paper.v1.2.0` covers edge, confidence, completeness, freshness, liquidity, stake
+  sizing, daily stake, and total/per-game/per-provider/per-market-kind open exposure.
+  Risk checks, order persistence, and account exposure updates share one transaction.
 
 ### Not implemented
 
-- A complete current-source schedule, analysis, paper decision, authoritative
-  settlement, and statistics loop for LoL, Dota 2, or Valorant.
-- The required per-board release-gate Playwright suites and fixture plus real-source
-  smoke evidence. Current release verification is 0/4 boards.
-- Multi-provider consensus calibration, complete closing-price capture, and enough
-  settled samples to enable model or strategy rankings.
+- A complete current-source schedule, real-provider analysis, aligned market,
+  authoritative settlement, and statistics release loop for LoL, Dota 2, or Valorant.
+- A complete current-source release chain for any board. The implemented release-gate
+  audit currently reports 0/4 verified boards and preserves the exact failed stages.
+- Multi-provider consensus calibration, broad real-source closing-price coverage, and
+  enough settled samples to enable model or strategy rankings.
+- Signed/notarized updater installation and upgrade evidence; this requires protected
+  release credentials and is not represented by the local unsigned debug bundle.
 
 ## 11. Non-Goals
 

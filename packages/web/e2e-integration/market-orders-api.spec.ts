@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const API = 'http://127.0.0.1:3001';
+const API = process.env.POLYRADER_E2E_API_BASE ?? 'http://127.0.0.1:13101';
 
 test.describe('Integration — market orders API', () => {
   test('GET /api/market-orders/status returns trading capability', async ({ request }) => {

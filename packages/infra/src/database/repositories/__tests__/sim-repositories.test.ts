@@ -69,9 +69,21 @@ function setupTestDb() {
       run_id TEXT,
       report_id TEXT,
       policy_version TEXT,
+      provider TEXT,
       game TEXT,
       market_kind TEXT,
       edge_at_entry REAL,
+      closing_odds REAL,
+      closing_probability REAL,
+      closing_captured_at TEXT,
+      closing_source TEXT,
+      closing_boundary_at TEXT,
+      closing_latency_seconds REAL,
+      closing_attempt_count INTEGER NOT NULL DEFAULT 0,
+      closing_last_attempt_at TEXT,
+      clv_unavailable_reason TEXT,
+      clv REAL,
+      clv_status TEXT NOT NULL DEFAULT 'pending',
       placed_at TEXT NOT NULL DEFAULT (datetime('now')),
       settled_at TEXT
     );
@@ -212,7 +224,13 @@ describe('SimBetRepository', () => {
       ev: 20,
       reasoning: 'Test bet',
       legs: [
-        { selection: 'Team A', odds: 2.0, matchId: 'match-1', marketId: 'market-1', source: 'polymarket' },
+        {
+          selection: 'Team A',
+          odds: 2.0,
+          matchId: 'match-1',
+          marketId: 'market-1',
+          source: 'polymarket',
+        },
       ],
     });
 
@@ -306,6 +324,32 @@ describe('SimBetRepository', () => {
     expect(repo.getOpenBetsTotalExposure(account.id)).toBe(100);
   });
 
+  it('records closing attempts, latency and explicit unavailable reasons', () => {
+    const account = accountRepo.getDefault();
+    const { bet } = repo.create({
+      accountId: account.id,
+      betType: 'single',
+      stake: 10,
+      totalOdds: 2,
+      legs: [{ selection: 'Team A', odds: 2 }],
+    });
+
+    repo.recordClosingAttempt(bet.id, {
+      attemptedAt: '2026-07-22T10:00:10.000Z',
+      boundaryAt: '2026-07-22T10:00:00.000Z',
+    });
+    const unavailable = repo.markClvUnavailable(
+      bet.id,
+      'NO_RELIABLE_CLOSING_PRICE',
+      '2026-07-22T10:00:10.000Z',
+    );
+
+    expect(unavailable.closingAttemptCount).toBe(1);
+    expect(unavailable.closingBoundaryAt).toBe('2026-07-22T10:00:00.000Z');
+    expect(unavailable.closingLastAttemptAt).toBe('2026-07-22T10:00:10.000Z');
+    expect(unavailable.clvUnavailableReason).toBe('NO_RELIABLE_CLOSING_PRICE');
+  });
+
   it('cascades delete to legs', () => {
     const account = accountRepo.getDefault();
     const { bet } = repo.create({
@@ -369,8 +413,20 @@ describe('OddsSnapshotRepository', () => {
   });
 
   it('falls back to all snapshots when context is partial', () => {
-    repo.create({ matchId: 'match-1', marketId: 'market-1', selection: 'Team A', odds: 2.0, source: 'a' });
-    repo.create({ matchId: 'match-2', marketId: 'market-2', selection: 'Team C', odds: 3.0, source: 'b' });
+    repo.create({
+      matchId: 'match-1',
+      marketId: 'market-1',
+      selection: 'Team A',
+      odds: 2.0,
+      source: 'a',
+    });
+    repo.create({
+      matchId: 'match-2',
+      marketId: 'market-2',
+      selection: 'Team C',
+      odds: 3.0,
+      source: 'b',
+    });
 
     const all = repo.getByBetContext();
     expect(all).toHaveLength(2);

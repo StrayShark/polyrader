@@ -267,6 +267,40 @@ describe('analysis.v1 decidePaperOrder', () => {
     expect(decision.stake).toBe(0);
   });
 
+  it('keeps a low-liquidity real market observe-only', () => {
+    const envelope = buildCs2Fixture();
+    envelope.market.evidenceType = 'real';
+    envelope.market.liquidityStatus = 'low';
+    envelope.market.liquidityUsd = 999;
+    const decision = decidePaperOrder({
+      envelope,
+      response: buildValidResponse(envelope),
+      reportId: 'rp_test',
+      settlementRulesAvailable: true,
+    });
+
+    expect(decision.action).toBe('rejected');
+    expect(decision.reasonCodes).toContain('LOW_LIQUIDITY_OBSERVE_ONLY');
+    expect(decision.stake).toBe(0);
+  });
+
+  it('keeps a synthetic market executable as an explicit practice order', () => {
+    const envelope = buildCs2Fixture();
+    envelope.market.evidenceType = 'synthetic';
+    envelope.market.liquidityStatus = 'synthetic';
+    envelope.market.liquidityUsd = 0;
+    const decision = decidePaperOrder({
+      envelope,
+      response: buildValidResponse(envelope),
+      reportId: 'rp_test',
+      settlementRulesAvailable: true,
+    });
+
+    expect(decision.action).toBe('paper_bet');
+    expect(decision.reasonCodes).toContain('SYNTHETIC_PRACTICE');
+    expect(decision.stake).toBe(DEFAULT_PAPER_POLICY.fixedStake / 2);
+  });
+
   it('passes when the model recommends pass', () => {
     const envelope = buildCs2Fixture();
     const response = buildValidResponse(envelope);

@@ -19,10 +19,13 @@ test.describe('Integration — UI against real backend proxy', () => {
     expect(errorCount).toBe(0);
   });
 
-  test('whales follow tab shows updated copy hint', async ({ page }) => {
+  test('whales follow tab keeps copy trading in paper mode', async ({ page }) => {
     await page.goto('/#/whales');
     await waitForMainHeading(page);
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
-    await expect(page.getByText(/配置 POLYMARKET 凭据后可切换实盘|switch to live when Polymarket credentials/i).first()).toBeVisible();
+    await expect(page.getByText(/纸面跟单|Paper Copy/i).first()).toBeVisible();
+    await expect(
+      page.getByText(/不会向 Polymarket 发送真实订单|never sends real orders to Polymarket/i),
+    ).toBeVisible();
   });
 });

@@ -8,6 +8,8 @@ import {
 } from '@polyrader/infra';
 import { oddsToImpliedProbability, calculateEdge, calculateEv } from '@polyrader/core';
 import { SettlementService } from './settlement-service';
+import { PaperPolicyService } from './paper-policy-service';
+import { ClosingPriceService, type ClosingPriceCaptureInput } from './closing-price-service';
 
 export interface SimBetWithLegs {
   bet: SimBet;
@@ -22,7 +24,7 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
   try {
     const parsed = JSON.parse(String(value)) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};
@@ -36,6 +38,8 @@ export class SimBetService {
   private matchSnapshotRepo = new Cs2MatchSnapshotRepository();
   private llmRepo = new LLMRepository();
   private settlementService = new SettlementService();
+  private policyService = new PaperPolicyService();
+  private closingPriceService = new ClosingPriceService();
 
   listBets(accountId: string, status?: 'open' | 'settled' | 'voided'): SimBet[] {
     return this.betRepo.getByAccount(accountId, status);
@@ -71,59 +75,50 @@ export class SimBetService {
     const edge = calculateEdge(userProbability, marketProbability);
     const ev = calculateEv(input.stake, userProbability, totalOdds);
 
-    if (input.stake > account.availableBankroll) {
-      throw new Error(
-        `Insufficient available bankroll: $${account.availableBankroll.toFixed(2)}`,
-      );
-    }
+    const policy = this.policyService.getActive();
 
-    const riskFraction = input.stake / account.currentBankroll;
-    if (riskFraction > account.maxSingleRiskPct) {
-      throw new Error(
-        `Stake $${input.stake.toFixed(2)} exceeds max single risk ` +
-          `${(account.maxSingleRiskPct * 100).toFixed(1)}% of bankroll`,
-      );
-    }
-
-    const openExposure = this.betRepo.getOpenBetsTotalExposure(account.id);
-    if (riskFraction + openExposure / account.currentBankroll > account.maxDailyRiskPct) {
-      throw new Error(
-        `This bet would exceed max daily risk ${(account.maxDailyRiskPct * 100).toFixed(1)}% ` +
-          `including open exposure`,
-      );
-    }
-
-    const { bet, legs } = this.betRepo.create({
-      accountId: account.id,
-      matchId: input.matchId,
-      marketId: input.marketId,
-      betType: input.betType,
-      stake: input.stake,
-      totalOdds,
-      impliedProbability,
-      userProbability,
-      modelProbability: input.modelProbability,
-      marketProbability,
-      edge: input.edgeAtEntry ?? edge,
-      ev,
-      reasoning: input.reasoning,
-      matchFormat: input.matchFormat,
-      matchTier: input.matchTier,
-      runId: input.runId,
-      reportId: input.reportId,
-      policyVersion: input.policyVersion,
-      game: input.game,
-      marketKind: input.marketKind,
-      edgeAtEntry: input.edgeAtEntry ?? edge,
-      legs: input.legs.map((leg) => ({
-        matchId: leg.matchId,
-        marketId: leg.marketId,
-        selection: leg.selection,
-        odds: leg.odds,
-        impliedProbability: oddsToImpliedProbability(leg.odds),
-        source: leg.source,
-      })),
-    });
+    const { bet, legs } = this.betRepo.create(
+      {
+        accountId: account.id,
+        matchId: input.matchId,
+        marketId: input.marketId,
+        betType: input.betType,
+        stake: input.stake,
+        totalOdds,
+        impliedProbability,
+        userProbability,
+        modelProbability: input.modelProbability,
+        marketProbability,
+        edge: input.edgeAtEntry ?? edge,
+        ev,
+        reasoning: input.reasoning,
+        matchFormat: input.matchFormat,
+        matchTier: input.matchTier,
+        runId: input.runId,
+        reportId: input.reportId,
+        policyVersion: input.policyVersion ?? policy.policyVersion,
+        provider: input.provider ?? 'user',
+        game: input.game,
+        marketKind: input.marketKind,
+        edgeAtEntry: input.edgeAtEntry ?? edge,
+        legs: input.legs.map((leg) => ({
+          matchId: leg.matchId,
+          marketId: leg.marketId,
+          selection: leg.selection,
+          odds: leg.odds,
+          impliedProbability: oddsToImpliedProbability(leg.odds),
+          source: leg.source,
+        })),
+      },
+      {
+        maxSingleStake: policy.maxSingleStake,
+        maxDailyStake: policy.maxDailyStake,
+        maxOpenExposure: policy.maxOpenExposure,
+        maxGameExposure: policy.maxGameExposure,
+        maxProviderExposure: policy.maxProviderExposure,
+        maxMarketKindExposure: policy.maxMarketKindExposure,
+      },
+    );
 
     for (const leg of legs) {
       this.snapshotRepo.create({
@@ -138,14 +133,6 @@ export class SimBetService {
     }
 
     this.captureMatchSnapshot(bet.id, input);
-
-    const newOpenExposure = this.betRepo.getOpenBetsTotalExposure(account.id);
-    this.accountRepo.updateBankroll(
-      account.id,
-      account.currentBankroll,
-      account.currentBankroll - newOpenExposure,
-      newOpenExposure,
-    );
 
     return { bet, legs };
   }
@@ -193,6 +180,10 @@ export class SimBetService {
 
   settleBet(id: string, result: SimBetResult, pnl?: number): SimBet {
     return this.settlementService.settleBet(id, result, pnl);
+  }
+
+  captureClosingPrice(id: string, input: ClosingPriceCaptureInput): SimBet {
+    return this.closingPriceService.captureForBet(id, input);
   }
 
   settleMatch(matchId: string, winnerSelection: string) {

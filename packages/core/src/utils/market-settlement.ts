@@ -52,11 +52,26 @@ function namesMatch(a: string | undefined, b: string | undefined): boolean {
 
 export function classifySettledMarketKind(question: string | undefined): SettledMarketKind {
   if (!question) return 'unsupported';
+  const lower = question.toLowerCase();
+  // Prop / specials are never series settlement kinds even when a parent description mentions teams.
+  if (
+    /\b(baron|dragon|inhibitor|quadra|penta|odd\/even|both teams|any player|first blood|kill\b)\b/.test(
+      lower,
+    )
+  ) {
+    return 'unsupported';
+  }
   const parsed = parsePolymarketMatch(question);
   if (parsed?.isMapMarket) return 'map_winner';
-  const lower = question.toLowerCase();
+  if (/\bgame\s+\d+\s+winner\b/.test(lower) && /\svs\s/.test(lower)) return 'map_winner';
   if (/\bhandicap\b|\bspread\b|[+-]\d+\.5/.test(lower)) return 'handicap';
-  if (/\btotal maps\b|\btotal rounds\b|over\/under/.test(lower)) return 'total_maps';
+  if (
+    /\btotal maps\b|\btotal rounds\b|\bgames?\s+total\b|\btotal\s+games\b|over\/under|o\/u\s*\d/.test(
+      lower,
+    )
+  ) {
+    return 'total_maps';
+  }
   if (/\bcorrect score\b/.test(lower)) return 'correct_score';
   if (parsed && !parsed.isMapMarket) return 'match_winner';
   return 'unsupported';

@@ -44,15 +44,26 @@ export class BackupController {
       const stats = fs.statSync(tempPath);
       logger.info('Backup: Database exported', { path: tempPath, size: stats.size });
 
-      res.download(tempPath, `polyrader-backup-${new Date().toISOString().slice(0, 10)}.db`, (err) => {
-        // Clean up temp file after download
-        try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
-        if (err) {
-          logger.warn('Backup: Download transfer error', { error: err.message });
-        }
-      });
+      res.download(
+        tempPath,
+        `polyrader-backup-${new Date().toISOString().slice(0, 10)}.db`,
+        (err) => {
+          // Clean up temp file after download
+          try {
+            fs.unlinkSync(tempPath);
+          } catch {
+            /* ignore */
+          }
+          if (err) {
+            logger.warn('Backup: Download transfer error', { error: err.message });
+          }
+        },
+      );
     } catch (err) {
-      logger.error('Backup: Export failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: Export failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'Database export failed' });
     }
   }
@@ -66,7 +77,9 @@ export class BackupController {
     try {
       const buf = req.body as Buffer;
       if (!Buffer.isBuffer(buf) || buf.length < 16) {
-        res.status(400).json({ error: 'No database file uploaded (expected application/octet-stream body)' });
+        res
+          .status(400)
+          .json({ error: 'No database file uploaded (expected application/octet-stream body)' });
         return;
       }
 
@@ -94,7 +107,10 @@ export class BackupController {
         restoredAt: new Date().toISOString(),
       });
     } catch (err) {
-      logger.error('Backup: Import failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: Import failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'Database import failed' });
     }
   }
@@ -107,7 +123,9 @@ export class BackupController {
     try {
       const db = getDb();
       const tables = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations' ORDER BY name")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations' ORDER BY name",
+        )
         .all() as { name: string }[];
 
       const data: Record<string, unknown[]> = {};
@@ -124,7 +142,10 @@ export class BackupController {
       res.setHeader('Content-Type', 'application/json');
       res.json({ generatedAt: new Date().toISOString(), tables: data });
     } catch (err) {
-      logger.error('Backup: JSON export failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: JSON export failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'JSON export failed' });
     }
   }
@@ -137,7 +158,9 @@ export class BackupController {
     try {
       const db = getDb();
       const tables = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations' ORDER BY name")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations' ORDER BY name",
+        )
         .all() as { name: string }[];
 
       const lines: string[] = [];
@@ -160,7 +183,10 @@ export class BackupController {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.send(lines.join('\n'));
     } catch (err) {
-      logger.error('Backup: CSV export failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: CSV export failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'CSV export failed' });
     }
   }
@@ -177,17 +203,23 @@ export class BackupController {
       let fileSize = 0;
       try {
         fileSize = fs.statSync(dbPath).size;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       // Count rows in all user tables (excluding internal migrations table)
       const tables = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations' ORDER BY name")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations' ORDER BY name",
+        )
         .all() as { name: string }[];
       const counts: Record<string, number> = {};
       const tableMeta: Record<string, { lastUpdate: string | null; source: string }> = {};
       for (const { name: table } of tables) {
         try {
-          const row = db.prepare(`SELECT COUNT(*) as count FROM "${table}"`).get() as { count: number };
+          const row = db.prepare(`SELECT COUNT(*) as count FROM "${table}"`).get() as {
+            count: number;
+          };
           counts[table] = row.count;
         } catch {
           counts[table] = 0;
@@ -195,10 +227,19 @@ export class BackupController {
 
         // Try to infer last update from common timestamp columns
         let lastUpdate: string | null = null;
-        const timeCols = ['updated_at', 'created_at', 'captured_at', 'placed_at', 'settled_at', 'timestamp'];
+        const timeCols = [
+          'updated_at',
+          'created_at',
+          'captured_at',
+          'placed_at',
+          'settled_at',
+          'timestamp',
+        ];
         for (const col of timeCols) {
           try {
-            const row = db.prepare(`SELECT MAX("${col}") as lastUpdate FROM "${table}"`).get() as { lastUpdate: string | null };
+            const row = db.prepare(`SELECT MAX("${col}") as lastUpdate FROM "${table}"`).get() as {
+              lastUpdate: string | null;
+            };
             if (row.lastUpdate) {
               lastUpdate = row.lastUpdate;
               break;
@@ -214,6 +255,15 @@ export class BackupController {
         };
       }
 
+      const migrationSummary = db
+        .prepare('SELECT COUNT(*) AS count, MAX(id) AS latestId FROM _migrations')
+        .get() as { count: number; latestId: number | null };
+      const latestMigration = migrationSummary.latestId
+        ? (db
+            .prepare('SELECT name FROM _migrations WHERE id = ?')
+            .get(migrationSummary.latestId) as { name: string } | undefined)
+        : undefined;
+
       res.json({
         data: {
           fileSize,
@@ -221,10 +271,17 @@ export class BackupController {
           tableCounts: counts,
           tableMeta,
           dbPath: path.basename(dbPath),
+          schema: {
+            migrationCount: migrationSummary.count,
+            latestMigration: latestMigration?.name ?? null,
+          },
         },
       });
     } catch (err) {
-      logger.error('Backup: Info failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: Info failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'Failed to get backup info' });
     }
   }
@@ -239,7 +296,8 @@ export class BackupController {
       const requestedTable = String(req.params.tableName ?? '');
       const limit = parseLimit(req.query.limit);
       const offset = parseOffset(req.query.offset);
-      const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
+      const search =
+        typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
 
       const tables = db
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='_migrations'")
@@ -251,20 +309,33 @@ export class BackupController {
       }
 
       const tableSql = quoteIdentifier(requestedTable);
-      const columns = db.prepare(`PRAGMA table_info(${tableSql})`).all() as Array<{ name: string; type: string }>;
-      const columnSql = columns.length > 0 ? columns.map((col) => quoteIdentifier(col.name)).join(', ') : '*';
+      const columns = db.prepare(`PRAGMA table_info(${tableSql})`).all() as Array<{
+        name: string;
+        type: string;
+      }>;
+      const columnSql =
+        columns.length > 0 ? columns.map((col) => quoteIdentifier(col.name)).join(', ') : '*';
 
       const whereParts: string[] = [];
       const whereParams: unknown[] = [];
       if (search && columns.length > 0) {
         const like = `%${search}%`;
-        whereParts.push(columns.map((col) => `CAST(${quoteIdentifier(col.name)} AS TEXT) LIKE ?`).join(' OR '));
+        whereParts.push(
+          columns.map((col) => `CAST(${quoteIdentifier(col.name)} AS TEXT) LIKE ?`).join(' OR '),
+        );
         whereParams.push(...columns.map(() => like));
       }
       const whereSql = whereParts.length > 0 ? ` WHERE ${whereParts.join(' AND ')}` : '';
 
-      const orderColumn = ['updated_at', 'created_at', 'captured_at', 'placed_at', 'settled_at', 'timestamp', 'id']
-        .find((candidate) => columns.some((col) => col.name === candidate));
+      const orderColumn = [
+        'updated_at',
+        'created_at',
+        'captured_at',
+        'placed_at',
+        'settled_at',
+        'timestamp',
+        'id',
+      ].find((candidate) => columns.some((col) => col.name === candidate));
       const orderSql = orderColumn ? ` ORDER BY ${quoteIdentifier(orderColumn)} DESC` : '';
 
       const totalRow = db
@@ -286,16 +357,23 @@ export class BackupController {
         },
       });
     } catch (err) {
-      logger.error('Backup: Table inspect failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: Table inspect failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'Failed to inspect table' });
     }
   }
 
   private inferTableSource(table: string): string {
-    if (table.startsWith('sim_') || table === 'bet_reviews' || table === 'odds_snapshots') return 'Local practice';
-    if (table.includes('polymarket') || table === 'markets' || table === 'market_prices') return 'Polymarket';
-    if (table.includes('hltv') || table.includes('esports') || table.includes('match')) return 'HLTV / GRID';
-    if (table.includes('signal') || table.includes('prompt') || table.includes('ai')) return 'AI / Signals';
+    if (table.startsWith('sim_') || table === 'bet_reviews' || table === 'odds_snapshots')
+      return 'Local practice';
+    if (table.includes('polymarket') || table === 'markets' || table === 'market_prices')
+      return 'Polymarket';
+    if (table.includes('hltv') || table.includes('esports') || table.includes('match'))
+      return 'HLTV / GRID';
+    if (table.includes('signal') || table.includes('prompt') || table.includes('ai'))
+      return 'AI / Signals';
     if (table.includes('whale') || table.includes('wallet')) return 'On-chain';
     return 'Local';
   }
@@ -320,7 +398,10 @@ export class BackupController {
         data: { before, after, freedBytes: before - after },
       });
     } catch (err) {
-      logger.error('Backup: WAL cleanup failed', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
+      logger.error('Backup: WAL cleanup failed', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
       res.status(500).json({ error: 'WAL cleanup failed' });
     }
   }

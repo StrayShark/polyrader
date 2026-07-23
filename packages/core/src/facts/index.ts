@@ -1,16 +1,26 @@
 import type { EsportsGame } from '../analysis/types';
-import { normalizeCs2MatchFacts } from './cs2-adapter';
+import { buildCs2FixtureFacts, normalizeCs2MatchFacts } from './cs2-adapter';
 import { buildDota2FixtureFacts, normalizeDota2MatchFacts } from './dota2-adapter';
 import { buildLolFixtureFacts, normalizeLolMatchFacts } from './lol-adapter';
 import { buildValorantFixtureFacts, normalizeValorantMatchFacts } from './valorant-adapter';
 import type { BoardValidationSummary, NormalizedMatchFacts, SourceSnapshotLike } from './types';
 import type { MarketAlignmentResult } from '../markets/identity';
+import { evaluateDotaAnalysisEligibility } from './dota2-analysis-eligibility';
+import { evaluateLolAnalysisEligibility } from './lol-analysis-eligibility';
+import { evaluateValorantAnalysisEligibility } from './valorant-analysis-eligibility';
 
 export * from './types';
 export * from './cs2-adapter';
 export * from './dota2-adapter';
+export * from './dota2-identity';
+export * from './dota2-analysis-eligibility';
 export * from './lol-adapter';
+export * from './lol-identity';
+export * from './lol-analysis-eligibility';
 export * from './valorant-adapter';
+export * from './valorant-identity';
+export * from './valorant-analysis-eligibility';
+export * from './riot-team-identity';
 
 export function normalizeMatchFacts(
   game: EsportsGame,
@@ -28,6 +38,7 @@ export function buildFixtureFacts(
   game: EsportsGame,
   now = new Date(),
 ): NormalizedMatchFacts | null {
+  if (game === 'cs2') return buildCs2FixtureFacts(now);
   if (game === 'dota2') return buildDota2FixtureFacts(now);
   if (game === 'lol') return buildLolFixtureFacts(now);
   if (game === 'valorant') return buildValorantFixtureFacts(now);
@@ -92,9 +103,9 @@ export function buildBoardValidationSummary(input: {
       }
     : {
         stage: 'market_align',
-        status: alignment.aligned
+        status: alignment.aligned && alignment.evidenceType !== 'synthetic'
           ? ('passed' as const)
-          : alignment.status === 'supported'
+          : alignment.status === 'supported' || alignment.evidenceType === 'synthetic'
             ? ('warning' as const)
             : ('failed' as const),
         detail: alignment.detail,
@@ -109,6 +120,41 @@ export function buildBoardValidationSummary(input: {
       : sample.completeness >= 0.4
         ? 'needs_data'
         : 'blocked';
+  const analysisEligibility =
+    input.game === 'dota2'
+      ? evaluateDotaAnalysisEligibility({
+          facts: sample,
+          marketAlignment: alignment,
+          policy: {
+            minimumCompleteness: 0.7,
+            maximumFreshnessSeconds,
+            lowLiquidityThresholdUsd: 1_000,
+          },
+          now,
+        })
+      : input.game === 'lol'
+        ? evaluateLolAnalysisEligibility({
+            facts: sample,
+            marketAlignment: alignment,
+            policy: {
+              minimumCompleteness: 0.7,
+              maximumFreshnessSeconds,
+              lowLiquidityThresholdUsd: 1_000,
+            },
+            now,
+          })
+        : input.game === 'valorant'
+          ? evaluateValorantAnalysisEligibility({
+              facts: sample,
+              marketAlignment: alignment,
+              policy: {
+                minimumCompleteness: 0.7,
+                maximumFreshnessSeconds,
+                lowLiquidityThresholdUsd: 1_000,
+              },
+              now,
+            })
+          : undefined;
 
   return {
     game: input.game,
@@ -120,6 +166,8 @@ export function buildBoardValidationSummary(input: {
     sourceCount: new Set(sample.sourceLinks.map((item) => item.source)).size,
     matchCount: input.snapshots.filter((item) => item.entityType === 'match').length,
     sampleMatch: sample,
+    marketAlignment: alignment ?? undefined,
+    analysisEligibility,
     stages: [
       {
         stage: 'source_sync',
@@ -136,10 +184,19 @@ export function buildBoardValidationSummary(input: {
       marketStage,
       {
         stage: 'prompt',
-        status: sample.completeness >= 0.7 && factsAreFresh ? 'passed' : 'waiting',
-        detail: factsAreFresh
-          ? `${sample.adapterVersion} snapshot ready`
-          : `${sample.adapterVersion} snapshot is stale`,
+        status:
+          analysisEligibility && !analysisEligibility.analysisEligible
+            ? 'waiting'
+            : sample.completeness >= 0.7 && factsAreFresh
+              ? 'passed'
+              : 'waiting',
+        detail: analysisEligibility
+          ? analysisEligibility.analysisEligible
+            ? `${analysisEligibility.mode} · ${sample.adapterVersion} snapshot ready`
+            : eligibilityBlockedDetail(analysisEligibility.reasonCodes)
+          : factsAreFresh
+            ? `${sample.adapterVersion} snapshot ready`
+            : `${sample.adapterVersion} snapshot is stale`,
       },
       {
         stage: 'validate',
@@ -148,10 +205,20 @@ export function buildBoardValidationSummary(input: {
       },
       {
         stage: 'paper_decision',
-        status: boardState === 'paper_ready' ? 'passed' : 'waiting',
+        status:
+          boardState === 'paper_ready' &&
+          (!analysisEligibility || analysisEligibility.analysisEligible)
+            ? 'passed'
+            : 'waiting',
         detail:
-          boardState === 'paper_ready'
-            ? 'facts and market alignment clear paper gate'
+          analysisEligibility
+            ? analysisEligibility.analysisEligible
+              ? analysisEligibility.paperOrderEligible
+                ? `${analysisEligibility.mode} clears deterministic paper gate`
+                : `${analysisEligibility.mode} · no paper order`
+              : eligibilityBlockedDetail(analysisEligibility.reasonCodes)
+            : boardState === 'paper_ready'
+              ? 'facts and market alignment clear paper gate'
             : factsAreFresh
               ? 'blocked by facts or market alignment'
               : 'blocked by stale facts',
@@ -159,10 +226,32 @@ export function buildBoardValidationSummary(input: {
       {
         stage: 'settlement',
         status: 'waiting',
-        detail: 'waiting for authoritative result',
+        detail:
+          input.game === 'lol' || input.game === 'valorant'
+            ? hasAuthoritativeGridSeriesLink(sample)
+              ? 'waiting for authoritative GRID result'
+              : 'liquipedia-only · no authoritative GRID series link'
+            : 'waiting for authoritative result',
       },
     ],
   };
+}
+
+function hasAuthoritativeGridSeriesLink(sample: NormalizedMatchFacts): boolean {
+  return sample.sourceLinks.some(
+    (link) =>
+      link.source === 'grid' &&
+      link.entityType === 'match' &&
+      link.externalId === sample.externalMatchId,
+  );
+}
+
+function eligibilityBlockedDetail(reasonCodes: string[]): string {
+  const labels = [
+    reasonCodes.includes('INPUT_STALE') ? 'stale' : '',
+    reasonCodes.includes('INPUT_INCOMPLETE') ? 'incomplete' : '',
+  ].filter(Boolean);
+  return `blocked${labels.length > 0 ? ` · ${labels.join(' / ')}` : ''} · ${reasonCodes.join(',')}`;
 }
 
 function formatFreshness(seconds: number): string {

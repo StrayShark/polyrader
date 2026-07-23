@@ -22,6 +22,15 @@ export class PaperPolicyController {
     }
   }
 
+  getRiskState(req: Request, res: Response): void {
+    try {
+      const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : 'default';
+      res.json({ data: this.service.getRiskState(accountId) });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  }
+
   upsert(req: Request, res: Response): void {
     try {
       const record = this.service.upsert({

@@ -1,10 +1,18 @@
 import type { Request, Response } from 'express';
-import type { EsportsGame, EsportsSourceEntityType } from '@polyrader/core';
+import type {
+  EsportsGame,
+  EsportsSourceEntityType,
+  EsportsTeamAliasStatus,
+} from '@polyrader/core';
 import { EsportsSourceService } from '../services/esports-source-service';
 import { logger } from '../utils/logger';
+import { Dota2MatchReconciliationService } from '../services/dota2-match-reconciliation-service';
+import { GridMatchReconciliationService } from '../services/grid-match-reconciliation-service';
 
 export class EsportsSourceController {
   private readonly service = new EsportsSourceService();
+  private readonly dota2Settlement = new Dota2MatchReconciliationService();
+  private readonly gridSettlement = new GridMatchReconciliationService();
 
   getCatalog(_req: Request, res: Response): void {
     try {
@@ -41,6 +49,53 @@ export class EsportsSourceController {
     }
   }
 
+  listMatchIdentities(req: Request, res: Response): void {
+    try {
+      const data = this.service.listMatchIdentities(req.params.game as EsportsGame, {
+        canonicalMatchId: req.query.canonicalMatchId
+          ? String(req.query.canonicalMatchId)
+          : undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+      });
+      res.json({ data });
+    } catch (err) {
+      logger.error('Failed to list esports match identities', { error: (err as Error).message });
+      res.status(500).json({ error: 'Failed to load esports match identities' });
+    }
+  }
+
+  listTeamAliases(req: Request, res: Response): void {
+    try {
+      const data = this.service.listTeamAliases(req.params.game as EsportsGame, {
+        status: req.query.status as EsportsTeamAliasStatus | undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+      });
+      res.json({ data });
+    } catch (err) {
+      logger.error('Failed to list esports team aliases', { error: (err as Error).message });
+      res.status(500).json({ error: 'Failed to load esports team aliases' });
+    }
+  }
+
+  reviewTeamAlias(req: Request, res: Response): void {
+    try {
+      const data = this.service.reviewTeamAlias({
+        game: req.params.game as EsportsGame,
+        source: req.body.source,
+        sourceTeamId: req.body.sourceTeamId,
+        alias: req.body.alias,
+        targetSource: req.body.targetSource,
+        targetTeamId: req.body.targetTeamId,
+        status: req.body.status,
+        evidence: req.body.evidence,
+      });
+      res.json({ data });
+    } catch (err) {
+      logger.error('Failed to review esports team alias', { error: (err as Error).message });
+      res.status(500).json({ error: 'Failed to review esports team alias' });
+    }
+  }
+
   async searchTeams(req: Request, res: Response): Promise<void> {
     try {
       const data = await this.service.searchLiquipediaTeams(
@@ -71,6 +126,39 @@ export class EsportsSourceController {
         error: (err as Error).message,
       });
       res.status(502).json({ error: 'Liquipedia roster sync failed' });
+    }
+  }
+
+  async reconcileDota2Match(req: Request, res: Response): Promise<void> {
+    try {
+      const data = await this.dota2Settlement.reconcileMatch(String(req.params.matchId));
+      const status = data.status === 'unavailable' ? 502 : 200;
+      res.status(status).json({ data });
+    } catch (err) {
+      logger.error('Dota 2 match reconciliation failed', {
+        matchId: req.params.matchId,
+        error: (err as Error).message,
+      });
+      res.status(500).json({ error: 'Dota 2 match reconciliation failed' });
+    }
+  }
+
+  async reconcileGameMatch(req: Request, res: Response): Promise<void> {
+    const game = req.params.game as 'lol' | 'dota2' | 'valorant';
+    const matchId = String(req.params.matchId);
+    try {
+      const data =
+        game === 'dota2'
+          ? await this.dota2Settlement.reconcileMatch(matchId)
+          : await this.gridSettlement.reconcileMatch(game, matchId);
+      res.status(data.status === 'unavailable' ? 502 : 200).json({ data });
+    } catch (err) {
+      logger.error('Game match reconciliation failed', {
+        game,
+        matchId,
+        error: (err as Error).message,
+      });
+      res.status(500).json({ error: 'Game match reconciliation failed' });
     }
   }
 }

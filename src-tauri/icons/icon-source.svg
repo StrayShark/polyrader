@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PolyRader radar icon">
+  <circle cx="256" cy="256" r="214" fill="#F7F7F7" />
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#171717" stroke-width="42" />
+  <circle cx="256" cy="256" r="104" fill="none" stroke="#9A9A9A" stroke-width="18" />
+  <path d="M256 256 385 127" stroke="#171717" stroke-width="30" stroke-linecap="round" />
+  <circle cx="256" cy="256" r="43" fill="#171717" />
+  <circle cx="256" cy="256" r="17" fill="#F7F7F7" />
+</svg>

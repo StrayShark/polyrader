@@ -38,6 +38,12 @@ export function decidePaperOrder(input: PaperDecisionInput): PaperDecisionResult
   if (policy.requireAuthoritativeSettlement && input.settlementRulesAvailable === false) {
     reasons.push('MARKET_UNALIGNED');
   }
+  if (
+    input.envelope.market.evidenceType === 'real' &&
+    input.envelope.market.liquidityUsd < policy.lowLiquidityThresholdUsd
+  ) {
+    reasons.push('LOW_LIQUIDITY_OBSERVE_ONLY');
+  }
 
   const recommended = input.response.recommendation;
   if (recommended.action === 'pass' || !recommended.outcomeId) {
@@ -102,7 +108,11 @@ export function decidePaperOrder(input: PaperDecisionInput): PaperDecisionResult
 
   if (input.envelope.market.liquidityUsd < policy.lowLiquidityThresholdUsd) {
     stake *= 0.5;
-    reasons.push('LOW_LIQUIDITY_STAKE_REDUCED');
+    reasons.push(
+      input.envelope.market.evidenceType === 'synthetic'
+        ? 'SYNTHETIC_PRACTICE'
+        : 'LOW_LIQUIDITY_STAKE_REDUCED',
+    );
   }
   stake = Math.min(stake, policy.maxSingleStake);
 
@@ -155,6 +165,12 @@ export function buildAnalysisReport(input: {
     matchId: envelope.match.matchId,
     marketId: envelope.market.marketId,
     marketKind: envelope.market.kind,
+    marketContext: {
+      line: envelope.market.line,
+      evidenceType: envelope.market.evidenceType ?? 'unknown',
+      liquidityStatus: envelope.market.liquidityStatus ?? 'unknown',
+      liquidityUsd: envelope.market.liquidityUsd,
+    },
     contractVersion: envelope.contractVersion,
     promptVersion: envelope.promptVersion,
     provider: input.provider,

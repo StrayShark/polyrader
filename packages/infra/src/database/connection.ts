@@ -31,7 +31,10 @@ export function getDb(): Database.Database {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    db = new Database(dbPath);
+    const runtime = globalThis as typeof globalThis & {
+      __POLYRADER_DATABASE_FACTORY__?: (filename: string) => Database.Database;
+    };
+    db = runtime.__POLYRADER_DATABASE_FACTORY__?.(dbPath) ?? new Database(dbPath);
 
     // Performance pragmas
     db.pragma('journal_mode = WAL');
@@ -55,7 +58,10 @@ export function query<T = Record<string, unknown>>(sql: string, ...params: unkno
   return [];
 }
 
-export function queryOne<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T | undefined {
+export function queryOne<T = Record<string, unknown>>(
+  sql: string,
+  ...params: unknown[]
+): T | undefined {
   const database = getDb();
   const stmt = database.prepare(sql);
   return (stmt.get(...params) as T) ?? undefined;

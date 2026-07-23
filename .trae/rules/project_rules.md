@@ -32,32 +32,32 @@ src-tauri/ — Rust 桌面壳
 
 ## 产品文档
 
-| 文档 | 用途 |
-|------|------|
-| `README.md` | 仓库入口与产品定位 |
-| `docs/README.md` | 当前产品文档唯一入口与完成边界 |
-| `docs/product/four-game-product-plan.md` | 四游戏产品范围、流程、统计和非目标 |
-| `docs/contracts/llm-analysis-contract.md` | 标准 Prompt、响应、校验与审计契约 |
-| `docs/design/four-game-llm-simbook-prototype.html` | 当前交互与视觉原型 |
-| `docs/roadmap/four-game-llm-simbook-roadmap.md` | 研发阶段、依赖、测试矩阵与发布门槛 |
-| `.trae/rules/project_rules.md` | 持久工程约束与变更后规划记录 |
-| `CONTRIBUTING.md` | 贡献规范和验证命令 |
+| 文档                                               | 用途                               |
+| -------------------------------------------------- | ---------------------------------- |
+| `README.md`                                        | 仓库入口与产品定位                 |
+| `docs/README.md`                                   | 当前产品文档唯一入口与完成边界     |
+| `docs/product/four-game-product-plan.md`           | 四游戏产品范围、流程、统计和非目标 |
+| `docs/contracts/llm-analysis-contract.md`          | 标准 Prompt、响应、校验与审计契约  |
+| `docs/design/four-game-llm-simbook-prototype.html` | 当前交互与视觉原型                 |
+| `docs/roadmap/four-game-llm-simbook-roadmap.md`    | 研发阶段、依赖、测试矩阵与发布门槛 |
+| `.trae/rules/project_rules.md`                     | 持久工程约束与变更后规划记录       |
+| `CONTRIBUTING.md`                                  | 贡献规范和验证命令                 |
 
 ## 开发规范
 
 ### 命令
 
-| 任务 | 命令 |
-|------|------|
-| 运行全部单元测试 | `npm run test` |
-| 运行单个包测试 | `cd packages/<pkg> && npx vitest run` |
-| 运行 E2E 测试 | `cd packages/web && npx playwright test` |
-| 类型检查 | `npm run typecheck` |
-| Lint | `npm run lint` |
-| 构建前端 | `npm run build:web` |
-| 构建 server bundle | `npm run build:server` |
-| Tauri 开发模式 | `npm run tauri:dev` |
-| Tauri 打包 | `npm run tauri:build` |
+| 任务               | 命令                                     |
+| ------------------ | ---------------------------------------- |
+| 运行全部单元测试   | `npm run test`                           |
+| 运行单个包测试     | `cd packages/<pkg> && npx vitest run`    |
+| 运行 E2E 测试      | `cd packages/web && npx playwright test` |
+| 类型检查           | `npm run typecheck`                      |
+| Lint               | `npm run lint`                           |
+| 构建前端           | `npm run build:web`                      |
+| 构建 server bundle | `npm run build:server`                   |
+| Tauri 开发模式     | `npm run tauri:dev`                      |
+| Tauri 打包         | `npm run tauri:build`                    |
 
 ### 代码规范
 
@@ -153,6 +153,7 @@ npm run test && cd packages/web && npx playwright test --reporter=line
 - **功能完整度**: PRD 中标注但未实现的功能
 
 优先级标记：
+
 - **P0-必须**: 编译失败、运行时崩溃、数据丢失
 - **P1-高**: 测试缺口（核心模块无测试）、安全问题
 - **P2-中**: E2E 覆盖不足、体验优化、lint 违规
@@ -461,7 +462,7 @@ npm run test && cd packages/web && npx playwright test --reporter=line
 
 1. **P1-高** 实时推送重估结果 — 后台补全每完成一场即通过 WebSocket 推送最新本地赔率和数据完整度，避免前端等待下一次 markets 拉取；同时记录从占位概率到证据概率的 CLV 轨迹。
 2. **P1-高** 情报状态可视化 — 在赛事行展示 `pending / partial / complete / failed`、数据更新时间和失败原因，并提供单场重试入口；任务中心与大厅状态使用同一数据源。
-3. **P1-高** 可取消外部抓取 — 为 `fetchWithBrowser`、HLTV/GRID 客户端传递 `AbortSignal`，让控制器超时能释放浏览器页和网络连接，同时限制手动刷新频率。
+3. **P1-高** 可取消外部抓取 — 为 `fetchTextPolitely`、HLTV/GRID 客户端传递调用方 `AbortSignal`，让控制器超时能释放网络连接，同时限制手动刷新频率。
 4. **P2-中** 本地盘口生命周期 — 定时关闭已过期 `local-hltv-*` 盘口、清理长期无赛果记录，并确保结算任务优先处理 finished 赛事而非仅按 endDate 关闭。
 5. **P2-中** Tauri 自动回归 — 固化“启动 sidecar → 刷新 → 至少一场真实 HLTV 赛事可见 → 按钮恢复 → 失败时旧数据保留”的桌面 smoke 测试。
 
@@ -681,7 +682,7 @@ npm run test && cd packages/web && npx playwright test --reporter=line
 - 新增数据源 API：目录、按游戏同步、快照查询、Liquipedia 队伍搜索和指定队伍阵容同步。设置中心系统 Tab 展示四游戏数据源矩阵、配置状态、最近同步和手动同步入口。
 - LoL：Riot Data Dragon 公开版本数据已接入；Liquipedia League of Legends wiki 的队伍检索与动态 `ActiveSquadAuto` 阵容展开已接入。
 - Dota 2：OpenDota 的最近职业比赛、队伍排名/胜负记录和职业选手归属已接入；Liquipedia Dota 2 wiki 阵容已接入。
-- Valorant：Liquipedia Valorant wiki 的队伍检索与动态阵容展开已接入；Riot VAL Content 接口已实现，但仅在 `RIOT_API_KEY` 配置后执行。
+- Valorant：Liquipedia Valorant wiki 的公开赛程、近期赛果、队伍检索与动态阵容已接入；静态版本/角色/地图使用无需 key 的 Valorant API，Riot Developer API 默认政策禁用。
 - GRID 客户端支持按游戏 title ID 查询，并在真实请求失败时返回失败状态；LoL、Dota 2、Valorant 不得复用 CS2 默认 title ID。VLR、Oracle's Elixir、STRATZ 在没有受支持 API/许可适配器时只标记为人工参考，禁止伪装成自动数据源。
 - `.env.example` 必须保留每游戏 Liquipedia URL、GRID title ID、OpenDota、Riot、Steam 和 STRATZ 的配置说明；密钥缺失时同步应返回 `skipped/partial`，不得用 401/403/405 伪装成空数据。
 
@@ -856,3 +857,512 @@ npm run test && cd packages/web && npx playwright test --reporter=line
 3. **P1-高** LoL / Valorant 事实入口 — 配置受支持的 schedule 数据源，为每个板块生成首个规范未来比赛、稳定 snapshot hash、市场映射和明确的不可发布原因。
 4. **P1-高** 风险与绩效收口 — 增加每日、分游戏、分 provider、盘口白名单和总敞口限制；补齐 closing price、CLV、log loss、Sharpe 及可筛选归因。
 5. **P2-中** 四板块发布矩阵 — 完成 Playwright、Tauri、迁移重放与 390/768/1440 视觉回归，所有截图和生成报告仅作为 CI artifact。
+
+---
+
+## 当前执行记录：Sprint 1～2（CS2 新鲜事实 + Dota 2 首个闭环）
+
+### 已完成
+
+- 2026-07-22：Sprint 1 已完成开发验收。CS2 fixture 改为相对当前时间生成，包含双方排名、近 10 场、地图池、完整阵容和个人指标；`cs2-paper-loop.spec.ts` 通过标准 Prompt、严格响应、确定性决策、`sim_bet`、结算和 Performance 闭环。
+- 2026-07-22：当前 HLTV 冒烟已通过。事实候选按最新 `observedAt` 优先，同批未来比赛按最近开赛时间排序；SQLite `YYYY-MM-DD HH:mm:ss` 更新时间必须在 legacy CS2 快照边界按 UTC 解析，禁止再因本地时区产生虚假的 8 小时过期。
+- 2026-07-22：Sprint 2 已完成开发验收。Dota 2 `match_winner` 已进入 market/settlement registry；OpenDota 单局结果与 GRID 系列状态均可权威结算，后台每 10 分钟扫描 Dota 2 open bets，手动 API 和 Validation Lab 均可触发只读赛果对齐。
+- OpenDota 同步现读取近期比赛详情、双方 10 个 player slot、K/D/A、GPM/XPM、draft、当前补丁及本批比赛引用的历史补丁。缺失 `account_id` 的选手必须保留实际 slot 数据并使用 `<matchId>-slot-<slot>` 明确标识，不得丢弃或伪造账户身份。
+- Dota 2 facts 已升级为 `dota2.facts.v2`，完整 fixture 包含 patch、双方 roster、team record、player stats 与 pre-match draft context；本地练习盘口固定为 0 流动性并触发 `LOW_LIQUIDITY_STAKE_REDUCED`，禁止合成成交量。
+- `Dota2MatchReconciliationService` 只结算 registry 支持的 `match_winner`，重复调用不得重复结算订单或解析已 resolved 市场。当前真实 OpenDota 样本 UI 显示 10 名选手，权威结算反馈已验证为 `settled / opendota`。
+- 新增确定性 Integration E2E：`cs2-paper-loop.spec.ts`、`dota2-paper-loop.spec.ts`；新增显式开关真实源冒烟：`cs2-real-source-smoke.spec.ts`、`dota2-real-source-smoke.spec.ts`。真实源测试必须使用 `POLYRADER_REAL_SOURCE_E2E=1`，默认 CI 不因外部网络波动失败。
+- 最终回归基线：Core 343/343、Infra 136 passed / 13 skipped、Server 238/238、Web 52/52；四工作区 TypeScript 检查和 CS2/Dota 2 确定性 Integration E2E 2/2 通过，HLTV/OpenDota opt-in 真实源冒烟通过。
+
+### 强制边界
+
+- Sprint 开发完成不等于板块发布。CS2/Dota 2 fixture 与真实源 smoke 可以通过，但只要真实样本缺少完整事实、对齐盘口、可执行 provider 或完整 source-to-statistics 证据，release gate 仍保持未通过；当前总发布状态仍为 0/4。
+- Dota 2 已结束比赛必须按 match payload 的 patch ID 匹配历史补丁；仅在未来比赛没有 patch ID 时才可使用当前补丁。禁止用当前版本覆盖历史比赛版本。
+- 事实样本选择必须区分未来和已结束比赛：同一同步批次中，未来赛程取最近即将开赛，历史赛果取最近结束；任何旧快照不得仅因开赛时间更远而挤掉刚同步样本。
+- OpenDota `/proMatches` 表示单局，默认格式为 BO1；GRID series 才按系列格式和比分结算。禁止把 OpenDota 单局结果误当 BO3 系列冠军。
+- Validation Lab 的 Dota 2 权威结算按钮只对已结束样本显示；UI 必须展示 source、status、winner、settled bets 与 resolved markets，不得把 0 笔结算显示成失败。
+- 非 production 环境显式提交 `fixture: true` 时必须强制使用确定性 fixture，即使同一数据库已存在真实源快照；production 必须继续拒绝 fixture，防止测试数据进入真实分析。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint 3** 接入 LoL 与 Valorant 受支持的未来赛程、规范比赛、市场 identity 和权威 settlement adapter，各完成首个确定性 paper loop 与真实源 smoke。
+2. **P1-高** 为真实 Dota 2 样本补齐稳定的双方 team rating 与可对齐盘口，运行真实 provider 标准分析；缺失时继续保持 `needs_data`。
+3. **P1-高** 扩展 paper policy 的每日、分游戏、分 provider、分 market-kind 和总 open exposure 限制，并补 closing price / CLV。
+4. **P2-中** 增加 GRID Dota 2 series 的 API 集成测试、服务重启/SQLite replay、Tauri smoke，以及 390/768/1440 Validation Lab 和报告视觉回归。
+5. **P2-中** 累积至少 10/30 个权威结算样本后再启用策略排名与校准调参；在此之前 Wilson/Brier/ECE 必须继续显示样本不足。
+
+---
+
+## 当前执行记录：Sprint 3（LoL + Valorant 首个闭环）
+
+### 已完成
+
+- 2026-07-22：LoL 与 Valorant `match_winner` 已进入 settlement registry，权威来源限定为 GRID；`GridMatchReconciliationService` 只结算已完成系列的胜负盘口，后台每 10 分钟扫描 open bets，重复执行不得重复结算订单或解析本地盘口。
+- GRID title ID 支持从 `titles` API 自动发现，`GRID_TITLE_ID_LOL / GRID_TITLE_ID_VALORANT` 仅作为覆盖项。未来赛程同步在 `POLYRADER_GRID_ROSTER_TEAM_LIMIT` 上限内补充近期阵容；阵容不可用不得破坏赛程同步。
+- LoL 与 Valorant fixture 改为相对当前时间生成，事实版本升级为 `lol.facts.v2 / valorant.facts.v2`。Valorant 赛程未携带地图池时允许读取 Riot content maps；draft 与 agent/map veto 继续以显式 placeholder 表示。
+- 四游戏 fixture API、标准 Prompt/响应、低流动性降额、`sim_bet`、手动结算和 Performance Integration E2E 4/4 通过；LoL/Valorant GRID 权威结算单测覆盖赢单、盘口解析、绩效归因和重复调用幂等。
+- 该 Sprint 当时 GRID 对 LoL/Valorant 返回 0 场；此历史阻断已在 2026-07-23 被合规的 Liquipedia 公共赛程回退替代。Data Dragon 与 Valorant API 静态内容无需账户 key；发布门禁仍取决于完整事实、盘口和结算。
+- 最终回归基线：Core 346/346、Infra 137 passed / 13 skipped、Server 247/247、Web 52/52；四工作区 TypeScript、production build 与 lint 均通过，lint 只保留既有 warning。
+
+### 强制边界
+
+- GRID 返回空数组必须记录 `No upcoming GRID <game> series are available for this account`，不得把 0 条记录包装成可发布状态；API 成功只代表请求成功，不代表赛事板块可用。
+- LoL/Valorant 权威结算只能使用 normalized facts 中同 match ID 的 GRID match link 和 `finished=true` series state。未完赛、无链接、无规则或外部失败必须保持 pending/unavailable。
+- 自动发现 title ID 不代表账号拥有对应赛事权限。发布验收仍必须取得当前未来赛程、完整事实、对齐盘口、真实 provider 报告与权威结算证据。
+- 本地练习盘口继续固定为 0 流动性并触发 `LOW_LIQUIDITY_STAKE_REDUCED`；禁止为了让四板块显示 ready 而合成交易量、未来赛程或 Riot content。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint 4** 扩展 paper policy：每日下注、分游戏、分 provider、分 market-kind 与总 open exposure 上限；订单创建必须在同一事务边界内执行限制检查。
+2. **P1-高 / Sprint 4** 在开赛/关盘边界保存 closing price，结算后计算 CLV，并把缺失 closing price 明确显示为不可计算。
+3. **P1-高** 基于已接入的公共 LoL/Valorant 未来系列补齐完整事实、对齐盘口和获准的权威结算源，各执行一次非 fixture 标准 LLM、模拟订单与绩效验收。
+4. **P1-高** 为真实 Dota 2 补齐双方 rating 和对齐盘口，完成真实 provider 闭环；缺失时继续保持 `needs_data`。
+5. **P2-中** 增加 GRID GraphQL contract fixture、服务重启/SQLite replay、Tauri smoke 与 390/768/1440 四板块视觉回归。
+
+---
+
+## 当前执行记录：Sprint 4（事务化模拟风控 + Closing Price / CLV）
+
+### 已完成
+
+- 2026-07-22：活动策略升级为 `paper.v1.2.0`，新增每日下注、总开放暴露、单游戏、单 provider 和单盘口类型开放暴露上限。`sim_bet` 创建、额度检查与账户暴露更新必须在同一个 SQLite 事务内完成；任一维度超限时整笔回滚。
+- migration 038 为 `sim_bets` 增加 provider、closing odds/probability/source/time、CLV 与 `clv_status`，并为风控维度和待捕获 CLV 建立索引。目标环境必须先完成迁移再启用 Sprint 4 API。
+- 自动分析触发风控拒绝时，`paper_decision` 必须变为 `rejected` 并记录明确的 `*_LIMIT` reason code；不得保留为已下注状态，也不得创建部分订单。
+- closing price 在开赛/市场关闭边界由后台轮询捕获；若到结算仍缺失，则最后尝试读取未解析盘口并写入 CLV。显式 API 只用于测试或人工补录可审计的 closing source。
+- 账本 `模拟盘` Tab 已展示策略额度、今日下注、总暴露及 game/provider/market-kind 分解；`绩效` Tab 展示 CLV、捕获样本和不可计算样本，并在归因表中统一使用标准 decimal-odds CLV：`entryOdds / closingOdds - 1`。
+- Sprint 4 回归基线：Core 346/346、Infra 137 passed / 13 skipped、Server 255/255、Web 52/52；新增 Sprint D Server 8/8 和 API Integration E2E 1/1。桌面 1280×720 与移动 390×844 已实测风险面板和绩效页无页面级横向溢出。
+
+### 强制边界
+
+- 禁止使用已解析市场的 1/0 赛果价格计算 CLV。只有开赛或关盘前最后一个可靠价格可以作为 closing price；缺失时必须写 `unavailable`，不得使用 entry price、模型概率或赛果价格补造。
+- 每日下注限额统计当日全部已创建订单，包括已经结算或 void 的订单；开放暴露限额只统计 open 仓位。两者不得混用。
+- 历史订单缺少 provider 时保留 `unknown` 归因，禁止从模型、游戏或当前配置反向猜测历史 provider。
+- `PaperRiskLimitError` 的 code 是 API、分析事件和 UI 解释层的稳定契约；修改名称时必须提供迁移或兼容映射。
+- migration 038、风险状态 API、closing 捕获与 CLV 统计属于同一发布单元，禁止只部署 UI 或只迁移数据库。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint 5** 从 canonical `sim_bets` 增加 log loss、收益波动率与 Sharpe，并为少于 10/30 个已结算样本保持排名隐藏和显式警告。
+2. **P1-高 / Sprint 5** 为 Performance 增加 game、provider、market kind、policy version、prompt version 与日期范围筛选；筛选后的 KPI、权益曲线和归因表必须使用同一查询口径。
+3. **P1-高 / Sprint 5** 增加 closing source 覆盖率、捕获延迟、重试次数和 unavailable 原因指标，按游戏/provider/盘口定位真实源缺口。
+4. **P1-高** 基于公共 LoL/Valorant 赛程完成非 fixture 标准分析、模拟订单、closing、获准的权威结算和绩效证据；事实或市场缺失时继续保持 `needs_data`。
+5. **P1-高** 为真实 Dota 2 补齐双方 rating 和对齐盘口，完成 real-provider 闭环；缺失时不得用本地练习盘口冒充发布证据。
+6. **P2-中 / Sprint 6** 完成迁移重放、服务重启持久化、Tauri smoke、四板块 Playwright release gate，以及 390/768/1440 视觉矩阵，再评估 0/4 发布状态是否可提升。
+
+---
+
+## 当前执行记录：Sprint 5（绩效校准 + 统一筛选 + Closing 可观测性）
+
+### 已完成
+
+- 2026-07-22：Performance 从 canonical `sim_bets` 计算 Log Loss、单笔收益波动率与 Sharpe；Log Loss 对概率截断到 `[1e-15, 1-1e-15]` 后使用二元交叉熵，Sharpe 使用单笔 `pnl/stake` 的样本标准差与 `sqrt(n)` 缩放，不按时间年化。
+- game、provider、market kind、policy version、prompt version 与 placed-date 筛选已进入同一 API 查询范围；KPI、筛选资产曲线、风险指标和五类归因表必须共享同一批订单，禁止在前端各自过滤造成口径漂移。
+- migration 039 为 closing 捕获增加 boundary、延迟、attempt count、last attempt 和 unavailable reason。每次合格捕获均记录 attempt；成功记录 source/latency，失败只使用稳定 reason code，禁止把赛果价或 entry price 伪装为关盘价。
+- Performance UI 已展示 Log Loss、Sharpe/波动率、closing 覆盖率、来源覆盖、平均延迟、平均尝试次数与不可计算原因；少于 10 个结算样本保持“不足”，少于 30 个保持“谨慎”，归因行继续显示低样本标签。
+- 筛选后权益是“初始本金 + 筛选样本已结算 PnL”，必须明确标为“筛选权益/筛选资产曲线”，不得与账户顶部的全局当前权益混称。
+- Sprint E Integration E2E 覆盖两个 CS2 模拟单、关盘捕获/缺失、输赢结算、公式、来源与原因、筛选和非法日期范围；浏览器实测 CS2 筛选由 8 条收窄为 2 条，1280px 与 390px 均无页面级横向溢出、控制台错误或 `Load failed`。
+- Sprint 5 最终回归基线：Core 346/346、Infra 138 passed / 13 skipped、Server 255/255、Web 52/52；四工作区 typecheck、production build、lint 与 Sprint E Integration E2E 1/1 通过。Lint 仅保留既有 15 条 warning，无 error。
+- Integration E2E 固定使用独立 `13101/15174` 端口，且每次 Playwright 进程创建独立 `/tmp/polyrader-e2e-integration-<pid>.db`；Vite 通过显式 proxy target 连接测试后端，本地和 CI 均禁止 `reuseExistingServer`。禁止复用固定测试库，否则累计模拟注单会触发策略限额并让 release-gate 回归产生假失败。
+
+### 强制边界
+
+- 日期筛选按 `placed_at` 的 UTC 自然日闭区间执行；若未来支持用户时区，必须在 API 契约中新增显式时区参数，禁止静默改口径。
+- provider 优先读取订单持久化字段，其次读取关联 run，历史订单都缺失时保留 `user/unknown`；policy 与 prompt 缺失同理，不得用当前配置回填历史值。
+- `closingCoverage.sources[].coverageRate` 的分母是当前筛选范围内所有合格已结算订单，不是仅成功捕获的订单；来源为 `UNKNOWN` 也必须保留，避免覆盖率被美化。
+- 少于 10/30 的样本阈值只控制警告与排名资格，不得阻止显示基础统计；高 Sharpe、小 Log Loss 或高胜率在低样本下都不能作为策略质量结论。
+- migration 039、repository 遥测、closing service、Performance API/UI 和测试属于同一发布单元。目标环境未迁移时不得只发布前端。
+- Integration E2E 不得连接 3001 开发端口或 Tauri 13001 sidecar；任何会写订单、关注钱包或配置的数据用例必须只写隔离数据库。测试结束后应以开发库行数/测试前缀查询确认无泄漏。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint 6** 用真实数据库副本重放 migration 038-039，完成服务停止/启动后的订单、closing 遥测、筛选指标持久化回归，并保留升级前后行数与关键字段校验；升级测试继续使用独立端口和数据库副本，不得占用 App 数据库。
+2. **P1-高 / Sprint 6** 增加 Tauri smoke：App 启动、sidecar ready、进入“我的账本 > 绩效”、应用筛选、重启后指标一致；失败时输出 sidecar、API 与 DB 三层诊断。
+3. **P1-高 / Sprint 6** 为 CS2、Dota 2、LoL、Valorant 各建立 fixture 与 current-real-source release gate，覆盖 source、facts、market、LLM、decision、settlement、statistics；任何阶段缺失都保持 0/4 未发布。
+4. **P1-高 / Sprint 6** 在 CI 生成 390px、768px、1440px 的 Validation Lab、报告、模拟订单与 Performance 截图，覆盖 loading、empty、error、low-sample 和有数据状态，并做页面级溢出检查。
+5. **P1-高** 为公共 LoL/Valorant/Dota 2 未来赛事补齐双方 rating/form 和对齐盘口；真实依赖缺失时继续显示 `needs_data`，不得使用 fixture 作为发布证据。
+6. **P2-中** 增加 event tier、data-quality、confidence、edge band 归因和 segment-to-report/order drill-down；只有每个对比分组达到 10/30 权威结算样本后才考虑启用排名。
+
+---
+
+## 当前执行记录：Sprint 6（发布门禁 + 数据库/Tauri 重启 + CI 视觉证据）
+
+### 已完成
+
+- 2026-07-22：新增四板块九阶段发布门禁，固定阶段为 `source / facts / market / prompt / response / report / decision / settlement / statistics`。fixture 与 current source 必须分别取证；只有两者全部通过才返回 `verified`，仅 fixture 通过只能返回 `fixture_ready`。
+- `GET /api/validation-lab/release-gates` 与单板块接口已接入 Validation Lab，页面显示已验证数量、fixture/current-source 状态和第一个阻断原因。真实 Tauri 数据实测为 0/4，不得因 API 或 fixture 测试通过改写为已发布。
+- migration replay 单测从真实 migration 001-037 构造旧库，执行 038-039 后关闭、重开并再次幂等执行，验证订单、closing/CLV 遥测与迁移计数持久化。真实 App 数据库副本实测为 37→39→39、订单 1→1、12/12 新字段存在；正式 App 库启动前已备份并升级到 migration 039。
+- `scripts/tauri-smoke.mjs` 以只读方式等待 13001 sidecar，并检查 health、账本、Performance 与四板块门禁。真实 Tauri 窗口已进入“我的账本 > 绩效”、应用 CS2 筛选并完整退出/重启；重启前后权益 10000、可用资金 9987.5、开放暴露 12.5、open 1、settled 0 均一致，未创建真实成交或新增模拟订单。
+- 四板块 fixture release gate Integration E2E 2/2 通过；current-source HLTV/OpenDota/GRID smoke 与九阶段阻断审计 8/8 通过。current-source 测试允许外部权限或赛程缺失，但必须产生明确 blocker；测试通过不等于 board verified。
+- Sprint F 视觉矩阵覆盖 Validation Lab、标准报告、模拟订单和 Performance 的 390/768/1440 有数据状态，以及 390px loading、empty、error、low-sample 状态，共 15/15 通过；每个场景校验页面级横向溢出、控件裁切和 `Load failed`。CI 在 Integration E2E 清理输出前上传 `sprint-f-visual-matrix`，保留 14 天。
+- Browser E2E 最终基线为 232 passed / 1 environment-dependent skipped / 0 failed；三条视觉截图波动通过原生 WebSocket mock 与 `/api/health` mock 消除，63 条三主题视觉基线连续通过。统一账本 E2E 必须按 ledger、simulation、orders、performance、review 五个页签验收，旧 `/simulation` 路由固定落到 simulation 页签。
+- 默认 real-backend Integration E2E 最终基线为 16 passed / 12 explicit skipped / 0 failed；每次运行必须使用独立临时 SQLite，避免累计下注触发当日策略限额。巨鲸跟单 UI 验收固定验证纸面模式和“不发送真实订单”，不得再以可切换实盘文案作为默认产品契约。
+- 全量回归基线更新为 Core 346/346、Infra 139 passed / 13 skipped、Server 256/256、Web 52/52；四工作区 typecheck、production build、lint、Cargo check/test 与 `git diff --check` 通过。Lint 仅保留 15 条既有 warning，无 error。
+
+### 强制边界
+
+- 当前发布状态继续为 0/4。CS2 仍缺新鲜且完整的事实、权威结算和 captured CLV 统计；Dota 2 仍缺对齐真实盘口与 real-provider run；LoL/Valorant 仍缺当前账号可用的未来系列完整链。任何单阶段成功都不得提升发布状态。
+- `statistics` 阶段必须同时存在已结算关联订单、`clv_status=captured`、Brier 样本和 CLV 样本；仅有胜率、PnL、settled 状态或使用赛果价替代 closing price 均不得通过。
+- Tauri smoke 只允许读取账户、订单、绩效和门禁，不得调用创建订单或真实成交 API。Polymarket 公共接口超时后 health 可为 `degraded`，只要本地数据库回退可读就如实记录；不得把外部超时伪装成 healthy。
+- current-source gate E2E 的验收目标是“完整通过或明确阻断”，不是强迫外部依赖成功。fixture、公共源返回 200、GRID title 自动发现和本地练习盘口均不能替代真实市场、provider、结算与统计证据。
+- CI 视觉证据只证明布局和状态表达，不能替代 Tauri、真实源或数据库持久化验收。截图必须留在 Playwright/CI artifact，不得提交生成图片到仓库。
+- 本地 debug App bundle 可用于 smoke；启用 updater artifact 的完整本地构建需要 `TAURI_SIGNING_PRIVATE_KEY`。CI/release 在无密钥时必须显式关闭 updater artifact，禁止吞掉签名错误后宣称发布包已签名。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint 7** 完成 CS2 当前源发布切片：在一小时策略窗口内刷新完整排名、近况、地图池和个人数据，捕获可靠 closing，使用权威赛果结算，并验证 Brier/CLV/ROI/equity 更新后再提升门禁。
+2. **P1-高 / Sprint 7** 为 Dota 2 接入可对齐真实盘口和稳定双方 rating，执行非 fixture provider 分析、模拟决策、closing、权威结算与统计；缺失任一阶段继续保持 `needs_data`。
+3. **P1-高 / Sprint 7** 基于公共 LoL/Valorant 未来赛程补齐允许的数据和真实盘口，为两板块分别完成首个 current-source 九阶段闭环，不得用本地练习盘口冒充发布证据。
+4. **P1-高 / Sprint 7** 增加 event tier、data-quality、confidence、edge band 归因与 segment-to-report/order drill-down，所有 KPI、曲线和明细继续复用 canonical `sim_bets` 查询范围。
+5. **P2-中 / Sprint 7** 在 CI 发布机器可读 release-gate JSON、Tauri sidecar/API/DB 诊断与 macOS smoke 证据，并把本地/CI updater signing 路径规范化；失败 artifact 不得包含密钥、`.env` 或真实数据库。
+6. **P2-中** 每个可比维度累积至少 10/30 个权威结算样本后再启用排名和校准调参；达到阈值前继续显示 Wilson 区间、覆盖率与低样本警告。
+7. **P2-中 / Sprint 7** 将其余旧 Browser E2E 统一迁移到公共 health、feature、bankroll 与 WebSocket fixture，清除 Vite `ECONNREFUSED` 日志噪声；任何 fixture 收敛都必须保持 232/1 或更高基线并禁止掩盖真实 API 集成失败。
+
+---
+
+## 当前执行记录：Sprint 7（当前源审计 + 绩效归因 + 发布诊断）
+
+### 已完成
+
+- 2026-07-22：发布门禁的 current-source 证据必须同时匹配当前 Validation Lab 样本的 `externalMatchId` 与 `dataSnapshotHash`；`local-practice:` run 永远不能作为发布证据。结算、Brier、captured CLV 与 PnL 必须来自该 run 自己关联的 canonical `sim_bet`，禁止从同场其他订单或全局统计借证据。
+- 新增 `POST /api/validation-lab/release-audits/:game` 与 `GET /api/validation-lab/release-report`。审计依次执行真实源同步、事实规范化、盘口对齐和可选 provider run；board 未达到 `paper_ready` 时必须返回 `skipped + 明确原因`，不得调用 LLM、创建练习盘口、补 closing 或伪造结算。
+- Tauri 实测 CS2 审计导入 168 条 HLTV 记录，当前 board 达到 86% 完整度并处于一小时新鲜度窗口；指定 MiniMax 后成功持久化 schema-valid `analysis.v1` run，确定性策略因盘口未对齐返回 `rejected / MARKET_UNALIGNED`。当前门禁只剩 eligible linked bet 的权威 settlement 与 Brier/captured CLV/PnL statistics，发布状态继续为 0/4。
+- 四板块真实审计实测：Dota 2 产生新鲜 80% normalized facts，但无可对齐真实盘口；LoL 当前 GRID 账号无未来系列；Valorant 同时缺未来系列链和支持的 Riot 内容权限。三者均保持 `needs_data`，provider 阶段未被误调用。
+- Performance 新增 event tier、data quality、confidence band、edge band 四类归因；每行可展开关联 report/order。KPI、权益曲线、归因与 drill-down 必须共享 canonical `sim_bets` 筛选范围，10/30 权威结算阈值继续控制排名资格。
+- CI/诊断新增机器可读 release report、数据库 migration 元数据、Tauri sidecar/API/DB smoke 和独立 Browser E2E 服务端口。失败 artifact 禁止包含 `.env`、API key、账户标识、请求 ID 或真实数据库内容。
+- Bun standalone sidecar 使用 `bun:sqlite` 适配器并内嵌 migration 001-039；构建脚本会比较 migration 目录与 standalone manifest，遗漏 migration 时直接失败。新库启动、重启和旧库备份升级 smoke 均已验证。
+- Tauri 开发前端固定使用 `http://127.0.0.1:15173`、`strictPort=true`。禁止继续使用会被其他 Vite 项目占用并静默跳到 5174 的 5173 配置；Computer Use 验收打包应用前必须重新生成 `.app`，不能把注册表中的旧 bundle 当作最新源码。
+- 个人数据库中的旧 LLM 密文与 Tauri 首次安装主密钥不一致时，必须先备份数据库，再由用户重新保存 provider key 或执行可验证的原地重加密。底层 AES-GCM 错误必须转换为设置页可执行提示；审计错误必须脱敏账户号、请求 ID、Authorization 和外链。正式 completion 失败会把 provider 标为未连接，默认选择优先使用已连接 provider。
+- Sprint 7 最终回归基线：Core 347/347、Infra 139 passed / 13 skipped、Server 261/261、Web 52/52；四工作区 typecheck、Web build、standalone sidecar build、Cargo check、lint 与 `git diff --check` 通过。Lint 为 0 error / 15 条既有 warning；全量 Browser 基线 234 passed / 1 environment-dependent skipped，默认 Integration 基线 17 passed / 12 explicit skipped，Sprint 7 专项 Browser 2/2 与机器诊断 Integration 1/1 复跑通过。
+
+### 强制边界
+
+- `GET /models` 或连通性成功不等于 completion 权限成功。provider 订阅、配额或模型权限失败必须阻断当前 run，并允许后续选择健康 provider；不得把失败响应写成有效 report。
+- current-source audit 允许产生 schema-valid report 与确定性 paper decision，但只允许本地模拟订单。策略返回 `pass/rejected` 时不得为了完成 release gate 强制下注。
+- 当比赛尚未结束、closing 未捕获或权威赛果不可用时，settlement/statistics 必须保持 waiting/blocked。0/4 是当前真实状态，不得用 fixture、历史 run 或结果价替代 closing 使其变绿。
+- Tauri debug `.app` 只证明本地 bundle/sidecar/UI 链路。缺少 `TAURI_SIGNING_PRIVATE_KEY` 时 updater artifact 签名失败是预期发布阻断，不得在仓库、本地日志或文档中写入私钥。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint 8** 跟踪下一场盘口身份、流动性与结算规则均对齐的 CS2 当前赛事；捕获 opening/closing，等待权威赛果后幂等结算，并验证该 linked bet 的 Brier、CLV、ROI、PnL 与权益更新。
+2. **P1-高 / Sprint 8** 为 Dota 2 接入未来赛程、双方稳定 rating 与同一 canonical match 的真实盘口，再执行 provider → paper decision → closing → authoritative settlement；缺任一输入继续保持 `needs_data`。
+3. **P1-高 / Sprint 8** 基于合规公共 LoL/Valorant 赛程完成首个非 fixture 九阶段闭环；需要授权的结果或遥测源未到位时保持阻断，不得开发隐藏 scraping fallback。
+4. **P1-高 / Sprint 8** 增加 release-audit 历史、stage duration/provider failure 分类和脱敏诊断导出，便于比较每次 current snapshot；诊断包禁止包含密钥、账户标识和真实数据库副本。
+5. **P2-中 / Sprint 8** 每个可比 segment 累积至少 10 个权威结算样本后才显示 provisional ranking，达到 30 后才允许据此调整启发式权重；低样本继续显示 Wilson 区间与覆盖率。
+6. **P2-中 / Sprint 8** 在受保护 CI 配置 updater signing，验证签名、notarization、全新安装、旧库升级与重启恢复；本地 unsigned debug 结果继续单独标注。
+
+---
+
+## 当前执行记录：Sprint 8（审计历史 + 生命周期追踪 + 脱敏诊断）
+
+### 已完成
+
+- 2026-07-23：migration 040 新增持久化 `release_audit_runs`，current-source audit 每次保存 audit ID、当前样本、snapshot hash、四阶段耗时、provider 状态、稳定失败分类和完整 release result。Validation Lab 可查看历史并按 audit ID 复读，服务重启后不得丢失。
+- current-source audit 现在按 source sync、fact normalization、market alignment、provider analysis 四段计时；provider 失败统一分类为 subscription、quota、rate_limit、timeout、not_configured、auth、schema、upstream 或 unknown，前端与导出均不得暴露原始请求标识、账户信息或外链。
+- 新增 `release-diagnostics.v1` 脱敏诊断导出，只包含 release gate、audit history、migration/table 数量和环境能力布尔值；导出禁止包含 key、`.env`、Authorization、钱包地址、账户 ID、request ID、真实数据库内容或本机绝对路径。
+- 新增板块生命周期只读视图，将当前 audit 与 linked run、paper decision、sim bet、closing、settlement 和 statistics 逐段关联。策略因 `MARKET_UNALIGNED` 拒绝时必须显示 `not_applicable` 并等待对齐盘口，不得为了形成订单而绕过确定性策略。
+- 当前样本选择优先级已修复为：最近可下注未来赛程（允许 15 分钟延迟容差）、live、finished、过期 active 状态；SQLite upcoming 查询同时排除 finished 与超过容差的旧 scheduled 行，防止历史脏数据挤掉刚同步赛事。
+- CS2 完整度不足时，audit 会主动执行既有 HLTV 详情富化，补齐双方排名、近期战绩、阵容、10 名选手和 7 张地图后重新规范化。真实 Tauri 审计 `ra-4181aa60-a4b4-48d0-b980-f39986c670eb` 持久化 156 条当前源记录，board 达到 100%，MiniMax M3 输出严格 `analysis.v1`：Nuclear TigeRES 53%、Echo 47%、置信度 62%；本地练习盘口不对齐且流动性为 0，策略正确拒绝，未创建订单或真实交易。
+- Performance 门槛落实为 `<10` 隐藏排名、`10-29` 仅 provisional、`>=30` 才允许 calibration/tuning；当前个人库 0 个权威结算样本、1 个历史 open 模拟单，必须继续显示样本不足。
+- migration replay 已覆盖 037 → 040 与 reopen 持久化；真实个人库升级前已生成校验一致备份 `polyrader.db.backup-sprint8-20260723-000044`，升级后 migration 为 040。390/768/1440 Validation Lab 实测无页面级横向溢出，阶段耗时、历史和生命周期不会挤压布局。
+- Sprint 8 回归基线：Core 348/348、Infra 140 passed / 13 skipped、Server 270/270、Web 52/52；四工作区 typecheck、Web/sidecar production build、Cargo check 和 lint 通过。默认 Integration E2E 18 passed / 12 explicit skipped；全量 Browser 235 passed / 1 skipped。Browser mock 响应可能在点击后立即完成，涉及 `waitForResponse` 的用例必须先注册监听再执行 UI action，避免把测试竞态误报为产品失败。
+
+### 强制边界
+
+- “Sprint 8 工程完成”不等于四板块发布完成。当前 real-source release gate 仍为 0/4；盘口供给、获准的权威赛果源和签名凭据属于外部输入，禁止用 fixture、本地练习盘口、历史结果或伪造样本替代。
+- audit 历史记录必须是 append-only 证据。允许新增更正后的 audit，不得覆盖旧失败结果以美化成功率；诊断导出只能引用脱敏摘要，不能嵌入原始 provider error body。
+- 生命周期 API 只跟踪当前 audit 已关联的 run/order。`pass`、`rejected` 或无 linked bet 时 closing/settlement/statistics 必须为 `not_applicable` 或 blocked，不得从同场其他订单借用证据。
+- 排名与调参门槛按可比 segment 的权威结算样本计算，不得用 open、void、fixture 或无 authoritative settlement 的订单凑数。10 个样本只能显示 provisional，30 个样本才是 tuning eligible。
+- 本地 debug `.app` 必须继续标为 unsigned。签名、notarization、全新安装和升级验收只能在受保护 CI 注入凭据后执行，任何密钥不得进入仓库、artifact 或诊断包。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Sprint I 运营** 等待下一场 HLTV 事实可在 1 小时窗口内刷新、且 Polymarket match-winner 对齐且可执行流动性的 CS2 当前赛事；若策略创建模拟单，再自动捕获 closing、幂等结算并核对 linked bet 的 Brier、CLV、ROI、PnL 与权益，策略拒绝时继续保留拒绝证据。
+2. **P1-高 / Sprint 9** 为已接入的 Dota 2 未来赛程补齐双方稳定 rating 和对齐盘口，完成首个非 fixture provider → decision → closing → settlement → statistics 闭环。
+3. **P1-高 / Sprint L/V 运营** 等待 LoL/Valorant 未来系列双侧 roster 命中、Gamma 真实 match-winner（纸面单需流动性 ≥ $1000）且存在 GRID series link；Liquipedia-only 保持显式结算 blocker，不伪造结算。
+4. **P2-中 / Sprint 9** 持续积累权威结算，达到每 segment 10 个后验收 provisional ranking，达到 30 个后再评估启发式权重调参；同步监控 closing coverage 和 settlement lag。
+5. **P2-中 / Sprint 9** 在受保护 CI 提供 updater signing/notarization 凭据，完成签名校验、全新安装、037/039 旧库升级到 040、重启恢复和升级包安装测试；本地仅保留 unsigned smoke。
+
+### Sprint I 工程完成记录（2026-07-23）
+
+- 大厅 `GET /api/markets` 与 CS2 Rail 统一应用 15 分钟 prematch 容差：过期 scheduled 行下架，live 保留；`mapLegacyMatchStatus` 开赛后映射为 `live`。
+- `Cs2MarketDiscoveryService` 在 Release Audit / Validation Lab `discoverMarkets` 路径下扫描公共 Polymarket，并在 Gamma 为空时回退本地非 practice 盘口，写入 `hltv:<matchId>`。
+- Audit 在事实陈旧或未 `paper_ready` 时主动 `prepare` 刷新；HLTV Cloudflare 403 记为显式 blocker，不伪造结算。
+- Opt-in Integration E2E：`packages/web/e2e-integration/sprint-i-cs2-current-source.spec.ts`（`POLYRADER_REAL_SOURCE_E2E=1`）已绿。
+- 真实证据：audit `ra-1ed60569-…` 选中 Aurora vs FOKUS `2396000`（86%），`market_align` 已 passed（mixed real/synthetic）；lifecycle 因无 paper_bet 仍 `not_applicable`；唯一剩余 blocker 为 stale HLTV facts；release gate 仍 0/4。
+
+### Sprint D5 启动记录（2026-07-23）
+
+- Fixture authoritative loop 与 Integration paper-loop 验收 closing CLV、ROI、winRate、Brier、PnL、equity。
+- Opt-in `sprint-d5-dota-current-source.spec.ts` 绿；live audit `ra-722280a6-…` 正确 blocked（completeness 50%、双方 roster/form/hero-pool 缺失）。
+
+### Sprint L/V（LoL/Valorant L2–L5）工程完成记录（2026-07-23）
+
+- 复用 migration 042 team-alias 契约到 `lol`/`valorant`；赛程驱动 Liquipedia/GRID roster enrich；`lol-quality.v1` / `valorant-quality.v1` 与 adapter identity 消费。
+- Validation Lab / match detail 展示 `RiotGameDataQualityPanel`；`LolMarketDiscoveryService` / `ValorantMarketDiscoveryService` 接入 audit 与标准分析。
+- `lol-analysis-eligibility.v1` / `valorant-analysis-eligibility.v1` 接入 board、API、paper gate；fixture GRID paper loop 保持绿。
+- Opt-in：`sprint-l-lol-current-source.spec.ts` / `sprint-v-valorant-current-source.spec.ts`（`POLYRADER_REAL_SOURCE_E2E=1`）；不伪造 current-source 结算。
+
+---
+
+## 当前执行记录：Dota 2 Sprint 1（未来赛程 + 能力真值 + 跨源身份）
+
+### 已完成
+
+- 2026-07-23：数据源状态禁止继续把“有 key”写成“可用”。`EsportsSourceDescriptor.readiness` 固定区分 `key_configured`、`title_resolved`、`schedule_available`、`data_available`、`unconfigured` 与错误；设置页必须展示阶段和最近失败原因。
+- Dota 2 未来赛程固定按 GRID 优先、Liquipedia 公共 Matches API 兜底、DB API v3 授权接口增强执行。公共 API 仅允许可识别、gzip、限速、缓存的合规请求，不得恢复隐藏页面抓取或指纹规避。
+- OpenDota `/proMatches` 是历史赛果源。即使历史快照、队伍、选手和 patch 同步成功，只要没有真实未来 `scheduled` series，Dota 2 sync 必须为 `partial`，不得把 finished game 选成 prematch 分析对象。
+- migration 041 新增 `esports_match_source_identities`，按 `game + source + external_id` 幂等保存 canonical series、provider-native game、parent series、双方 ID、时间和置信度。OpenDota 单局必须保留 `dota2:game:opendota:<matchId>`，不能与 GRID series ID 混为同一层级。
+- `GET /api/esports/sources/:game/identities` 提供 canonical/parent identity 只读查询；设置页每个板块显示本地 identity 数量。目标环境发布服务端与 UI 时必须同步执行 migration 041。
+- 专项验收已通过：四 workspace typecheck；GRID/Liquipedia/repository/migration 共 16 tests；source service 11 tests；Settings Browser E2E 5/5。真实 Tauri 验收必须重新构建 bundle 后执行，不能复用旧 `.app`。
+- Validation Lab 中 finished、过期或非赛前样本必须显示“历史样本，仅供校验”并禁用“运行标准 LLM”；`POST /api/analysis/execute` 必须在选择/调用 provider 前执行同一赛前资格校验。UI 禁用不能替代服务端防线，历史 OpenDota 事实只允许用于覆盖率、身份和权威结算校验。
+- 赛前资格回归基线新增 Server 2/2 与 Web 2/2：当前 scheduled 样本可执行，finished/过期样本在 provider 调用前被拒绝。每次调整样本选择、状态映射或 15 分钟容差时必须复跑这两组测试。
+- 2026-07-23 最终桌面验收使用重新生成的 debug `.app`：Settings > System 显示 Dota 最近同步 261 条、赛事身份 50 条，GRID 为 `key_configured` 且明确提示账号无 Dota title，OpenDota 为 `data_available`，Liquipedia 赛程 key 未配置。Validation Lab 显示 80% 完整度、70 场历史比赛、finished 历史样本和 disabled 标准 LLM，未创建模拟订单或真实交易。
+- Sprint D1 最终回归基线：Server 273/273、Web 54/54；Server/Web typecheck、生产 Web/sidecar/Tauri debug bundle、lint 与 `git diff --check` 通过。Lint 为 0 error，保留 15 条既有 warning；应用验收后保持运行供人工查看。
+
+### 强制边界
+
+- 当前环境的 GRID titles 响应不包含 Dota 2，且未配置 Liquipedia DB key；GRID 必须保持 `key_configured/error`。公共 Liquipedia 已提供真实未来赛程，因此不得再显示“未来赛程缺失”，也不得手填未经授权的 Title ID。
+- team/time heuristic canonical ID 只用于跨源候选对齐，置信度低于 provider-native ID；后续发现同队同时间窗多系列时必须保留 collision/conflict，不得静默覆盖。
+- Liquipedia DB key 属于授权凭据，只能通过本地环境或受保护 CI 注入；不得写入仓库、日志、诊断包或浏览器 fixture。
+- Sprint D1 工程完成不代表 Dota 板块可发布。未取得未来 series、双方 roster/rating、对齐盘口、provider report、closing 和权威结算前，release gate 必须保持 blocked/needs_data。
+- 历史样本按钮禁用后仍允许执行权威赛果 reconciliation；分析与结算是不同能力，禁止为了复盘历史比赛重新开启赛前 LLM 或创建模拟订单。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Dota Sprint 2** 对未来 series 的双方做 targeted enrichment：跨源 team alias、OpenDota 近期比赛、当前五人阵容、选手归属、双方 rating/form、patch 与 hero-pool；禁止全库无界抓取。
+2. **P1-高 / Dota Sprint 2** 为 identity resolver 增加别名、时间容差、event disambiguation 和 collision tests；GRID/Liquipedia 同一 series 必须可聚合，OpenDota game 继续挂在 parent series 下。
+3. **P1-高 / Dota Sprint 2** 在比赛详情增加 Dota 数据质量面板，按 HLTV 信息密度展示近期战绩、排名/评分、阵容与个人指标，并保持当前黑白灰 Cursor 风格；缺失字段必须显示来源与原因。
+4. **P1-高 / Dota Sprint 2 验收** 重新构建并启动 Tauri App，验证 Settings readiness、Dota Validation Lab、身份计数、无未来赛程阻断；若取得授权数据，再验证至少一场真实未来 series 的双方完整度。
+5. **P1-高 / Dota Sprint 3** 对齐 match winner、handicap、total 盘口和 canonical series；流动性低于 USD 1,000 固定显示警告并交给 paper policy 决策。
+6. **P1-高 / Dota Sprint 4-5** 完成标准 LLM report、模拟盘决策、closing、权威结算与 Brier/CLV/ROI/PnL/equity 闭环；全程禁止真实成交。
+7. **P2-中 / Dota Sprint 2** 将赛前资格判定收敛为 Core 共享契约并覆盖 provider 状态别名；在已有 UI/API 双重阻断保持绿灯后再删除重复实现。
+8. **P1-高 / Dota Sprint 2 启动条件** 先复用已持久化的 50 条 identity 做 alias/collision resolver，再对解析成功的未来 series 执行有界队伍富化；若外部赛程权限仍缺失，完成 resolver、详情 UI 和 blocker 验收，但不得宣称真实未来赛程已完成。
+
+---
+
+## 当前执行记录：四板块公开数据接入（合规抓取层）
+
+### 已完成
+
+- 2026-07-23：移除 HLTV 链路中的 webdriver 隐藏、随机浏览器指纹、随机鼠标移动与 Cloudflare 绕过实现。HTML 获取统一使用可识别 `User-Agent`、按域固定限速、内存缓存、ETag/Last-Modified 条件请求和有界重试。
+- 所有非 429 的 4xx 属于请求、身份、权限或方法错误，禁止重试或切换指纹规避；429 必须遵循 `Retry-After`，只有网络错误与 5xx 可按固定退避重试。
+- Tauri sidecar 仅透传 `POLYRADER_CRAWLER_*` 配置，不保存密钥；定时抓取部署前必须把示例联系地址替换为真实维护者联系方式。
+
+### 自动规划的后续步骤
+
+1. **P1-高** 解析 Liquipedia `Liquipedia:Matches` 公共 API 渲染结果，为 CS2、LoL、Dota 2、Valorant 形成统一未来赛程快照；DB API 继续作为授权增强。
+2. **P1-高** 接入 Valorant API 公共静态内容，Riot Developer API 在本模拟盘产品中仅保留政策受限说明，不作为默认同步链。
+3. **P1-高** 为公开赛程补齐跨源身份、目标队伍阵容拉取、历史赛果与数据质量边界测试。
+4. **P1-高** 使用真实网络逐板块验证 HTTP 状态、记录数、未来赛程数与失败原因，再重建 Tauri App 检查设置页状态。
+
+### 公开赛程解析进展
+
+- 2026-07-23：四个 Liquipedia wiki 的 `action=parse&page=Liquipedia:Matches` 均真实返回 200。解析器只读取官方渲染结果中的时间戳、双方页面身份、赛事、比赛页面 ID 与 BO 制式，过滤 completed/过期行；BO2 不得降格为 BO3。
+- 公共 API 请求必须携带 gzip 接受能力；406 表示请求未满足压缩要求，不得误报为源不可用。解析结果缺比赛详情页时使用 `game + timestamp + team identities` 稳定组合 ID，并保留事件页作为来源链接。
+
+### 自动规划更新
+
+1. **当前** 将公共赛程接入四板块同步服务，并在公共 API 失败或为空时才尝试已授权 DB API。
+2. **随后** 增加 Valorant 公共静态内容、Riot 政策限制状态和四板块统一未来赛程完整性判定。
+3. **验收** 先运行 parser/source service 测试，再对四个真实 wiki 执行记录级 smoke，最后重建 Tauri。
+
+### Valorant 静态源进展
+
+- 2026-07-23：新增无需账户 key 的 Valorant API 静态内容客户端，只采集版本、可用角色和地图元数据，并使用同一限速/缓存边界。该源不提供职业赛事赛程、排名或权威赛果，禁止把静态内容成功等同于板块可分析。
+- Riot Developer API 与本地模拟盘产品存在政策冲突风险，默认同步链不得调用；后续 UI 必须标记为政策受限，仅在获得明确书面许可后重新评估。
+
+### 自动规划更新
+
+1. 将 `valorant-api` 内容快照与 Liquipedia 未来赛程合并，只有后者存在才允许 Valorant 同步为 success。
+2. 对 Liquipedia 未来比赛前 N 支队伍执行有界 roster enrichment，单队失败不丢失赛程。
+3. 更新数据源面板的来源能力和限制文案，再执行真实四板块同步。
+
+### 同步主链进展
+
+- 2026-07-23：LoL、Dota 2、Valorant 在 GRID 无未来系列时统一尝试 Liquipedia 公共赛程；公共源失败或为空且配置 DB key 时才使用授权 DB API。CS2 保留本地 HLTV 快照主链。
+- 公共赛程会对最早出现的至多 4 支队伍做有界 roster enrichment；单队 roster 失败不得丢弃已验证赛程。同步 `success` 现在对四板块统一要求至少一条未过期 scheduled/live 比赛，patch、角色、地图或历史赛果不能单独满足。
+- Valorant 默认写入 `valorant-api` 静态内容快照；Riot API 同步结果明确为 policy-restricted skipped，设置页保留限制说明。
+
+### 自动规划更新
+
+1. 修复并扩展 source service 测试，覆盖公共源优先、DB 回退、空赛程 partial、roster 局部失败和四板块 future gate。
+2. 对四个 Liquipedia wiki、Data Dragon、OpenDota、Valorant API 和现有 CS2 本地源执行真实同步。
+3. 根据真实结果修正解析边界与 UI 状态，然后完成 Tauri 重建验收。
+
+### 失败边界
+
+- 2026-07-23：测试必须覆盖 LoL、Dota 2、Valorant 在只有 patch/静态内容/历史赛果时保持 `partial`；公共赛程失败且无 DB 授权时保留原始 HTTP 分类；单队 roster 拉取失败时仅降低队伍事实覆盖，不删除有效赛程。
+
+### 自动规划更新
+
+1. 运行新增失败边界和全量数据源测试。
+2. 执行四板块真实同步并记录每个 source 的 HTTP/records/future match/roster 数量。
+3. 若真实解析稳定，更新过时 README/roadmap 和设置页状态后重建 App。
+
+### 近期赛果与阵容覆盖
+
+- 2026-07-23：Liquipedia 同一公开 Matches 响应同时解析 upcoming 与 completed；finished 快照必须保存双方比分和原始比赛/赛事链接，不能作为未来赛程资格。缓存保证两次逻辑读取只产生一次网络请求。
+- 阵容富化目标为 4 份有选手的有效 roster，默认最多尝试未来赛程中的 15 支队伍；空页面/红链不计入目标，达到目标后立即停止，避免无界抓取。Dota 2 的真实前 10 支候选仅 3 支可解析，因此 15 是经真实覆盖验证后的上限，不得继续无界扩大。
+
+### 自动规划更新
+
+1. 回归 parser/source service，确认 recent 不影响 future gate 和记录幂等。
+2. 重跑四板块真实同步，重点核对 Dota 2 roster 覆盖是否从 2 提升到 4。
+3. 更新文档的旧“Liquipedia 仅 roster/需 DB 赛程”描述，随后重建 Tauri。
+
+### 最终真实源与 Tauri 验收
+
+- 2026-07-23：重新构建 debug `PolyRader.app` 和 standalone sidecar 后，个人数据库通过 App sidecar 完成四板块真实同步。设置页实测显示 CS2 `172 records / 76 identities`、LoL `100 / 95`、Dota 2 `345 / 130`、Valorant `100 / 95`。
+- 个人库记录级核对：CS2 78 场未来赛、33 份带选手阵容；LoL 45 场未来赛、50 场近期赛果、4 份有效阵容；Dota 2 30 场未来赛、至少 50 场 Liquipedia 近期赛果并合并 OpenDota 历史、4 份有效阵容；Valorant 45 场未来赛、50 场近期赛果、4 份有效阵容。
+- Dota 2 总同步保持 `partial`，唯一原因是配置的 GRID 账号没有 Dota title；Liquipedia 与 OpenDota 子源均成功。HLTV 详情端点在当前网络真实返回 403，合规客户端不重试权限错误、不切换指纹，继续使用已持久化 CS2 快照并在后台任务记录降级。
+- 桌面 UI 验收确认 LoL/Dota 2/Valorant Liquipedia 均显示 `schedule_available`，Valorant API 显示 `data_available`，Riot Developer API 显示政策受限且未调用。App 保持运行供人工检查。
+- 最终回归基线：Core 348/348、Infra 151 passed / 13 skipped、Server 278/278、Web 54/54；四工作区 typecheck、lint、Web build、standalone sidecar build、Tauri debug app build 与 `git diff --check` 通过。
+- Tauri sidecar smoke 通过：个人库 64 张表、41 个 migration，latest 为 `041_esports_match_source_identities.sql`；四板块 release board API 均可读。整体 health 为 `degraded` 仅因 Polymarket Gamma 探针失败，数据库、WebSocket、缓存、GRID、CLOB 和 Polygon 均正常。
+
+### 强制边界
+
+- 本次完成的是四板块数据获取、持久化和桌面可见性，不等于四板块分析/模拟盘发布门禁完成。排名、form、英雄/地图池、盘口对齐、provider report、closing 与获准的权威结算仍按每场完整度独立阻断。
+- Liquipedia 公共渲染结构可能变化；解析器必须保留真实响应 smoke 与 fixture 单测。出现 406 时先检查 gzip，401/403/405 不得通过浏览器伪装规避，429 必须遵循 `Retry-After`。
+- Riot Developer API 不能因为存在 key 就恢复默认调用；产品政策没有获得明确书面许可前，只保留设置页说明。Valorant API 只用于静态内容，不能充当赛事赛程或权威赛果。
+
+### 自动规划的后续步骤
+
+1. **P1-高** 把近期赛果和目标阵容接入 LoL/Dota 2/Valorant 的 normalized facts，补齐双方 ranking/rating、form、位置与英雄/地图专属指标；字段缺失必须带 source/age/reason。
+2. **P1-高** 为公共 Liquipedia 响应增加定时真实源 smoke、结构漂移告警和 last-known-good 快照回退，禁止在解析为空时覆盖仍新鲜的有效数据。
+3. **P1-高** 将未来赛事与 Polymarket 多盘口做 canonical alignment；match winner、handicap、total 分开评估，流动性低于 USD 1,000 固定警告并只允许模拟盘。
+4. **P1-高** 每板块选择一场事实完整、盘口对齐的当前赛事执行标准 LLM → deterministic paper policy；没有获准赛果与 closing 前不结算、不计 Brier/CLV/PnL。
+5. **P2-中** 将服务端英文 source note 本地化为稳定 reason code，由前端中英文翻译，避免中文设置页出现英文限制说明。
+
+---
+
+## 当前执行记录：Dota 2 Sprint 2（未来赛事定向富化）
+
+### 已完成
+
+- 2026-07-23：新增 Core 级 Dota team/series identity resolver。队伍按 source ID、规范化名称、tag/alias 和受限相似度解析；系列赛按无序双方、45 分钟时间容差和 event 相似度消歧。最高候选差距不超过 0.025 时固定返回 `ambiguous`，不得静默选择。
+- Dota 同步改为赛程驱动的有界 OpenDota 富化：单次最多读取 100 场职业赛、200 支队伍、500 名职业选手；只为解析成功的未来赛程队伍选择近期详情，默认总计 8 场、每队 3 场，硬上限分别为 12 和 5。
+- OpenDota team 快照固定聚合 rating、总胜负、最近 10 场 form、当前五人归属、近期详情中的个人 K/D/A/GPM/XPM 均值和 hero pool。详细比赛选手不得继续按 account ID 覆盖历史；聚合结果归属 team 快照。
+- `dota2.facts.v3` 同时读取 Liquipedia team payload 阵容和 OpenDota 独立 player/team 快照。未来赛程 participant ID 优先使用已解析 OpenDota ID；rating、form、roster、player metrics、hero pool 和 patch 必须各自保留真实 source/observedAt。
+- 新增 `dota-quality.v1` 标准事实，双方固定使用同一套 identity、rating、recent form、roster、player metrics、hero pool 门槛；每个字段输出 `available/missing/stale/conflict`、source、ageSeconds 与稳定 reason code。该事实进入不可变 analysis facts，不另建仅供 UI 使用的旁路模型。
+- Validation Lab 与比赛详情复用 `DotaDataQualityPanel`，按双队对照展示完整度、新鲜度、来源、原因、近期赛果、五人指标和英雄池。`/esports/matches/:id` 在传统 CS2 表无记录时允许从持久化 normalized facts 构造只读比赛概要。
+- 环境参数新增 `POLYRADER_OPENDOTA_MATCHES_PER_TEAM`；`POLYRADER_OPENDOTA_DETAIL_LIMIT` 默认从 3 调整为 8。两者只控制有界公共数据富化，不允许扩展为全库无界抓取。
+
+### 强制边界
+
+- 同步成功不等于双方事实完整。任何队伍 alias 未命中、候选冲突、阵容少于 5 人、rating/form/player metrics/hero pool 缺失或来源超过 6 小时时，`dota-quality.v1` 必须显式降级并进入分析输入。
+- Liquipedia 阵容与 OpenDota 当前归属重叠少于 3 人时必须标记 `roster_mismatch`；不得为了达到完整度删除冲突来源。队名模糊相似度只允许生成候选，不能覆盖 source-native ID。
+- OpenDota `/proMatches` 和 `/matches/:id` 是历史事实与赛果详情，不是未来赛程源；未来 series 资格仍必须来自 GRID 或 Liquipedia。详细样本不得被伪装成未来比赛。
+- 比赛详情的 normalized-facts fallback 只提供只读展示和模拟分析输入，不开放真实交易 API。Dota Sprint 2 完成不代表盘口、closing 或权威结算发布门禁通过。
+
+### 自动规划的后续步骤
+
+1. **当前验收** 用个人数据库执行一次真实 Dota 同步和 normalize，记录未来赛事中 alias matched/ambiguous/unmatched 数、双方 rating/roster/form/hero-pool 覆盖率，并在重新构建的 Tauri App 检查质量面板。
+2. **P1-高 / Dota Sprint 3** 将 canonical series 与 match winner、handicap、total 分别对齐；盘口低于 USD 1,000 固定显示低流动性警告，只允许模拟盘策略评估。
+3. **P1-高 / Dota Sprint 3** 为无对齐 Polymarket 盘口的合格未来赛事保留本地练习盘，但 release audit 必须把本地盘和真实当前源证据分开，不得用本地流动性通过发布门禁。
+4. **P2-中** 把 Dota quality reason code 纳入中英文映射，UI 显示本地化说明，诊断与 LLM 仍保留稳定英文代码。
+5. **P2-中** 将赛前资格判定收敛为 Core 共享契约并覆盖 `not_started/prematch` 等 provider 状态别名；保持 UI/API 双重阻断回归后再移除重复实现。
+
+### Dota 2 Sprint 2 最终真实源验收
+
+- 2026-07-23：OpenDota 单次 `/teams` 响应的 1,000 支队伍全部进入身份候选，但数据库仍只持久化前 200 支排名队伍与未来赛程实际命中的目标队伍。不得为了提高匹配率增加无界 team-list 请求。
+- 已匹配目标队伍固定串行调用 `/teams/:id/players`、`/teams/:id/matches` 与有界 `/matches/:id`，默认最多 8 支目标队伍、每队 10 场历史、每队 3 份详情、全局 8 份详情。每支目标队伍必须保存 `selected/rosterFetched/matchesFetched/detailSampleSize/errors`，接口失败不得被解释为零数据。
+- 最终 Tauri App sidecar 真实同步写入 918 条 Dota 快照，其中 Liquipedia 84、OpenDota 834；未来赛事 30 场。60 个队伍侧中 10 个 matched、5 个 ambiguous、45 个 unmatched，较扩大候选前的 5/2/53 有明确改善。
+- Zero Tenacity、Nemiga、Level UP、PuckChamp 均完成目标级近期赛请求；可用目标取得 10 场近期比赛，详情成功时生成 5 人个人指标与 9-12 个英雄池条目。OpenDota 当前成员仅返回 0-3 人，Nemiga 合并跨源后为 4 人，因此所有少于 5 人的阵容必须保持 `ROSTER_INCOMPLETE`。
+- 当前最佳未来样本 PuckChamp vs Team Spirit Academy 完整度为 75%，仍缺双方完整阵容以及 Team Spirit Academy 的个人指标和英雄池。Dandelions vs Zero Tenacity 样本为 62.5%，UI 已实际显示 identity/rating/form/roster/player metrics/hero pool 的来源、年龄和 reason code。
+- 质量面板只有在字段状态真实为 `stale` 时才显示“来源过期”；只有 `missing` 不得误标过期。当前没有一场双方事实完整的未来赛事，禁止执行 LLM 模拟单、closing 或结算。
+- Dota 总同步 `partial` 的唯一板块级失败为 GRID 账户无 Dota title；Liquipedia 与 OpenDota 子源均成功。该外部授权问题不得通过伪造 title ID 或把 OpenDota 历史比赛当未来赛程来绕过。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Dota Sprint 3** 建立可审计的跨源 team alias registry，优先处理 45 个 unmatched 与 5 个 ambiguous 未来队伍侧；人工映射必须保存来源、确认时间和冲突记录。
+2. **P1-高 / Dota Sprint 3** 用 Liquipedia 当前阵容补充 OpenDota current-member 缺口，并按 player identity 合并；任何来源冲突仍输出 `roster_mismatch`，禁止用历史成员凑五人。
+3. **P1-高 / Dota Sprint 3** 将 canonical series 与 match winner、handicap、total 分别对齐；真实流动性低于 USD 1,000 固定警告，本地练习盘不得冒充真实盘口证据。
+4. **P1-高 / Dota Sprint 4** 只有双方 identity/rating/form/roster/player metrics/hero pool 全部满足门槛且盘口已对齐时，才执行标准化 prompt/response 与 deterministic paper decision；仍禁止真实成交。
+5. **P2-中** 在验证台增加候选匹配审阅与 target enrichment error 明细，使身份阻断和外部 API 阻断可在 UI 内直接区分。
+
+## Dota 2 Sprint 3 完成规范（2026-07-23）
+
+### 已完成能力
+
+- 新增 `042_esports_team_aliases.sql` 与 `EsportsTeamAlias` 审计契约。队伍别名固定保存 source/source team ID、规范化名称、目标源、候选 IDs、method、confidence、evidence、observedAt 与 confirmedAt；自动同步不得覆盖 `confirmed` 人工结论。
+- Dota 赛程同步会把 matched/ambiguous/unmatched 结果分别持久化为 candidate/conflict/unmatched。只有验证台人工审阅 API 可以写入 `manual_review` 与 confirmedAt；模糊匹配禁止自动确认。
+- Liquipedia 当前阵容优先、OpenDota current-member 与当前 team affiliation 仅补缺，按稳定 player ID 后按规范化昵称合并。inactive/coach/former/left 不得进入五人首发；两份至少三人的阵容重叠少于三人时继续输出 `roster_mismatch`。
+- Dota canonical series 已分别支持 `dota2.match_winner.v1`、`dota2.handicap.v1` 与 `dota2.total_maps.v1`。真实盘口流动性低于 USD 1,000 固定输出 `low_liquidity`；本地盘固定标记 `synthetic`，market stage 只能 warning，不能通过真实当前源发布审计。
+- BO3/BO5 Dota 合格赛程会生成独立的胜负、让分和总局数练习盘口；三个 condition ID、问题、outcome 与结算规则互不混用。BO1 只保留胜负盘。
+- Validation Lab 增加 Dota identity/market evidence 面板，可查看每个盘口规则、流动性、证据类型和 alias 候选/冲突/未匹配，并可人工确认或拒绝已有候选。Dota 质量面板同时显示 target enrichment 的 roster/matches/details/errors。
+- Tauri sidecar 启动固定优先使用 App 内置二进制；debug `.app` 不再依赖 GUI 环境的 `npx`，release/debug 均兼容 Tauri `_up_/packages/server/dist` 资源路径。
+
+### 最终真实源验收
+
+- 个人数据库迁移数为 42，最新迁移为 `042_esports_team_aliases.sql`。真实 Dota 同步 HTTP 200，写入 918 条记录：Liquipedia 84、OpenDota 834；GRID 未配置 Dota title 时保持 skipped，不伪造授权。
+- alias registry 按 source team ID + normalized alias 去重后共有 20 条唯一记录：candidate 4、conflict 2、unmatched 14。赛程中的重复队伍侧不得膨胀为重复人工任务。
+- 当前 Zero Tenacity vs Dandelions BO3 样本完整度 62.5%，生成 match winner/handicap/total maps 三个 synthetic 盘口。Zero Tenacity target enrichment 为 roster 3、matches 10、details 3、errors 0；跨当前来源合并后显示 4/5，Dandelions 为 1/5。
+- 当前样本仍缺 team_rating_a、双方完整 roster、Dandelions recent form/player metrics/hero pool，board 保持 `needs_data`，Paper Decision 保持 waiting。Sprint 3 完成不允许绕过 Sprint 4 数据门槛。
+- 全量回归：Core 354、Infra 157（13 skipped）、Server 281、Web 56 全部通过；typecheck/build 通过，lint 0 error。macOS Tauri App 独立启动无 `Load failed`，smoke 通过并显示 sidecar 13001、65 tables、migration 42。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Dota Sprint 4A** 在 alias 审阅 UI 展示全部 candidate IDs、目标队伍名称与来源链接，先人工处理 2 个 conflict 和高频 unmatched；确认后重跑同步，记录命中率和事实完整度增量。
+2. **P1-高 / Dota Sprint 4A** 扩展 Liquipedia 当前 roster 定向补全队列，只针对当前未来赛程且遵守现有限速；双方 roster 都达到 5 人且无 `roster_mismatch` 前，禁止执行 LLM。
+3. **P1-高 / Dota Sprint 4B** 将真实盘口发现与 canonical series 对齐接入当前源审计；没有真实盘口时只允许 synthetic practice 分析，低于 USD 1,000 时强制 observe-only。
+4. **P1-高 / Dota Sprint 4B** 仅在 identity/rating/form/roster/player metrics/hero pool、freshness 和盘口门槛全部通过时，执行标准化 prompt/response/report 与 deterministic paper decision；继续禁止任何真实成交 API。
+5. **P2-中** 本地化 Dota quality 与 alias reason code，并为 Sprint 3 证据面板补桌面/最小窗口响应式截图回归；保留稳定英文代码供诊断和 LLM 使用。
+
+## Dota 2 Sprint 4 完成规范（2026-07-23）
+
+### 已完成能力
+
+- Dota 赛前资格固定由 Core `dota2-analysis-eligibility` 单一契约判定，Board、Validation Lab、标准分析 API、provider 调用边界和 paper policy 必须复用同一结果。资格模式只允许 `real_market`、`synthetic_practice`、`observe_only`、`blocked`；UI 禁用不能替代服务端阻断。
+- 资格检查必须覆盖 prematch 状态、完整度、新鲜度、双方 identity/rating/form/五人 roster/player metrics/hero pool、patch、跨源冲突、所选盘口支持和流动性。失败必须同时保留可读摘要和稳定 reason codes，且在调用 LLM 前返回结构化 409。
+- 公共 Polymarket Gamma 盘口发现不需要用户账户 key。match winner、handicap、total maps 按 canonical team/time identity 独立分类、解析 line/outcomes 并只读持久化；未知或不完整盘口固定为 `MARKET_NOT_ALIGNED`。
+- 真实盘口低于 USD 1,000 允许查看和分析，但固定为 `observe_only`，禁止生成模拟订单。本地练习盘口固定为 `synthetic`，允许 `SYNTHETIC_PRACTICE` 半额练习单，但不能通过 current-source release gate。
+- `analysis.v1` prompt、`analysis-response.v1` response 和标准报告必须携带 market kind、line、outcomes、evidence type、liquidity status/USD 与 Dota 质量证据。回调重复进入时复用已有 report/decision/order，禁止重复创建模拟单。
+- alias 自动同步不得覆盖任何 `manual_review` 结果，包括 confirmed 和 rejected；候选 IDs、人工理由、来源链接和 observedAt 一并保护。新的人工审核仍可纠正旧人工结果。
+- Validation Lab 可选择三个 Dota 盘口、查看资格模式/阻断代码/流动性/候选目标名称和来源链接，并提供独立“运行 Dota 练习闭环”入口。真实样本不合格时“运行标准 LLM”必须禁用，练习入口不得伪装成真实分析。
+
+### 最终桌面与数据验收
+
+- 2026-07-23 重新构建并启动 debug `PolyRader.app`。Validation Lab 显示 Mentality Monsters vs NEXA 当前样本完整度 37.5%，双方 identity/rating/form/roster/player metrics/hero pool 缺失且快照过期；标准 LLM 在 provider 调用前被 14 个稳定 reason codes 阻断，没有创建真实样本模拟单。
+- 在 App 内执行 Dota 练习闭环生成 run `ar_dota2_8906069414_match-winner_20260723T073349Z_87gw2w`、report `rp-436b127d-cb61-45c0-9dfa-43f01e695b92` 和 open bet `sbet-f11b4fc9-9955-41ec-aa00-78a10f2b6292`。模型概率 62%、市场概率 52%、置信度 72%、模拟金额 USD 12.50，reason 为 `SYNTHETIC_PRACTICE`。
+- run 元数据固定为 `dota2.fixture.v1` + `market.v1`，prompt schema 和 response schema 均有效，报告显示 synthetic/zero-liquidity 上下文。Tauri smoke 显示个人库 65 张表、42 个 migration、14 个 open 模拟单、USD 312.50 open exposure；权益仍为 USD 10,000，未伪造结算收益。
+- Pandawa Lima 的 OpenDota 候选实际为 Panda Gaming，Team Spirit Academy 的候选实际为 senior Team Spirit；两条均通过审核 API 标记 rejected，保留候选 ID、公开链接与原因。当前 alias conflict 为 0，仓储回归覆盖自动同步不回退人工拒绝。
+- 全量回归通过：Core 359/359、Infra 159 passed + 13 skipped、Server 288/288、Web 57/57；Dota Integration E2E、Tauri build、sidecar smoke 和 `git diff --check` 均通过。跳过项仅为需外部配置的连接测试。
+
+### 强制边界
+
+- Sprint 4 完成表示资格、分析、报告和模拟决策的工程闭环可重复，不表示真实 Dota 板块发布。当前 real-source gate 仍为 blocked，fixture 或 synthetic practice 不得计入真实完成率、Brier、CLV、ROI、PnL 或胜率。
+- 当前样本缺失由真实源覆盖不足造成。禁止用历史成员、队伍声誉、模型猜测或伪造 rating/roster/hero pool 补齐；外部 Gamma、GRID、OpenDota 或 Liquipedia 不可用时必须保留 failure 分类。
+- Sprint 5 前不得为 Dota open 模拟单生成伪 closing 或赛果。只有 canonical series、selected market、权威 OpenDota/GRID result 和订单归属全部一致时才允许幂等结算。
+- 产品继续不提供任何真实成交 API；Polymarket 账户 key 不能成为公开盘口发现和练习闭环的前置条件。
+
+### 自动规划的后续步骤
+
+1. **P1-高 / Dota Sprint 5A** 定时追踪下一场仍处于 prematch 的公共未来 series，只对当前参赛队执行有界 rating、近况、五人阵容、个人指标和英雄池补全；通过共享资格契约前不调用 provider。
+2. **P1-高 / Dota Sprint 5A** 为真实 Gamma 多盘口保存 open/closing 时间序列和捕获状态；低于 USD 1,000 继续 observe-only，盘口关闭、过期或身份漂移时记录稳定不可用原因。
+3. **P1-高 / Dota Sprint 5B** 将 OpenDota/获授权 GRID 的 canonical series 结果与 match winner、handicap、total maps 分别对齐，按 linked bet 幂等结算并更新 Brier、CLV、ROI、PnL、胜率和权益曲线。
+4. **P1-高 / Dota Sprint 5B** 增加 current-source Dota 九阶段 E2E：允许“合格后下模拟单”或“资格/策略拒绝”两种有效结果，但禁止 fixture、synthetic market 或其他比赛订单替代当前样本证据。
+5. **P2-中** 本地化 Dota eligibility/market reason codes，补充桌面和最小窗口的多盘口、低流动性、blocked/practice/report 视觉回归；诊断与 LLM 输入继续使用稳定英文代码。
+6. **P2-中** 持续积累权威结算样本；同一可比 segment 满 10 条后才显示 provisional，满 30 条后才允许基于 Brier/CLV/收益表现调整策略权重。
+
+## UI 去重与界面职责规范（2026-07-23）
+
+### 单一信息归属
+
+- “模拟/练习”是产品边界，不是需要在顶部栏、资产栏、侧栏、页面标题和操作面板同时重复的状态。主界面不得再次展示 `Practice Mode`、`练习账户`、`SQLite 已同步` 等无操作价值的全局标签；只在提交订单、账户只读、跟单延迟等真实边界附近保留一次具体说明。
+- 全局资产栏只负责跨页面资金摘要；进入“我的账本”后必须隐藏，因为该页面已提供完整资金、订单和绩效信息。未结算订单的 PnL 显示 `—`，不得用绿色 `+$0.00` 暗示已实现收益。
+- 右侧投注单只属于赛事大厅与比赛详情。账本、复盘、设置、验证台、Prompt 实验和分析报告不得渲染空投注单，也不得为了填充布局保留无用第三栏。
+- 路由页面只能有一个主标题。嵌入账户工作区的订单、绩效等模块不得再次渲染独立页面标题；当前 Tab 名称与页面主标题不得同义重复。
+- 比赛详情的赔率入口固定在概览与右侧投注单，不再保留内容重复的“模拟/Practice”Tab。分析报告只展示报告结果，fixture 与当前源执行入口统一归属 Validation Lab。
+- 侧栏分组使用面向任务的“核心/分析/工具”，不使用 `Practice/Data/Advanced` 等混合语言或实现导向名称。桌面左上角不显示产品标题，设置固定在左下角。
+- 技术内部名词不得直接成为主要界面文案。`paper decision`、`simulation provider` 等分别显示为“分析决策”“策略对比”；稳定英文 reason code 只用于诊断、数据库与 LLM 输入。
+
+### 空数据与兼容性
+
+- 所有由同步流程渐进补齐的数组和证据对象必须允许缺省。Dota alias 的 `evidence`、`candidateTeamIds` 等字段缺失时显示空态，不得让局部证据面板导致整个验证页崩溃。
+- 删除重复提示时必须同步删除死状态、无入口动作与过时测试；安全边界测试应验证实际约束（无真实下单按钮、同区块跟单不可达、只读账户），不得依赖重复模式标签。
+
+### 自动规划的后续步骤
+
+1. **P1-高** 增加静态 UI 文案审计，阻止 `Practice Mode`、`练习账户`、`SQLite 已同步` 和同页重复标题重新进入主界面，并检查非赛事路由不渲染投注单。
+2. **P1-高** 将服务端 `paper_bet`、source note 与 eligibility reason code 映射为统一中英文展示文本；内部协议继续保留稳定代码，不做字符串替换式兼容。
+3. **P1-高** 固化大厅、比赛详情、账本、报告、验证台和设置页在 390/768/1440 三档宽度及 light/dark/matrix 三主题的视觉矩阵，重点检查重复栏、文字溢出和空态。
+4. **P2-中** 按实际使用频率审查“工具”分组的信息架构；只有功能入口被其他页面完整替代并有迁移路径时才移除，不以文案相似为由删除有效能力。
