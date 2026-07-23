@@ -41,6 +41,6 @@ test('OpenDota current source sync persists matches, patch and detailed players'
     data: { persisted: Array<{ adapterVersion: string; patchVersion?: string }> };
   };
   expect(normalized.data.persisted.length).toBeGreaterThan(0);
-  expect(normalized.data.persisted[0]?.adapterVersion).toBe('dota2.facts.v2');
+  expect(normalized.data.persisted[0]?.adapterVersion).toBe('dota2.facts.v3');
   expect(normalized.data.persisted[0]?.patchVersion).toBeTruthy();
 });
