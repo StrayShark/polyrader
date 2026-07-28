@@ -154,6 +154,19 @@ Before opening a PR:
 4. Update canonical docs when a product, contract, or acceptance boundary changes.
 5. Report verification, risk, completion boundary, and concrete follow-up work.
 
+## Main Branch Push Gate
+
+Before pushing to `main`, confirm the pipeline is healthy for the exact changes
+being pushed. Prefer merging through a PR with a green CI run. If a direct
+`main` push is required, run the relevant local checks first, verify the previous
+remote `main` pipeline is green, push, then watch the new `main` CI run until it
+finishes successfully.
+
+Do not leave `main` after a failing push. If CI fails, treat the failure as the
+active task: inspect the failing job, fix the cause, run the matching local
+verification, commit, push, and continue monitoring until the remote pipeline is
+green.
+
 ## Required Post-Change Planning
 
 After every code, configuration, documentation, or migration change, record:
