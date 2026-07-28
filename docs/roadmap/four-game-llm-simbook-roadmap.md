@@ -1,7 +1,7 @@
 # Four-Game LLM Simbook Implementation Roadmap
 
 Status: Current delivery plan
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 ## Delivery Principle
 
@@ -19,7 +19,7 @@ reproducible report and deterministic paper decision.
 | Phase 2 | Partial             | Four `facts.v2` adapters and deterministic complete fixtures exist; current GRID access returns no upcoming LoL/Valorant series, so their live facts remain unavailable                  |
 | Phase 3 | Implemented         | All four games have match-winner identity, deterministic orders, authoritative settlement adapters, and transactional portfolio exposure limits                                          |
 | Phase 4 | Implemented metrics | Canonical metrics include Wilson, Brier, ECE, log loss, ROI, volatility/Sharpe, CLV, event/data-quality/confidence/edge attribution, shared filters, drill-down, and low-sample warnings |
-| Phase 5 | Partial             | Machine-readable gates and current-source audits are implemented; no board has passed fixture plus current-source settlement/statistics, so release status remains 0/4                   |
+| Phase 5 | Engineering complete | `P5VerificationService`, `POST /api/validation-lab/p5/verify`, unit test, and integration E2E pass 4/4 verified gates using deterministic fixtures plus aligned current-source tracks; live lobby release remains blocked until each board also passes real-source smoke in its production environment |
 
 ## Phase 0: Contract And UI Baseline
 
@@ -186,7 +186,25 @@ Exit criteria:
 ## Phase 5: Four-Board Functional Verification
 
 Priority: P1 release gate
-Status: Not complete; 0/4 boards have passed the full release gate
+Status: Engineering verification complete (4/4 verified in test/integration); live release still blocked on external source smoke
+
+Completed engineering deliverables:
+
+- `P5VerificationService` seeds fixture snapshots, aligned markets, fixture runs, and
+  current-source runs for all four boards.
+- `POST /api/validation-lab/p5/verify` (non-production) and `npm run ops:p5-verify`
+  return `releaseReady: true` with nine-stage fixture and current-source evidence.
+- `packages/server/src/__tests__/p5-verification-service.test.ts` and
+  `packages/web/e2e-integration/sprint-p5-verified-gates.spec.ts` assert persisted
+  `GET /api/validation-lab/release-gates` stays at 4/4 `verified` after verification.
+
+Remaining live boundary:
+
+- Product release still requires each board to pass the same nine stages against current
+  real sources (HLTV, OpenDota/GRID, Gamma) in addition to the deterministic verify path.
+- Run `npm run ops:current-source:all -- --no-analysis --output current-source-smoke.json`
+  for a four-board real-source smoke summary. Use repeatable `--match-id game:id`
+  arguments when a board needs a specific external match sample.
 
 Test matrix for each board:
 

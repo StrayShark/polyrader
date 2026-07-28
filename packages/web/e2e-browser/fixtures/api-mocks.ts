@@ -597,6 +597,14 @@ export async function setupCommonMocks(page: Page): Promise<void> {
     });
   });
 
+  await page.route('**/api/analysis/runs**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    }),
+  );
+
   await page.route('**/api/daily**', (route) =>
     route.fulfill({
       status: 200,
@@ -975,6 +983,46 @@ export async function setupCommonMocks(page: Page): Promise<void> {
         body: JSON.stringify({ data: { nodes: [], links: [] } }),
       });
     }
+    const positionsMatch = url.match(/\/whales\/(0x[a-fA-F0-9]+)\/positions/);
+    if (positionsMatch) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              marketId: 'condition-lol-1',
+              conditionId: 'condition-lol-1',
+              question: 'LPL Group Ascend: Team WE vs JD Gaming',
+              outcome: 'Team WE',
+              tokenId: 'token-team-we',
+              shares: 420.25,
+              value: 268.96,
+              avgPrice: 0.58,
+              currentPrice: 0.64,
+              initialValue: 243.75,
+              cashPnl: 25.21,
+              percentPnl: 0.1034,
+              endDate: '2026-07-24T15:15:00Z',
+            },
+            {
+              marketId: 'condition-dota-1',
+              conditionId: 'condition-dota-1',
+              question: 'Dota 2: PuckChamp vs Nemiga Gaming',
+              outcome: 'PuckChamp +1.5',
+              tokenId: 'token-puckchamp-handicap',
+              shares: 180,
+              value: 91.8,
+              avgPrice: 0.47,
+              currentPrice: 0.51,
+              initialValue: 84.6,
+              cashPnl: 7.2,
+              percentPnl: 0.0851,
+            },
+          ],
+        }),
+      });
+    }
     const detailMatch = url.match(/\/whales\/(0x[a-fA-F0-9]+)/);
     if (detailMatch) {
       return route.fulfill({
@@ -1004,6 +1052,7 @@ export async function setupCommonMocks(page: Page): Promise<void> {
               {
                 txHash: '0x1',
                 marketId: 'token1',
+                marketQuestion: 'CS2: Spirit vs G2 - Match Winner',
                 outcome: 'Yes',
                 amount: 5000,
                 price: 0.6,
@@ -1049,7 +1098,7 @@ export async function setupCommonMocks(page: Page): Promise<void> {
       body: JSON.stringify({
         data: [
           {
-            address: '0xabc123def456',
+            address: '0xabc123def456abc123def456abc123def456abcd',
             label: 'Whale #1',
             totalVolume: 500000,
             totalPositions: 10,
@@ -1723,6 +1772,32 @@ export async function setupCommonMocks(page: Page): Promise<void> {
     }),
   );
 
+  await page.route('**/api/validation-lab/current-source-smoke', (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          generatedAt: '2026-07-22T12:00:00.000Z',
+          executeAnalysis: false,
+          verifiedCount: 0,
+          total: 4,
+          releaseReady: false,
+          boards: ['cs2', 'lol', 'dota2', 'valorant'].map((game) => ({
+            game,
+            status: 'blocked',
+            boardState: game === 'cs2' ? 'paper_ready' : 'needs_data',
+            completeness: game === 'cs2' ? 0.9 : 0.4,
+            analysis: 'skipped',
+            gate: 'fixture_ready',
+            blocker: 'market: current source market is missing',
+            auditId: `audit-${game}-smoke`,
+          })),
+        },
+      }),
+    }),
+  );
+
   await page.route(/\/api\/validation-lab\/release-audits(?:\?.*)?$/, (route) =>
     route.fulfill({
       status: 200,
@@ -1993,6 +2068,20 @@ export async function setupCommonMocks(page: Page): Promise<void> {
               game: 'cs2',
               marketKind: 'match_winner',
               matchId: '2396006',
+              matchName: 'Spirit vs G2 · IEM Cologne',
+              marketId: 'm1',
+              legs: [
+                {
+                  id: 'sim-leg-1',
+                  betId: 'sim-bet-1',
+                  matchId: '2396006',
+                  marketId: 'm1',
+                  selection: 'Spirit',
+                  odds: 1.8,
+                  source: 'polymarket',
+                  createdAt: '2026-06-26T10:00:00Z',
+                },
+              ],
               runId: 'fixture-run-1',
               edgeAtEntry: 0.06,
               placedAt: '2026-06-26T10:00:00Z',
@@ -2015,6 +2104,7 @@ export async function setupCommonMocks(page: Page): Promise<void> {
             avgRoi: 0.8,
             maxDrawdown: 0,
             errorTagStats: [],
+            errorTagTrend: [],
             byFormat: [{ key: 'BO3', count: 1, winRate: 1, totalPnl: 80 }],
             byTier: [{ key: 'unknown', count: 1, winRate: 1, totalPnl: 80 }],
             suggestions: [

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearCache, closeDb, runMigrations, WhaleRepository } from '@polyrader/infra';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearCache, closeDb, PolymarketDataClient, runMigrations, WhaleRepository } from '@polyrader/infra';
 import { WhaleService } from '../services/whale-service';
 import type { Whale } from '@polyrader/core';
 
@@ -17,6 +17,7 @@ describe('WhaleService leaderboard ordering', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     closeDb();
     if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
     delete process.env.DATABASE_URL;
@@ -46,6 +47,28 @@ describe('WhaleService leaderboard ordering', () => {
       roi: 0.2,
       pnl: 3000,
     }));
+  });
+
+  it('queries closed positions for wallet win rate when no local trades exist', async () => {
+    vi.spyOn(PolymarketDataClient.prototype, 'getClosedPositions').mockResolvedValue([
+      position('m1', 80, 100),
+      position('m2', 20, 100),
+      position('m3', -50, 100),
+    ]);
+    vi.spyOn(PolymarketDataClient.prototype, 'getTrades').mockResolvedValue([]);
+
+    const detail = await new WhaleService().getWhaleDetail('0x4444444444444444444444444444444444444444');
+
+    expect(detail?.performance).toEqual(expect.objectContaining({
+      settledBets: 3,
+      wins: 2,
+      losses: 1,
+      winRate: 2 / 3,
+      totalPnl: 50,
+      totalWagered: 300,
+      roi: 50 / 300,
+    }));
+    expect(detail?.winRate).toBeCloseTo(2 / 3);
   });
 });
 
@@ -85,4 +108,16 @@ function seed(
     totalWagered: pnl / roi,
     roi,
   });
+}
+
+function position(marketId: string, cashPnl: number, initialValue: number) {
+  return {
+    marketId,
+    question: `${marketId} question`,
+    outcome: 'Yes',
+    shares: 1,
+    value: 0,
+    cashPnl,
+    initialValue,
+  };
 }

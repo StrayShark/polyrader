@@ -131,6 +131,32 @@
   --blue: #9fb8d4;
 }
 
+/* Game identity tags use each title's logo palette without tinting structural UI. */
+.game-tag {
+  background-color: var(--game-tag-color);
+  color: var(--game-tag-foreground);
+}
+
+.game-tag--cs2 {
+  --game-tag-color: #de9b35;
+  --game-tag-foreground: #181818;
+}
+
+.game-tag--dota2 {
+  --game-tag-color: #c23c2a;
+  --game-tag-foreground: #ffffff;
+}
+
+.game-tag--lol {
+  --game-tag-color: #c89b3c;
+  --game-tag-foreground: #181818;
+}
+
+.game-tag--valorant {
+  --game-tag-color: #ff4655;
+  --game-tag-foreground: #181818;
+}
+
 /* ============================================================
    Base Styles
    ============================================================ */
@@ -149,7 +175,15 @@
   }
 
   h1, h2 {
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
+  }
+
+  /* Titles are text-only; action icons inside buttons remain visible. */
+  main :is(h1, h2, h3) > svg,
+  main svg:has(+ :is(h1, h2, h3)),
+  main [data-slot="card-title"] > svg,
+  main svg:has(+ [data-slot="card-title"]) {
+    display: none;
   }
 
   /* Scrollbar */

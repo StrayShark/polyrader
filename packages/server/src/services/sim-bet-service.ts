@@ -1,4 +1,10 @@
-import type { SimBet, SimBetLeg, PlaceSimBetInput, SimBetResult } from '@polyrader/core';
+import type {
+  SimBet,
+  SimBetLeg,
+  SimBetRecord,
+  PlaceSimBetInput,
+  SimBetResult,
+} from '@polyrader/core';
 import {
   SimBetRepository,
   SimAccountRepository,
@@ -41,8 +47,10 @@ export class SimBetService {
   private policyService = new PaperPolicyService();
   private closingPriceService = new ClosingPriceService();
 
-  listBets(accountId: string, status?: 'open' | 'settled' | 'voided'): SimBet[] {
-    return this.betRepo.getByAccount(accountId, status);
+  listBets(accountId: string, status?: 'open' | 'settled' | 'voided'): SimBetRecord[] {
+    return this.betRepo
+      .getBetsWithLegs(accountId, status)
+      .map(({ bet, legs }) => this.toRecord(bet, legs));
   }
 
   getBet(id: string): SimBetWithLegs | undefined {
@@ -53,6 +61,19 @@ export class SimBetService {
     const bet = this.betRepo.getByRunId(runId);
     if (!bet) return undefined;
     return { bet, legs: this.betRepo.getLegs(bet.id) };
+  }
+
+  private toRecord(bet: SimBet, legs: SimBetLeg[]): SimBetRecord {
+    const snapshot = this.matchSnapshotRepo.getByBetId(bet.id);
+    const persistedMatch = bet.matchId ? this.llmRepo.getMatch(bet.matchId) : null;
+    const teamAName = snapshot?.teamAName ?? persistedMatch?.team_a_name;
+    const teamBName = snapshot?.teamBName ?? persistedMatch?.team_b_name;
+    const eventName = snapshot?.eventName ?? persistedMatch?.event_name;
+    const matchName = teamAName && teamBName
+      ? `${String(teamAName)} vs ${String(teamBName)}${eventName ? ` · ${String(eventName)}` : ''}`
+      : undefined;
+
+    return { ...bet, legs, matchName };
   }
 
   placeBet(input: PlaceSimBetInput): SimBetWithLegs {

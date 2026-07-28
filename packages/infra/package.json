@@ -19,6 +19,7 @@
     "@polyrader/core": "*",
     "better-sqlite3": "^11.0.0",
     "cheerio": "^1.0.0",
+    "chromium-bidi": "^0.5.8",
     "lru-cache": "^11.5.1",
     "playwright": "^1.61.0",
     "viem": "^2.46.3"

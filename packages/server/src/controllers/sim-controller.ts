@@ -5,6 +5,7 @@ import { BankrollService } from '../services/bankroll-service';
 import { ReviewService } from '../services/review-service';
 import { StrategyProfileService } from '../services/strategy-profile-service';
 import { TrainingSessionService } from '../services/training-session-service';
+import { BetResultAnalysisService } from '../services/bet-result-analysis-service';
 
 export class SimController {
   private accountService = new SimAccountService();
@@ -13,6 +14,7 @@ export class SimController {
   private reviewService = new ReviewService();
   private profileService = new StrategyProfileService();
   private trainingService = new TrainingSessionService();
+  private betResultAnalysisService = new BetResultAnalysisService();
 
   // Account
   getAccount(_req: Request, res: Response): void {
@@ -187,6 +189,34 @@ export class SimController {
       res.json({ data: review });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
+    }
+  }
+
+  getBetResultAnalysis(req: Request, res: Response): void {
+    try {
+      const artifact = this.betResultAnalysisService.getLatest(req.params.id);
+      if (!artifact) {
+        res.status(404).json({ error: 'Bet result analysis not found' });
+        return;
+      }
+      res.json({ data: artifact });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  }
+
+  async analyzeBetResult(req: Request, res: Response): Promise<void> {
+    try {
+      const artifact = await this.betResultAnalysisService.execute({
+        betId: req.params.id,
+        provider: req.body.provider,
+        locale: req.body.locale,
+        force: req.body.force,
+      });
+      res.json({ data: artifact });
+    } catch (err) {
+      const message = (err as Error).message;
+      res.status(message.includes('must be settled') ? 409 : 400).json({ error: message });
     }
   }
 

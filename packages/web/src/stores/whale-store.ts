@@ -53,9 +53,9 @@ export const useWhaleStore = create<WhaleState>((set, get) => ({
     const state = get();
     const limit = options?.limit ?? 50;
     const sort = options?.sort ?? state.listMode;
-    const minSamples = options?.minSamples ?? (sort === 'win_rate' ? 10 : 0);
+    const minSamples = options?.minSamples ?? (sort === 'win_rate' ? 5 : 0);
     const minWinRate = options?.minWinRate ?? (sort === 'win_rate' ? 0.6 : 0);
-    const minRoi = options?.minRoi ?? (sort === 'win_rate' ? 0.02 : 0);
+    const minRoi = options?.minRoi ?? (sort === 'win_rate' ? -1 : 0);
 
     set({ isLoading: true, error: null, listMode: sort });
     try {

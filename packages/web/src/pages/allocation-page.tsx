@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Wallet, Target, TrendingUp, AlertTriangle, Sparkles, Calculator, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react';
+import { Wallet, Target, TrendingUp, AlertTriangle, Sparkles, Calculator, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { useAllocationStore } from '../stores/allocation-store';
 import { useI18n } from '../hooks/use-i18n';
 import { DataState } from '../components/DataState';
 import { DecisionJournalForm } from '../components/DecisionJournalForm';
+import { LoadingSpinner } from '../components/LoadingState';
 import { StatsSkeleton } from '../components/Skeletons';
 import {
   Card, CardHeader, CardTitle, Badge, Button, Input,
@@ -106,10 +107,9 @@ export function AllocationPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('allocation.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('allocation.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { fetchBankroll(); fetchLatestPlan(); }} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>
@@ -268,7 +268,7 @@ export function AllocationPage() {
                 {t('allocation.useLLM')}
               </label>
               <Button className="flex-1" onClick={handleGenerate} disabled={opportunities.length === 0 || isGenerating}>
-                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Calculator className="h-4 w-4 mr-2" />}
+                {isGenerating ? <LoadingSpinner className="mr-2 h-4 w-4" size={16} /> : <Calculator className="h-4 w-4 mr-2" />}
                 {t('allocation.generate')}
               </Button>
             </div>

@@ -20,4 +20,10 @@ test('Sprint H renders persisted audit history, lifecycle, timings, and diagnost
   await page.getByTestId('run-release-audit').click();
   await expect(page.getByTestId('release-audit-result')).toContainText('source sync');
   await expect(page.getByTestId('release-audit-result')).toContainText('100ms');
+
+  await page.getByTestId('run-current-source-smoke').click();
+  const smoke = page.getByTestId('current-source-smoke-summary');
+  await expect(smoke).toContainText(/真实源 Smoke|Current-source smoke/);
+  await expect(smoke).toContainText('0/4');
+  await expect(smoke).toContainText('current source market is missing');
 });

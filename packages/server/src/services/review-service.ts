@@ -4,6 +4,7 @@ import type {
   ReviewListFilters,
   ReviewSummary,
   ReviewErrorTagStat,
+  ReviewErrorTagTrend,
   ReviewDimensionStat,
   SimBet,
 } from '@polyrader/core';
@@ -19,6 +20,26 @@ import {
   calculateClosingLineValue,
   buildReviewSuggestions,
 } from '@polyrader/core';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function getUtcWeekStart(dateIso: string): Date {
+  const date = new Date(dateIso);
+  if (Number.isNaN(date.getTime())) return new Date(0);
+  const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const day = new Date(utcMidnight).getUTCDay();
+  const daysSinceMonday = (day + 6) % 7;
+  return new Date(utcMidnight - daysSinceMonday * MS_PER_DAY);
+}
+
+function formatWeekLabel(weekStart: Date): string {
+  const end = new Date(weekStart.getTime() + 6 * MS_PER_DAY);
+  const month = String(weekStart.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(weekStart.getUTCDate()).padStart(2, '0');
+  const endMonth = String(end.getUTCMonth() + 1).padStart(2, '0');
+  const endDay = String(end.getUTCDate()).padStart(2, '0');
+  return `${month}/${day}-${endMonth}/${endDay}`;
+}
 
 export interface CreateReviewInput {
   betId: string;
@@ -145,6 +166,7 @@ export class ReviewService {
 
     return {
       bet,
+      legs,
       review,
       snapshots,
       placementOdds,
@@ -261,6 +283,7 @@ export class ReviewService {
           : undefined,
       }))
       .sort((a, b) => b.count - a.count || a.totalPnl - b.totalPnl);
+    const errorTagTrend = this.buildErrorTagTrend(details);
 
     const byFormat = this.groupDimension(details, (d) => d.bet.matchFormat ?? 'unknown');
     const byTier = this.groupDimension(details, (d) => d.bet.matchTier ?? d.matchSnapshot?.tier ?? 'unknown');
@@ -274,6 +297,7 @@ export class ReviewService {
       avgRoi,
       maxDrawdown,
       errorTagStats,
+      errorTagTrend,
       byFormat,
       byTier,
       suggestions: buildReviewSuggestions({
@@ -284,6 +308,30 @@ export class ReviewService {
         totalSettled,
       }),
     };
+  }
+
+  private buildErrorTagTrend(details: ReviewDetail[]): ReviewErrorTagTrend[] {
+    const map = new Map<string, { periodStart: string; periodLabel: string; tag: string; count: number; totalPnl: number }>();
+    for (const detail of details) {
+      const tags = detail.review?.errorTags ?? [];
+      if (tags.length === 0) continue;
+      const weekStart = getUtcWeekStart(detail.bet.settledAt ?? detail.bet.placedAt);
+      const periodStart = weekStart.toISOString().slice(0, 10);
+      const periodLabel = formatWeekLabel(weekStart);
+      for (const tag of tags) {
+        const key = `${periodStart}:${tag}`;
+        const current = map.get(key) ?? { periodStart, periodLabel, tag, count: 0, totalPnl: 0 };
+        current.count += 1;
+        current.totalPnl += detail.bet.pnl;
+        map.set(key, current);
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => {
+        if (a.periodStart !== b.periodStart) return b.periodStart.localeCompare(a.periodStart);
+        return b.count - a.count || a.totalPnl - b.totalPnl || a.tag.localeCompare(b.tag);
+      })
+      .slice(0, 12);
   }
 
   private groupDimension(

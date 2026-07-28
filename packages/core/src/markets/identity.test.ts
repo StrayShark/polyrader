@@ -60,6 +60,11 @@ describe('market identity + settlement rules', () => {
           outcomes: [{ label: 'Over 2.5' }, { label: 'Under 2.5' }],
           liquidityUsd: 3_000,
         },
+        {
+          question: 'Liquid vs Falcons - Game 1 Winner',
+          outcomes: [{ label: 'Liquid' }, { label: 'Falcons' }],
+          liquidityUsd: 2_000,
+        },
       ],
     });
 
@@ -68,12 +73,17 @@ describe('market identity + settlement rules', () => {
       'match_winner',
       'handicap',
       'total_maps',
+      'map_winner',
     ]);
     expect(result.lowLiquidityMarketIds).toHaveLength(1);
     expect(result.markets[1]).toMatchObject({
       settlementRuleId: 'dota2.handicap.v1',
       liquidityStatus: 'low',
       warnings: ['low_liquidity'],
+    });
+    expect(result.markets[3]).toMatchObject({
+      settlementRuleId: 'dota2.map_winner.v1',
+      settlementSupported: true,
     });
   });
 

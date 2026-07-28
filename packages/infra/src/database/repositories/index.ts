@@ -19,3 +19,4 @@ export * from './analysis-run-repository';
 export * from './release-audit-repository';
 export * from './fact-repository';
 export * from './paper-policy-repository';
+export * from './bet-result-analysis-repository';

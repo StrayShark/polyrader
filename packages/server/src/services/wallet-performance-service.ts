@@ -73,7 +73,7 @@ export class WalletPerformanceService {
     const limit = options.limit ?? 50;
     const minSamples = options.minSamples ?? 5;
     const minWinRate = options.minWinRate ?? 0;
-    const minRoi = options.minRoi ?? 0.02;
+    const minRoi = options.minRoi ?? -1;
 
     const whales = this.whaleRepo.findByWinRate(limit, minSamples, minWinRate, minRoi);
     return whales.map((w) => this.rescoreSuspicious(w));

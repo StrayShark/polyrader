@@ -213,6 +213,7 @@ export class PolymarketDataClient {
       id: stringFrom(row.id ?? row.tradeId ?? row.transactionHash ?? row.txHash),
       marketId: optionalString(row.market ?? row.marketId ?? row.conditionId),
       assetId: optionalString(row.asset ?? row.assetId ?? row.tokenId),
+      question: optionalString(row.title ?? row.question ?? row.marketQuestion),
       outcome: optionalString(row.outcome ?? row.outcomeTitle),
       side: normalizeSide(row.side ?? row.type),
       price,

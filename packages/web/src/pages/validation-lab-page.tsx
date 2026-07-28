@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   BrainCircuit,
-  ClipboardCheck,
   DatabaseZap,
   Download,
   ExternalLink,
@@ -15,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { LoadingSpinner } from '../components/LoadingState';
 import { Badge, Button, Card, CardHeader, CardTitle } from '@/components/ui';
 import { cn } from '../utils/cn';
 import { isPrematchAnalysisEligible } from '../utils/match-eligibility';
@@ -44,6 +44,26 @@ interface MatchSettlementResult {
   message?: string;
 }
 
+interface CurrentSourceSmokeBoard {
+  game: EsportsGame;
+  status: 'verified' | 'blocked' | 'failed';
+  boardState?: string;
+  completeness?: number;
+  analysis?: string;
+  gate: string;
+  blocker?: string | null;
+  auditId?: string;
+}
+
+interface CurrentSourceSmokeReport {
+  generatedAt: string;
+  executeAnalysis: boolean;
+  verifiedCount: number;
+  total: number;
+  releaseReady: boolean;
+  boards: CurrentSourceSmokeBoard[];
+}
+
 function freshnessLabel(seconds: number): string {
   if (!Number.isFinite(seconds)) return '—';
   if (seconds < 60) return `${seconds}s`;
@@ -66,6 +86,8 @@ export function ValidationLabPage() {
   const [isReconciling, setIsReconciling] = useState(false);
   const [releaseAudit, setReleaseAudit] = useState<CurrentSourceReleaseAuditResult | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [currentSourceSmoke, setCurrentSourceSmoke] = useState<CurrentSourceSmokeReport | null>(null);
+  const [isRunningSmoke, setIsRunningSmoke] = useState(false);
   const [auditHistory, setAuditHistory] = useState<ReleaseAuditHistoryEntry[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [lifecycle, setLifecycle] = useState<ReleaseLifecycleSummary | null>(null);
@@ -254,6 +276,36 @@ export function ValidationLabPage() {
     }
   };
 
+  const runCurrentSourceSmoke = async () => {
+    setIsRunningSmoke(true);
+    setError(null);
+    setCurrentSourceSmoke(null);
+    try {
+      const response = await api.post<{ data: CurrentSourceSmokeReport }>(
+        '/validation-lab/current-source-smoke',
+        { executeAnalysis: false },
+        { timeoutMs: 240000 },
+      );
+      setCurrentSourceSmoke(response.data);
+      const [gates, history, lifecycleResult, list] = await Promise.all([
+        api.get<{ data: BoardReleaseGateSummary[] }>('/validation-lab/release-gates'),
+        api.get<{ data: ReleaseAuditHistoryEntry[] }>(
+          `/validation-lab/release-audits?game=${game}&limit=10`,
+        ),
+        api.get<{ data: ReleaseLifecycleSummary }>(`/validation-lab/lifecycle/${game}`),
+        api.get<{ data: BoardValidationSummary[] }>('/validation-lab/boards'),
+      ]);
+      setReleaseGates(gates.data);
+      setAuditHistory(history.data);
+      setLifecycle(lifecycleResult.data);
+      setBoards(list.data);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsRunningSmoke(false);
+    }
+  };
+
   const reconcileMatch = async () => {
     if (!['lol', 'dota2', 'valorant'].includes(game) || !board?.sampleMatch) return;
     setIsReconciling(true);
@@ -297,15 +349,11 @@ export function ValidationLabPage() {
 
       <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <ClipboardCheck className="h-6 w-6 text-primary" />
-            {t('validationLab.title')}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('validationLab.subtitle')}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('validationLab.title')}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => void load(game)} disabled={isLoading}>
-            <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+            {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             {t('validationLab.refreshFacts')}
           </Button>
           <Button size="sm" onClick={() => void syncAndNormalize()} disabled={isLoading}>
@@ -320,6 +368,20 @@ export function ValidationLabPage() {
           >
             <ShieldCheck className={cn('h-3.5 w-3.5', isAuditing && 'animate-pulse')} />
             {t('validationLab.runReleaseAudit')}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void runCurrentSourceSmoke()}
+            disabled={isRunningSmoke || isLoading || isAuditing}
+            data-testid="run-current-source-smoke"
+          >
+            {isRunningSmoke ? (
+              <LoadingSpinner className="h-3.5 w-3.5" size={14} />
+            ) : (
+              <ShieldCheck className="h-3.5 w-3.5" />
+            )}
+            {t('validationLab.runCurrentSourceSmoke')}
           </Button>
           <Button
             variant="outline"
@@ -451,6 +513,48 @@ export function ValidationLabPage() {
           })}
         </div>
       </Card>
+
+      {currentSourceSmoke && (
+        <Card data-testid="current-source-smoke-summary">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">{t('validationLab.currentSourceSmoke')}</CardTitle>
+            <Badge variant={currentSourceSmoke.releaseReady ? 'green' : 'yellow'}>
+              {currentSourceSmoke.verifiedCount}/{currentSourceSmoke.total}
+            </Badge>
+          </CardHeader>
+          <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+            {currentSourceSmoke.boards.map((item) => (
+              <div key={item.game} className="min-w-0 bg-card p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-sm font-semibold uppercase">{item.game}</span>
+                  <Badge
+                    variant={
+                      item.status === 'verified'
+                        ? 'green'
+                        : item.status === 'failed'
+                          ? 'destructive'
+                          : 'yellow'
+                    }
+                  >
+                    {item.status}
+                  </Badge>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
+                  <Badge variant="secondary">{item.gate}</Badge>
+                  {item.boardState && <Badge variant="secondary">{item.boardState}</Badge>}
+                  {typeof item.completeness === 'number' && (
+                    <Badge variant="secondary">{Math.round(item.completeness * 100)}%</Badge>
+                  )}
+                  {item.analysis && <Badge variant="secondary">{item.analysis}</Badge>}
+                </div>
+                <p className="mt-2 truncate text-xs text-muted-foreground" title={item.blocker ?? undefined}>
+                  {item.blocker ?? t('validationLab.noBlockers')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {lifecycle && (
         <div

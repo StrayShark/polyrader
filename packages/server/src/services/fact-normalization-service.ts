@@ -255,7 +255,7 @@ function matchCandidatePhase(item: SourceSnapshotLike, startsAt: number, nowMs: 
   return 2;
 }
 
-/** Prefer market-aligned / dual-roster / higher-completeness samples for LoL and Valorant boards. */
+/** Prefer higher-quality current samples; Riot boards also boost Polymarket-aligned series. */
 export function selectBoardSample(
   game: EsportsGame,
   matches: NormalizedMatchFacts[],
@@ -263,15 +263,31 @@ export function selectBoardSample(
   marketHints: string[] = [],
 ): NormalizedMatchFacts | null {
   if (matches.length === 0) return null;
-  if (game !== 'lol' && game !== 'valorant') return matches[0] ?? null;
 
   const ranked = [...matches].sort((a, b) => {
     const scoreDelta =
-      sampleQualityScore(b, game, marketHints) - sampleQualityScore(a, game, marketHints);
+      game === 'lol' || game === 'valorant'
+        ? sampleQualityScore(b, game, marketHints) - sampleQualityScore(a, game, marketHints)
+        : genericSampleScore(b) - genericSampleScore(a);
     if (scoreDelta !== 0) return scoreDelta;
     return compareMatchCandidates(asMatchCandidate(a), asMatchCandidate(b), nowMs);
   });
   return ranked[0] ?? null;
+}
+
+function genericSampleScore(match: NormalizedMatchFacts): number {
+  const completeness = Math.round((match.completeness ?? 0) * 1_000);
+  const conflictPenalty = match.conflictFlags.length * 100_000;
+  const placeholderPenalty = /page_does_not_exist/i.test(match.externalMatchId) ? -500_000 : 0;
+  const freshnessBonus = Number.isFinite(match.freshnessSeconds)
+    ? Math.max(0, 10_000 - Math.min(match.freshnessSeconds, 10_000))
+    : 0;
+  const weakNamePenalty = match.participants.some((participant) =>
+    /^(a team|b team|tbd|tba|unknown)$/i.test(participant.name.trim()),
+  )
+    ? -250_000
+    : 0;
+  return completeness + freshnessBonus + placeholderPenalty + weakNamePenalty - conflictPenalty;
 }
 
 function sampleQualityScore(

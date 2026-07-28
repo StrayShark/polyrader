@@ -191,15 +191,15 @@ export function normalizeCs2MatchFacts(
   };
 }
 
-/** Deterministic complete CS2 facts used only by explicit test/development validation. */
-export function buildCs2FixtureFacts(now = new Date()): NormalizedMatchFacts {
+/** Deterministic CS2 source snapshots for Validation Lab and release-gate seeding. */
+export function buildCs2FixtureSnapshots(now = new Date()): SourceSnapshotLike[] {
   const observedAt = now.toISOString();
   const startsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
   const teamAPlayers = cs2FixturePlayers('navi', ['b1t', 'w0nderful', 'iM', 'Aleksib', 'jL']);
   const teamBPlayers = cs2FixturePlayers('faze', ['broky', 'rain', 'frozen', 'karrigan', 'EliGE']);
   const recentA = cs2FixtureRecent('FaZe Clan', 7);
   const recentB = cs2FixtureRecent('Natus Vincere', 6);
-  const snapshots: SourceSnapshotLike[] = [
+  return [
     {
       game: 'cs2',
       source: 'hltv',
@@ -256,7 +256,11 @@ export function buildCs2FixtureFacts(now = new Date()): NormalizedMatchFacts {
       observedAt,
     },
   ];
-  return normalizeCs2MatchFacts(snapshots, { now })!;
+}
+
+/** Deterministic complete CS2 facts used only by explicit test/development validation. */
+export function buildCs2FixtureFacts(now = new Date()): NormalizedMatchFacts {
+  return normalizeCs2MatchFacts(buildCs2FixtureSnapshots(now), { now })!;
 }
 
 function cs2FixturePlayers(teamId: string, names: string[]): Array<Record<string, unknown>> {

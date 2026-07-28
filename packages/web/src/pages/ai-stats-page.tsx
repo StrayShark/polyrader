@@ -7,6 +7,7 @@ import { DataState } from '../components/DataState';
 import { StatsSkeleton, TableSkeleton } from '../components/Skeletons';
 import { CalibrationChart } from '../components/CalibrationChart';
 import { useI18n } from '../hooks/use-i18n';
+import { LoadingSpinner } from '../components/LoadingState';
 import { Card, CardHeader, CardTitle, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Button } from '@/components/ui';
 import type { UserStats, SimulatedBet, CalibrationPoint } from '@polyrader/core/browser';
 
@@ -73,10 +74,9 @@ export function AiStatsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('aiStats.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('aiStats.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={refreshAll} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

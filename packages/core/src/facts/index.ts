@@ -1,8 +1,24 @@
 import type { EsportsGame } from '../analysis/types';
-import { buildCs2FixtureFacts, normalizeCs2MatchFacts } from './cs2-adapter';
-import { buildDota2FixtureFacts, normalizeDota2MatchFacts } from './dota2-adapter';
-import { buildLolFixtureFacts, normalizeLolMatchFacts } from './lol-adapter';
-import { buildValorantFixtureFacts, normalizeValorantMatchFacts } from './valorant-adapter';
+import {
+  buildCs2FixtureFacts,
+  buildCs2FixtureSnapshots,
+  normalizeCs2MatchFacts,
+} from './cs2-adapter';
+import {
+  buildDota2FixtureFacts,
+  buildDota2FixtureSnapshots,
+  normalizeDota2MatchFacts,
+} from './dota2-adapter';
+import {
+  buildLolFixtureFacts,
+  buildLolFixtureSnapshots,
+  normalizeLolMatchFacts,
+} from './lol-adapter';
+import {
+  buildValorantFixtureFacts,
+  buildValorantFixtureSnapshots,
+  normalizeValorantMatchFacts,
+} from './valorant-adapter';
 import type { BoardValidationSummary, NormalizedMatchFacts, SourceSnapshotLike } from './types';
 import type { MarketAlignmentResult } from '../markets/identity';
 import { evaluateDotaAnalysisEligibility } from './dota2-analysis-eligibility';
@@ -43,6 +59,17 @@ export function buildFixtureFacts(
   if (game === 'lol') return buildLolFixtureFacts(now);
   if (game === 'valorant') return buildValorantFixtureFacts(now);
   return null;
+}
+
+export function buildFixtureSnapshots(
+  game: EsportsGame,
+  now = new Date(),
+): SourceSnapshotLike[] {
+  if (game === 'cs2') return buildCs2FixtureSnapshots(now);
+  if (game === 'dota2') return buildDota2FixtureSnapshots(now);
+  if (game === 'lol') return buildLolFixtureSnapshots(now);
+  if (game === 'valorant') return buildValorantFixtureSnapshots(now);
+  return [];
 }
 
 export function buildBoardValidationSummary(input: {

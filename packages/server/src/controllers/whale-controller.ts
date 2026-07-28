@@ -6,11 +6,16 @@ import { sharedSmartWalletDiscovery } from '../services/smart-wallet-discovery-s
 import { broadcast } from '../websocket';
 import { cacheDelete, cacheKeys } from '@polyrader/infra';
 import { logger } from '../utils/logger';
-import type { whaleLeaderboardQuerySchema, whaleQuerySchema } from '../validation/schemas';
+import type {
+  whaleLeaderboardQuerySchema,
+  whalePositionsQuerySchema,
+  whaleQuerySchema,
+} from '../validation/schemas';
 import type { z } from 'zod';
 
 type WhaleQuery = z.infer<typeof whaleQuerySchema>;
 type WhaleLeaderboardQuery = z.infer<typeof whaleLeaderboardQuerySchema>;
+type WhalePositionsQuery = z.infer<typeof whalePositionsQuerySchema>;
 
 export class WhaleController {
   private service = new WhaleService();
@@ -55,7 +60,7 @@ export class WhaleController {
       let discovery = { discovered: 0, qualified: 0, failedProfiles: 0 };
       let discoveryError: string | null = null;
       try {
-        discovery = await sharedSmartWalletDiscovery.discoverTopWallets(12);
+        discovery = await sharedSmartWalletDiscovery.discoverTopWallets(50);
       } catch (err) {
         discoveryError = (err as Error).message;
         logger.warn('Smart wallet discovery failed during refresh', { error: discoveryError });
@@ -90,6 +95,23 @@ export class WhaleController {
     } catch (err) {
       logger.error('Failed to fetch whale', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
       res.status(500).json({ error: 'Failed to fetch whale', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
+    }
+  }
+
+  async getWhalePositions(req: Request, res: Response): Promise<void> {
+    try {
+      const query = req.query as unknown as WhalePositionsQuery;
+      const positions = await this.service.getWhalePositions(req.params.address, query.limit);
+      res.json({ data: positions });
+    } catch (err) {
+      logger.error('Failed to fetch whale positions', {
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
+      res.status(502).json({
+        error: 'Failed to fetch whale positions',
+        message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined,
+      });
     }
   }
 

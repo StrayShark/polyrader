@@ -114,7 +114,11 @@ export const whaleLeaderboardQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   minSamples: z.coerce.number().int().min(1).max(1000).default(20),
   minWinRate: z.coerce.number().min(0).max(1).default(0.5),
-  minRoi: z.coerce.number().min(-1).max(10).default(0.02),
+  minRoi: z.coerce.number().min(-1).max(10).default(-1),
+});
+
+export const whalePositionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 export const followWalletBodySchema = z.object({
@@ -507,6 +511,12 @@ export const createSimReviewBodySchema = z.object({
   closingOdds: z.number().min(1.01).optional(),
 });
 
+export const analyzeBetResultBodySchema = z.object({
+  provider: z.string().min(1).max(64).optional(),
+  locale: z.string().min(2).max(16).optional(),
+  force: z.boolean().optional(),
+});
+
 export const reviewListQuerySchema = z.object({
   accountId: z.string().optional(),
   result: z.enum(['all', 'won', 'lost', 'push']).optional(),
@@ -524,6 +534,7 @@ export type PlaceSimBetBody = z.infer<typeof placeSimBetBodySchema>;
 export type SettleSimBetBody = z.infer<typeof settleSimBetBodySchema>;
 export type CaptureClosingPriceBody = z.infer<typeof captureClosingPriceBodySchema>;
 export type CreateSimReviewBody = z.infer<typeof createSimReviewBodySchema>;
+export type AnalyzeBetResultBody = z.infer<typeof analyzeBetResultBodySchema>;
 export type ReviewListQuery = z.infer<typeof reviewListQuerySchema>;
 
 export type CreateAlertBody = z.infer<typeof createAlertBodySchema>;

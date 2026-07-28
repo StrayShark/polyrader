@@ -23,7 +23,10 @@ export function TeamIntelligencePanel({
   const maps = mergeMaps(teamA, teamB);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-background" data-testid="team-intelligence">
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-background"
+      data-testid="team-intelligence"
+    >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-4 py-3">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary" />
@@ -67,10 +70,14 @@ function TeamColumn({ team, lineup, side }: { team: Team; lineup?: Lineup; side:
   const recent = team.recentForm.last10Matches.slice(0, 5);
 
   return (
-    <div className={cn('min-w-0 p-4', side === 'b' && 'border-t border-border lg:border-l lg:border-t-0')}>
+    <div
+      className={cn(
+        'min-w-0 p-4',
+        side === 'b' && 'border-t border-border lg:border-l lg:border-t-0',
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <TeamLogo team={team} />
+        <div className="flex min-w-0 items-center">
           <div className="min-w-0">
             <div className="truncate text-base font-semibold">{team.name}</div>
             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
@@ -78,7 +85,9 @@ function TeamColumn({ team, lineup, side }: { team: Team; lineup?: Lineup; side:
                 {team.rank > 0 && team.rank < 999 ? `#${team.rank}` : t('match.rankUnavailable')}
               </span>
               {team.region && <span>{team.region}</span>}
-              <span>{Math.round(team.recentForm.winRate * 100)}% {t('match.formWins')}</span>
+              <span>
+                {Math.round(team.recentForm.winRate * 100)}% {t('match.formWins')}
+              </span>
             </div>
           </div>
         </div>
@@ -101,7 +110,9 @@ function TeamColumn({ team, lineup, side }: { team: Team; lineup?: Lineup; side:
             <PlayerRow key={player.playerId || player.nickname} player={player} />
           ))}
           {players.length === 0 && (
-            <div className="py-4 text-center text-xs text-muted-foreground">{t('match.rosterPending')}</div>
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              {t('match.rosterPending')}
+            </div>
           )}
         </div>
       </div>
@@ -113,15 +124,26 @@ function TeamColumn({ team, lineup, side }: { team: Team; lineup?: Lineup; side:
         </div>
         <div className="space-y-1.5">
           {recent.map((result, index) => (
-            <div key={`${result.date}-${result.opponent}-${index}`} className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 text-xs">
-              <span className={cn(
-                'flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold',
-                result.result === 'win' ? 'bg-green/10 text-green' : result.result === 'loss' ? 'bg-red/10 text-red' : 'bg-muted text-muted-foreground',
-              )}>
+            <div
+              key={`${result.date}-${result.opponent}-${index}`}
+              className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 text-xs"
+            >
+              <span
+                className={cn(
+                  'flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold',
+                  result.result === 'win'
+                    ? 'bg-green/10 text-green'
+                    : result.result === 'loss'
+                      ? 'bg-red/10 text-red'
+                      : 'bg-muted text-muted-foreground',
+                )}
+              >
                 {result.result === 'win' ? 'W' : result.result === 'loss' ? 'L' : 'D'}
               </span>
               <span className="truncate">{result.opponent}</span>
-              <span className="font-mono tabular-nums text-muted-foreground">{result.score || '-'}</span>
+              <span className="font-mono tabular-nums text-muted-foreground">
+                {result.score || '-'}
+              </span>
             </div>
           ))}
           {recent.length === 0 && (
@@ -139,24 +161,17 @@ function PlayerRow({ player }: { player: Player }) {
     <div className="grid min-h-9 grid-cols-[minmax(0,1fr)_64px_58px] items-center gap-2 py-1.5 text-xs">
       <div className="min-w-0">
         <div className="truncate font-medium">{player.nickname}</div>
-        <div className="truncate text-[10px] text-muted-foreground">{player.name || player.role || t('match.playerProfile')}</div>
+        <div className="truncate text-[10px] text-muted-foreground">
+          {player.name || player.role || t('match.playerProfile')}
+        </div>
       </div>
       <div className="text-right font-mono tabular-nums">
         <span className="text-muted-foreground">{t('match.ratingShort')} </span>
         {player.rating > 0 ? player.rating.toFixed(2) : '-'}
       </div>
-      <div className="truncate text-right text-[10px] text-muted-foreground">{player.role || '-'}</div>
-    </div>
-  );
-}
-
-function TeamLogo({ team }: { team: Team }) {
-  if (team.logo) {
-    return <img src={team.logo} alt="" className="h-11 w-11 shrink-0 rounded border border-border bg-white p-1.5 object-contain" />;
-  }
-  return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-border bg-muted/40 text-sm font-semibold text-muted-foreground">
-      {initials(team.name)}
+      <div className="truncate text-right text-[10px] text-muted-foreground">
+        {player.role || '-'}
+      </div>
     </div>
   );
 }
@@ -204,7 +219,11 @@ function mergePlayers(players: Player[], lineup?: Lineup): Player[] {
 function mergeMaps(teamA: Team, teamB: Team): Array<{ name: string; a?: number; b?: number }> {
   const a = new Map(teamA.mapPool.maps.map((map) => [map.map, map.winRate]));
   const b = new Map(teamB.mapPool.maps.map((map) => [map.map, map.winRate]));
-  return Array.from(new Set([...a.keys(), ...b.keys()])).map((name) => ({ name, a: a.get(name), b: b.get(name) }));
+  return Array.from(new Set([...a.keys(), ...b.keys()])).map((name) => ({
+    name,
+    a: a.get(name),
+    b: b.get(name),
+  }));
 }
 
 function toPercent(value: number | undefined): number | null {
@@ -212,11 +231,14 @@ function toPercent(value: number | undefined): number | null {
   return Math.round((value ?? 0) <= 1 ? (value ?? 0) * 100 : (value ?? 0));
 }
 
-function initials(name: string): string {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
-}
-
 function formatDateTime(value: string): string {
   const date = new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 }

@@ -209,11 +209,10 @@ export function normalizeValorantMatchFacts(
   };
 }
 
-export function buildValorantFixtureFacts(now = new Date()): NormalizedMatchFacts {
+export function buildValorantFixtureSnapshots(now = new Date()): SourceSnapshotLike[] {
   const observedAt = now.toISOString();
   const startsAt = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString();
-  return normalizeValorantMatchFacts(
-    [
+  return [
       {
         game: 'valorant',
         source: 'grid',
@@ -282,9 +281,11 @@ export function buildValorantFixtureFacts(now = new Date()): NormalizedMatchFact
         },
         observedAt,
       },
-    ],
-    { now },
-  )!;
+  ];
+}
+
+export function buildValorantFixtureFacts(now = new Date()): NormalizedMatchFacts {
+  return normalizeValorantMatchFacts(buildValorantFixtureSnapshots(now), { now })!;
 }
 
 function resolveAgainstRosters(

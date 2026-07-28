@@ -5,6 +5,7 @@ import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { CalibrationChart } from '../components/CalibrationChart';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { LoadingSpinner } from '../components/LoadingState';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, CardTitle, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Button } from '@/components/ui';
 import type { CalibrationPoint, SimulatedBet } from '@polyrader/core/browser';
@@ -62,14 +63,10 @@ export function LlmAnalysisPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight capitalize flex items-center gap-2">
-            <Brain className="h-6 w-6 text-primary" />
-            {providerId}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('llmAnalysis.subtitle')}</p>
+          <h1 className="text-2xl font-semibold capitalize tracking-tight">{providerId}</h1>
         </div>
         <Button variant="outline" size="sm" onClick={fetchAnalysis} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

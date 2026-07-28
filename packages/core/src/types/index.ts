@@ -585,6 +585,7 @@ export interface SuspiciousScore {
 export interface WhaleTrade {
   txHash: string;
   marketId: string;
+  marketQuestion?: string;
   outcome: string;
   amount: number;
   price: number;
@@ -788,6 +789,7 @@ export interface PolymarketUserTrade {
   id: string;
   marketId?: string;
   assetId?: string;
+  question?: string;
   outcome?: string;
   side?: 'buy' | 'sell';
   price: number;
@@ -1529,6 +1531,11 @@ export interface SimBetLeg {
   result?: SimBetResult;
 }
 
+export interface SimBetRecord extends SimBet {
+  legs: SimBetLeg[];
+  matchName?: string;
+}
+
 export interface OddsSnapshot {
   id: string;
   betId?: string;
@@ -1581,6 +1588,14 @@ export interface ReviewErrorTagStat {
   avgBrier?: number;
 }
 
+export interface ReviewErrorTagTrend {
+  periodStart: string;
+  periodLabel: string;
+  tag: string;
+  count: number;
+  totalPnl: number;
+}
+
 export interface ReviewDimensionStat {
   key: string;
   count: number;
@@ -1605,6 +1620,7 @@ export interface ReviewSummary {
   avgRoi?: number;
   maxDrawdown: number;
   errorTagStats: ReviewErrorTagStat[];
+  errorTagTrend: ReviewErrorTagTrend[];
   byFormat: ReviewDimensionStat[];
   byTier: ReviewDimensionStat[];
   suggestions: ReviewSuggestion[];
@@ -1624,6 +1640,7 @@ export interface ReviewListFilters {
 
 export interface ReviewDetail {
   bet: SimBet;
+  legs?: SimBetLeg[];
   review?: BetReview;
   snapshots: OddsSnapshot[];
   placementOdds?: number;
@@ -1652,9 +1669,9 @@ export interface BankrollSummary {
   todayPnl: number;
   openExposure: number;
   equityCurve: EquityCurvePoint[];
-  openBets: SimBet[];
-  settledBets: SimBet[];
-  voidedBets: SimBet[];
+  openBets: SimBetRecord[];
+  settledBets: SimBetRecord[];
+  voidedBets: SimBetRecord[];
   riskMetrics: RiskMetrics;
 }
 

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Key, Wifi, BarChart3, Eye, EyeOff, RefreshCw, Loader2 } from 'lucide-react';
+import { Key, Wifi, BarChart3, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { useLLMStore } from '../stores/llm-store';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
 import { useI18n } from '../hooks/use-i18n';
+import { LoadingSpinner } from '../components/LoadingState';
 import type { ConnectivityResult } from '@polyrader/core/browser';
 import { Button, Card, CardHeader, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Badge, Progress } from '@/components/ui';
 
@@ -43,10 +44,9 @@ export function AiConfigPage({ embedded = false }: { embedded?: boolean }) {
           ) : (
             <h1 className="text-2xl font-semibold tracking-tight">{t('aiConfig.title')}</h1>
           )}
-          <p className="text-sm text-muted-foreground">{t('aiConfig.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchConfigs()} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>
@@ -135,7 +135,7 @@ export function AiConfigPage({ embedded = false }: { embedded?: boolean }) {
                   <Button size="sm" variant="ghost" onClick={() => handleTest(c.provider)}
                     disabled={testingProvider === c.provider || !c.isEnabled} className="ml-1">
                     {testingProvider === c.provider ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <LoadingSpinner className="h-3 w-3" size={12} />
                     ) : t('aiConfig.test')}
                   </Button>
                 </TableCell>

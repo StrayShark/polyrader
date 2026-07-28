@@ -11,7 +11,7 @@ const GAMMA_API_URL = process.env.POLYMARKET_GAMMA_API_URL ?? 'https://gamma-api
  * stack bypasses this, so all Gamma API calls route through Playwright.
  */
 async function gammaFetch<T>(url: string): Promise<T> {
-  return fetchJsonWithBrowser<T>(url, { timeoutMs: envNumber('POLYMARKET_GAMMA_TIMEOUT_MS', 8000) });
+  return fetchJsonWithBrowser<T>(url, { timeoutMs: envNumber('POLYMARKET_GAMMA_TIMEOUT_MS', 12000) });
 }
 
 export class PolymarketGammaClient {
@@ -181,6 +181,37 @@ export class PolymarketGammaClient {
     }
   }
 
+  async getMarketByTokenId(tokenId: string, hint?: string): Promise<Market | null> {
+    try {
+      const matches = await this.fetch<unknown[]>('/markets', {
+        clob_token_ids: tokenId,
+        limit: '5',
+      });
+      const market = matches
+        .map((item) => this.mapMarket(item as Record<string, unknown>))
+        .find((item) => item.clobTokenIds?.includes(tokenId));
+      if (market) return market;
+    } catch {
+      // Fall through to public search below.
+    }
+
+    const trimmedHint = hint?.trim();
+    if (!trimmedHint) return null;
+
+    try {
+      const payload = await this.fetch<unknown>('/public-search', {
+        q: trimmedHint,
+        limit_per_type: '10',
+      });
+      const market = extractSearchMarkets(payload)
+        .map((item) => this.mapMarket(item))
+        .find((item) => item.clobTokenIds?.includes(tokenId));
+      return market ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Get market price history.
    */
@@ -257,7 +288,7 @@ export class PolymarketGammaClient {
       description: String(data.description ?? ''),
       outcomes,
       outcomePrices,
-      clobTokenIds: Array.isArray(data.clobTokenIds) ? data.clobTokenIds as string[] : undefined,
+      clobTokenIds: asStringArray(data.clobTokenIds),
       volume: parseFloat(String(data.volume ?? '0')),
       volume24h: parseFloat(String(data.volume24hr ?? data.volume24h ?? '0')),
       liquidity: parseFloat(String(data.liquidity ?? '0')),

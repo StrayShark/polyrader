@@ -9,6 +9,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LoadingSpinner } from '../components/LoadingState';
 import {
   CartesianGrid,
   Line,
@@ -94,11 +95,10 @@ export function PerformancePage({ embedded = false }: { embedded?: boolean }) {
         {!embedded && (
           <div>
             <h2 className="text-base font-semibold">{t('performance.title')}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t('performance.subtitle')}</p>
           </div>
         )}
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={loading ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
+          {loading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

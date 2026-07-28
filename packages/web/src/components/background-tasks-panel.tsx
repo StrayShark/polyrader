@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Circle,
   Clock,
-  Loader2,
   XCircle,
   Zap,
 } from 'lucide-react';
@@ -31,6 +30,7 @@ import {
   TabsTrigger,
 } from '@/components/ui';
 import { cn } from '../utils/cn';
+import { LoadingSpinner } from './LoadingState';
 
 const CATEGORY_COLORS: Record<BackgroundTaskCategory, string> = {
   market: 'text-cyan',
@@ -60,7 +60,7 @@ function formatTime(iso: string): string {
 
 function StatusIcon({ status }: { status: BackgroundTask['status'] }) {
   if (status === 'running') {
-    return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
+    return <LoadingSpinner className="h-4 w-4" size={16} />;
   }
   if (status === 'success') {
     return <CheckCircle2 className="h-4 w-4 text-green" />;

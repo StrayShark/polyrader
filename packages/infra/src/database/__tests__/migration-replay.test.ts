@@ -54,7 +54,7 @@ describe('migration replay and restart persistence', () => {
     removeTestDb();
   });
 
-  it('upgrades a migration-037 database through 042 and preserves telemetry after reopen', () => {
+  it('upgrades a migration-037 database through the latest migration and preserves telemetry after reopen', () => {
     removeTestDb();
     fs.mkdirSync(path.dirname(testDbPath), { recursive: true });
     buildSchemaThrough037();
@@ -105,7 +105,10 @@ describe('migration replay and restart persistence', () => {
     const migrationCount = getDb().prepare('SELECT COUNT(*) AS count FROM _migrations').get() as {
       count: number;
     };
-    expect(migrationCount.count).toBe(42);
+    const expectedMigrationCount = fs
+      .readdirSync(migrationsDir)
+      .filter((name) => /^\d{3}_.+\.sql$/.test(name)).length;
+    expect(migrationCount.count).toBe(expectedMigrationCount);
     const aliasesTable = getDb()
       .prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'esports_team_aliases'",
@@ -124,6 +127,12 @@ describe('migration replay and restart persistence', () => {
       )
       .get() as { name: string } | undefined;
     expect(identityTable?.name).toBe('esports_match_source_identities');
+    const resultAnalysisTable = getDb()
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'bet_result_analyses'",
+      )
+      .get() as { name: string } | undefined;
+    expect(resultAnalysisTable?.name).toBe('bet_result_analyses');
     const columns = getDb().prepare('PRAGMA table_info(sim_bets)').all() as Array<{ name: string }>;
     expect(columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -132,6 +141,7 @@ describe('migration replay and restart persistence', () => {
         'closing_latency_seconds',
         'closing_attempt_count',
         'clv_unavailable_reason',
+        'settlement_source',
       ]),
     );
   });

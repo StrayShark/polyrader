@@ -4,9 +4,12 @@ import {
   Activity,
   Bot,
   Database,
+  DollarSign,
+  Hash,
   KeyRound,
   Languages,
   Moon,
+  Percent,
   RefreshCw,
   Save,
   Settings,
@@ -30,16 +33,22 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui';
+import type { OddsFormat } from '../utils/bet-math';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { useToast } from '../components/ToastProvider';
 import { useTheme } from '../components/ThemeProvider';
 import { BackgroundTasksPanel } from '../components/background-tasks-panel';
 import { EsportsDataSourcesPanel } from '../components/EsportsDataSourcesPanel';
+import { LoadingSpinner } from '../components/LoadingState';
 import { AiConfigPage } from './ai-config-page';
 import { DatabasePage } from './database-page';
 import type { SystemFeatures } from '../stores/feature-flag-store';
 import { cn } from '../utils/cn';
+import {
+  readOddsFormatPreference,
+  writeOddsFormatPreference,
+} from '../utils/odds-format-preference';
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -110,11 +119,22 @@ function DependencyRow({ label, status, detail }: { label: string; status: strin
 function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
+  const [oddsFormat, setOddsFormat] = useState<OddsFormat>(() => readOddsFormatPreference());
   const themes = [
     { value: 'dark' as const, label: t('settings.themeDark'), icon: Moon },
     { value: 'light' as const, label: t('settings.themeLight'), icon: Sun },
     { value: 'matrix' as const, label: t('settings.themeMatrix'), icon: Terminal },
   ];
+  const oddsFormats = [
+    { value: 'decimal' as const, label: t('lobby.oddsFormatDecimal'), icon: Hash },
+    { value: 'probability' as const, label: t('lobby.oddsFormatProbability'), icon: Percent },
+    { value: 'american' as const, label: t('lobby.oddsFormatAmerican'), icon: DollarSign },
+  ];
+
+  const changeOddsFormat = (format: OddsFormat) => {
+    setOddsFormat(format);
+    writeOddsFormatPreference(format);
+  };
 
   return (
     <Card>
@@ -166,6 +186,29 @@ function AppearanceSettings() {
                 )}
               >
                 {value === 'zh' ? '中文' : 'English'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground">{t('settings.oddsFormat')}</div>
+          <div className="grid grid-cols-3 gap-1 rounded-md border border-border p-1">
+            {oddsFormats.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => changeOddsFormat(value)}
+                aria-pressed={oddsFormat === value}
+                className={cn(
+                  'flex h-9 items-center justify-center gap-2 rounded text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  oddsFormat === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{label}</span>
               </button>
             ))}
           </div>
@@ -255,16 +298,12 @@ export function SettingsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Settings className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
-            <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
         </div>
         {(section === 'general' || section === 'system') && (
           <Button variant="outline" size="sm" onClick={fetchSettings} disabled={isLoading}>
-            <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+            {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             {t('common.refresh')}
           </Button>
         )}

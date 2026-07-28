@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import {
   Badge,
   Button,
@@ -64,7 +65,6 @@ export function PolymarketAccountPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('polymarketAccount.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('polymarketAccount.subtitle')}</p>
         </div>
 
         <ProductModeNotice mode="read-only" />
@@ -91,10 +91,9 @@ export function PolymarketAccountPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('polymarketAccount.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('polymarketAccount.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

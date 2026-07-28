@@ -58,18 +58,15 @@ export class ReleaseGateService {
     };
   }
 
-  get(game: EsportsGame): BoardReleaseGateSummary {
+  get(
+    game: EsportsGame,
+    options?: { board?: BoardValidationSummary; runId?: string },
+  ): BoardReleaseGateSummary {
     const checkedAt = new Date().toISOString();
-    const board = this.normalization.getBoard(game).summary;
+    const board = options?.board ?? this.normalization.getBoard(game).summary;
     const runs = this.runs.listRuns(100, game);
     const fixtureRun = runs.find((run) => isFixtureRun(run));
-    const currentRun = runs.find(
-      (run) =>
-        !isFixtureRun(run) &&
-        run.matchId === board.sampleMatch?.externalMatchId &&
-        run.dataSnapshotHash === board.sampleMatch.dataSnapshotHash &&
-        !run.marketId.startsWith('local-practice:'),
-    );
+    const currentRun = selectCurrentSourceRun(runs, board, options?.runId);
     const fixture = this.fixtureEvidence(fixtureRun, checkedAt);
     const currentSource = this.currentSourceEvidence(board, currentRun, checkedAt);
     return {
@@ -173,6 +170,31 @@ export class ReleaseGateService {
 
 function isFixtureRun(run: RunRecord): boolean {
   return /^fixture(?:-|$)/i.test(run.provider ?? '') || /fixture/i.test(run.model ?? '');
+}
+
+/** Prefer exact snapshot hash; fall back to same-match current runs when freshness rehash drifts. */
+function selectCurrentSourceRun(
+  runs: RunRecord[],
+  board: BoardValidationSummary,
+  preferredRunId?: string,
+): RunRecord | undefined {
+  if (preferredRunId) {
+    const preferred = runs.find((run) => run.runId === preferredRunId);
+    if (preferred && !isFixtureRun(preferred)) return preferred;
+  }
+  const matchId = board.sampleMatch?.externalMatchId;
+  if (!matchId) return undefined;
+  const candidates = runs.filter(
+    (run) =>
+      !isFixtureRun(run) &&
+      run.matchId === matchId &&
+      !run.marketId.startsWith('local-practice:'),
+  );
+  if (candidates.length === 0) return undefined;
+  const exactHash = board.sampleMatch?.dataSnapshotHash;
+  return (
+    candidates.find((run) => exactHash && run.dataSnapshotHash === exactHash) ?? candidates[0]
+  );
 }
 
 function summarizeEvidence(

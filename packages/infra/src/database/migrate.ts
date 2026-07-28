@@ -64,6 +64,8 @@ export function runMigrations(): void {
     '041_esports_match_source_identities.sql',
     '042_esports_team_aliases.sql',
     '043_sim_bet_settlement_source.sql',
+    '044_bet_result_analyses.sql',
+    '045_whale_trade_market_question.sql',
   ];
 
   for (const name of migrations) {

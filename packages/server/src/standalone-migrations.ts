@@ -42,6 +42,8 @@ import m041 from '../../infra/src/database/migrations/041_esports_match_source_i
 import m042 from '../../infra/src/database/migrations/042_esports_team_aliases.sql' with { type: 'text' };
 
 import m043 from '../../infra/src/database/migrations/043_sim_bet_settlement_source.sql' with { type: 'text' };
+import m044 from '../../infra/src/database/migrations/044_bet_result_analyses.sql' with { type: 'text' };
+import m045 from '../../infra/src/database/migrations/045_whale_trade_market_question.sql' with { type: 'text' };
 
 export const standaloneMigrationSources: Record<string, string> = {
   '001_initial_schema.sql': m001,
@@ -87,4 +89,6 @@ export const standaloneMigrationSources: Record<string, string> = {
   '041_esports_match_source_identities.sql': m041,
   '042_esports_team_aliases.sql': m042,
   '043_sim_bet_settlement_source.sql': m043,
+  '044_bet_result_analyses.sql': m044,
+  '045_whale_trade_market_question.sql': m045,
 };

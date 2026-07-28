@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, Gamepad2, Loader2, RefreshCw } from 'lucide-react';
+import { ExternalLink, Gamepad2, RefreshCw } from 'lucide-react';
 import type {
   EsportsGame,
   EsportsSourceDescriptor,
@@ -9,6 +9,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } fro
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { useToast } from './ToastProvider';
+import { LoadingSpinner } from './LoadingState';
 
 interface SourceCatalogEntry {
   game: EsportsGame;
@@ -108,7 +109,7 @@ export function EsportsDataSourcesPanel() {
                     onClick={() => void syncGame(entry.game)}
                     disabled={syncing !== null}
                   >
-                    {syncing === entry.game ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {syncing === entry.game ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
                     {t(syncing === entry.game ? 'settings.sourceSyncing' : 'settings.sourceSync')}
                   </Button>
                 </div>

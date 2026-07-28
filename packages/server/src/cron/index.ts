@@ -502,7 +502,7 @@ export function startCronJobs(): void {
         trigger: 'scheduled',
       },
       async (ctx) => {
-        const discovery = await sharedSmartWalletDiscovery.discoverTopWallets(12);
+        const discovery = await sharedSmartWalletDiscovery.discoverTopWallets(50);
         const result = await walletPerformance.recalculateAll();
         if (result.addressesUpdated > 0) {
           broadcast('whales', { performanceUpdated: result.addressesUpdated });

@@ -7,7 +7,7 @@ import { setTheme, waitForMainHeading } from './fixtures/theme';
  * P1 UI audit fixes:
  * 1. Match detail — no duplicate practice surface
  * 2. CopyFollowPanel — design-system Input (not raw <input>)
- * 3. Sidebar — distinct icons per nav item (label-based check)
+ * 3. Sidebar and content titles — text-only navigation and headings
  * 4. Whales follow tab — onboarding guide when no followed wallets
  */
 test.describe('P1 UI audit fixes', () => {
@@ -32,7 +32,9 @@ test.describe('P1 UI audit fixes', () => {
     await waitForMainHeading(page);
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
 
-    await expect(page.getByText(/如何开始关注跟单|Getting Started with Copy Follow/i).first()).toBeVisible();
+    await expect(
+      page.getByText(/如何开始关注跟单|Getting Started with Copy Follow/i).first(),
+    ).toBeVisible();
     await expect(page.getByText(/关注钱包|Follow Wallets/i).first()).toBeVisible();
     await expect(page.getByText(/配置跟单|Configure Copy/i).first()).toBeVisible();
     await expect(page.getByText(/接收信号|Receive Signals/i).first()).toBeVisible();
@@ -48,16 +50,31 @@ test.describe('P1 UI audit fixes', () => {
     expect(await page.locator('input:not([class*="flex"])').count()).toBe(0);
   });
 
-  test('sidebar advanced section has distinct nav labels', async ({ page }) => {
+  test('sidebar exposes only the consolidated text navigation', async ({ page }) => {
     await page.goto('/#/');
     await waitForMainHeading(page);
 
     const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.getByRole('navigation', { name: 'Primary' }).getByRole('link')).toHaveCount(4);
+    await expect(sidebar.getByRole('link', { name: /总览|Overview/i })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: /模拟盘|Sim Trading/i })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: /巨鲸追踪|Whale Tracking/i })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: /日历|Calendar/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /设置|Settings/i })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: /Prompt|prompt-variants|提示词/i })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: /资金分配|Allocation/i })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: /我的账本|Bankroll|My Ledger/i })).toBeVisible();
-    await expect(sidebar.locator('a[href*="simulation"]')).toHaveCount(0);
-    await expect(sidebar.getByRole('link', { name: /Polymarket/i })).toHaveCount(0);
+    await expect(sidebar.locator('nav svg')).toHaveCount(0);
+  });
+
+  test('content titles do not show decorative icons', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForMainHeading(page);
+
+    const titleIcons = page.locator(
+      'main :is(h1, h2, h3) > svg, main svg:has(+ :is(h1, h2, h3)), main [data-slot="card-title"] > svg, main svg:has(+ [data-slot="card-title"])',
+    );
+    await expect(titleIcons).toHaveCount(0);
+
+    await page.goto('/#/bankroll');
+    await waitForMainHeading(page);
+    await expect(page.getByTestId('account-workspace').locator(':scope > div:first-child svg')).toHaveCount(0);
   });
 });

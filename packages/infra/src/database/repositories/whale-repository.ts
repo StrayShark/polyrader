@@ -187,19 +187,29 @@ export class WhaleRepository {
 
   insertTrade(trade: WhaleTrade & { address: string }): boolean {
     const result = getDb().prepare(
-      `INSERT OR IGNORE INTO whale_trades (address, tx_hash, market_id, outcome, amount, price, timestamp, type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO whale_trades (address, tx_hash, market_id, market_question, outcome, amount, price, timestamp, type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       trade.address,
       trade.txHash,
       trade.marketId,
+      trade.marketQuestion ?? null,
       trade.outcome,
       trade.amount,
       trade.price,
       trade.timestamp,
       trade.type,
     );
-    // changes === 0 means the INSERT OR IGNORE was a no-op (duplicate tx_hash)
+    if (result.changes === 0 && trade.marketQuestion) {
+      getDb().prepare(
+        `UPDATE whale_trades
+         SET market_question = ?
+         WHERE tx_hash = ?
+           AND (market_question IS NULL OR TRIM(market_question) = '')`,
+      ).run(trade.marketQuestion, trade.txHash);
+      return false;
+    }
+
     return result.changes > 0;
   }
 
@@ -306,6 +316,7 @@ export class WhaleRepository {
     return {
       txHash: row.tx_hash as string,
       marketId: row.market_id as string,
+      marketQuestion: row.market_question as string | undefined,
       outcome: row.outcome as string,
       amount: row.amount as number,
       price: row.price as number,

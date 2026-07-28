@@ -5,6 +5,7 @@ import type {
   SimBet,
   ReviewSummary,
   ReviewListFilters,
+  BetResultAnalysisArtifact,
 } from '@polyrader/core/browser';
 import { calculateBrierScore, calculateClosingLineValue } from '@polyrader/core/browser';
 import { api } from '../utils/api';
@@ -42,11 +43,16 @@ interface ReviewState {
   reviews: ReviewDetail[];
   summary: ReviewSummary | null;
   selectedReview: ReviewDetail | null;
+  resultAnalysis: BetResultAnalysisArtifact | null;
   isLoading: boolean;
+  isAnalyzingResult: boolean;
   error: string | null;
+  resultAnalysisError: string | null;
   fetchReviews: (filters?: ReviewListFilters) => Promise<void>;
   fetchSummary: (filters?: ReviewListFilters) => Promise<void>;
   fetchReviewDetail: (betId: string) => Promise<void>;
+  fetchResultAnalysis: (betId: string) => Promise<void>;
+  analyzeBetResult: (betId: string, input?: { locale?: string; force?: boolean }) => Promise<void>;
   createOrUpdateReview: (betId: string, input: { errorTags?: string[]; note?: string; closingOdds?: number }) => Promise<void>;
 }
 
@@ -54,8 +60,11 @@ export const useReviewStore = create<ReviewState>((set) => ({
   reviews: [],
   summary: null,
   selectedReview: null,
+  resultAnalysis: null,
   isLoading: false,
+  isAnalyzingResult: false,
   error: null,
+  resultAnalysisError: null,
 
   fetchReviews: async (filters = {}) => {
     set({ isLoading: true, error: null });
@@ -83,6 +92,33 @@ export const useReviewStore = create<ReviewState>((set) => ({
       set({ selectedReview: res.data, isLoading: false });
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
+    }
+  },
+
+  fetchResultAnalysis: async (betId: string) => {
+    set({ resultAnalysis: null, resultAnalysisError: null });
+    try {
+      const res = await api.get<{ data: BetResultAnalysisArtifact }>(
+        `/sim/bets/${betId}/result-analysis`,
+      );
+      set({ resultAnalysis: res.data });
+    } catch (err) {
+      const message = (err as Error).message;
+      if (!message.includes('not found')) set({ resultAnalysisError: message });
+    }
+  },
+
+  analyzeBetResult: async (betId, input = {}) => {
+    set({ isAnalyzingResult: true, resultAnalysisError: null });
+    try {
+      const res = await api.post<{ data: BetResultAnalysisArtifact }>(
+        `/sim/bets/${betId}/result-analysis`,
+        input,
+        { timeoutMs: 120000 },
+      );
+      set({ resultAnalysis: res.data, isAnalyzingResult: false });
+    } catch (err) {
+      set({ resultAnalysisError: (err as Error).message, isAnalyzingResult: false });
     }
   },
 

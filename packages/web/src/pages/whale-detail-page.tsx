@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Trophy, TrendingUp, Fish } from 'lucide-react';
+import { ArrowLeft, Trophy, TrendingUp, Fish, RefreshCw } from 'lucide-react';
 import { createChart, type IChartApi, type LineData, type Time } from 'lightweight-charts';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { DataState } from '../components/DataState';
+import { LoadingSpinner } from '../components/LoadingState';
 import { FollowWalletButton } from '../components/CopyFollowPanel';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { Card, CardHeader, CardTitle, Badge, Button, Progress } from '@/components/ui';
-import type { WhaleDetail } from '@polyrader/core/browser';
+import type { PolymarketUserPosition, WhaleDetail } from '@polyrader/core/browser';
 
 function PerformanceChart({
   data,
@@ -76,8 +77,28 @@ export function WhaleDetailPage() {
   const { address } = useParams();
   const { t } = useI18n();
   const [whale, setWhale] = useState<WhaleDetail | null>(null);
+  const [positions, setPositions] = useState<PolymarketUserPosition[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(false);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const loadPositions = useCallback(async () => {
+    if (!address) return;
+    setPositionsLoading(true);
+    setPositionsError(null);
+    try {
+      const { data } = await api.get<{ data: PolymarketUserPosition[] }>(
+        `/whales/${encodeURIComponent(address)}/positions?limit=50`,
+      );
+      setPositions(data);
+    } catch (err) {
+      setPositions([]);
+      setPositionsError((err as Error).message);
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, [address]);
 
   useEffect(() => {
     if (!address) return;
@@ -91,6 +112,10 @@ export function WhaleDetailPage() {
       })
       .finally(() => setLoading(false));
   }, [address]);
+
+  useEffect(() => {
+    void loadPositions();
+  }, [loadPositions]);
 
   const perf = whale?.performance;
 
@@ -163,6 +188,88 @@ export function WhaleDetailPage() {
               ))}
             </div>
 
+            <Card>
+              <CardHeader className="flex-row items-center justify-between border-b px-6 py-3">
+                <CardTitle>{t('whales.currentHoldings')}</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => void loadPositions()}
+                  disabled={positionsLoading}
+                  title={t('common.refresh')}
+                >
+                  {positionsLoading ? (
+                    <LoadingSpinner className="h-3.5 w-3.5" size={14} />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </CardHeader>
+              {positionsLoading && positions.length === 0 ? (
+                <div className="flex h-32 items-center justify-center">
+                  <LoadingSpinner size={28} />
+                </div>
+              ) : positionsError ? (
+                <p className="p-6 text-sm text-red">{positionsError}</p>
+              ) : positions.length === 0 ? (
+                <p className="p-6 text-sm text-muted-foreground">{t('whales.noCurrentHoldings')}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <div className="min-w-[760px]">
+                    <div className="grid grid-cols-[minmax(280px,1.8fr)_minmax(90px,0.8fr)_repeat(4,minmax(96px,0.7fr))] gap-3 border-b bg-muted/40 px-6 py-2 text-xs font-medium text-muted-foreground">
+                      <span>{t('whales.market')}</span>
+                      <span>{t('whales.outcome')}</span>
+                      <span className="text-right">{t('whales.value')}</span>
+                      <span className="text-right">{t('whales.shares')}</span>
+                      <span className="text-right">{t('whales.avgCurrentPrice')}</span>
+                      <span className="text-right">{t('whales.unrealizedPnl')}</span>
+                    </div>
+                    <div className="divide-y">
+                      {positions.map((position) => {
+                        const key = `${position.conditionId ?? position.marketId}-${position.tokenId ?? position.outcome}`;
+                        const pnl = position.cashPnl;
+                        return (
+                          <div
+                            key={key}
+                            className="grid grid-cols-[minmax(280px,1.8fr)_minmax(90px,0.8fr)_repeat(4,minmax(96px,0.7fr))] items-center gap-3 px-6 py-3 text-sm"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{position.question || '--'}</p>
+                              {(position.conditionId ?? position.marketId) && (
+                                <p className="truncate font-mono text-[11px] text-muted-foreground">
+                                  {position.conditionId ?? position.marketId}
+                                </p>
+                              )}
+                            </div>
+                            <Badge variant="secondary" className="w-fit max-w-full truncate">
+                              {position.outcome || '--'}
+                            </Badge>
+                            <span className="text-right font-mono tabular-nums">
+                              {formatCurrency(position.value)}
+                            </span>
+                            <span className="text-right font-mono tabular-nums">
+                              {formatNumber(position.shares)}
+                            </span>
+                            <span className="text-right font-mono tabular-nums">
+                              {formatPricePair(position.avgPrice, position.currentPrice)}
+                            </span>
+                            <span
+                              className={`text-right font-mono tabular-nums ${
+                                pnl === undefined ? 'text-muted-foreground' : pnl >= 0 ? 'text-green' : 'text-red'
+                              }`}
+                            >
+                              {pnl === undefined ? '--' : formatSignedCurrency(pnl)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+
             {whale.winRateTimeline.length > 0 && (
               <Card>
                 <CardHeader className="border-b px-6 py-3">
@@ -212,13 +319,24 @@ export function WhaleDetailPage() {
                   {whale.recentTrades.length === 0 ? (
                     <p className="p-6 text-sm text-muted-foreground">{t('whales.noRecentTrades')}</p>
                   ) : (
-                    whale.recentTrades.map((trade) => (
-                      <div key={trade.txHash} className="flex items-center justify-between px-6 py-3 text-sm">
-                        <div>
-                          <span className="uppercase text-muted-foreground">{trade.type}</span>
-                          <span className="ml-2">{trade.outcome}</span>
+                    whale.recentTrades.map((trade, index) => (
+                      <div
+                        key={`${trade.txHash}-${trade.marketId}-${index}`}
+                        className="flex items-center justify-between gap-4 px-6 py-3 text-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">
+                            {trade.marketQuestion || t('whales.unresolvedMarket')}
+                          </p>
+                          <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="uppercase">{trade.type}</span>
+                            <span className="text-foreground">{trade.outcome}</span>
+                            {!trade.marketQuestion && trade.marketId && (
+                              <span className="font-mono">{shortId(trade.marketId)}</span>
+                            )}
+                          </p>
                         </div>
-                        <div className="text-right tabular-nums">
+                        <div className="shrink-0 text-right tabular-nums">
                           <div>${trade.amount.toFixed(0)} @ {(trade.price * 100).toFixed(0)}¢</div>
                           <div className="text-xs text-muted-foreground">
                             {new Date(trade.timestamp).toLocaleDateString()}
@@ -255,4 +373,32 @@ export function WhaleDetailPage() {
       </DataState>
     </div>
   );
+}
+
+function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  return `$${Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function formatSignedCurrency(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  return `${value >= 0 ? '+' : '-'}${formatCurrency(value)}`;
+}
+
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function formatPrice(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '--';
+  return `${(value * 100).toFixed(1)}¢`;
+}
+
+function formatPricePair(avgPrice: number | undefined, currentPrice: number | undefined): string {
+  return `${formatPrice(avgPrice)} / ${formatPrice(currentPrice)}`;
+}
+
+function shortId(value: string): string {
+  return value.length > 16 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
 }

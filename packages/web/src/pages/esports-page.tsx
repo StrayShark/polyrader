@@ -4,6 +4,7 @@ import { Gamepad2, Trophy, Map, RefreshCw } from 'lucide-react';
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import { useI18n } from '../hooks/use-i18n';
 import { Button, Card, CardHeader, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui';
 
@@ -76,10 +77,9 @@ export function EsportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('esports.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('esports.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

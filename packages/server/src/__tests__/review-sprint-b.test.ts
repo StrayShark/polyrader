@@ -68,6 +68,8 @@ describe('Sprint B review loop', () => {
     const summary = reviewService.getSummary('default');
     expect(summary.totalSettled).toBe(1);
     expect(summary.errorTagStats.map((s) => s.tag).sort()).toEqual(['chased_odds', 'ignored_map_pool']);
+    expect(summary.errorTagTrend.map((s) => s.tag).sort()).toEqual(['chased_odds', 'ignored_map_pool']);
+    expect(summary.errorTagTrend[0]?.periodLabel).toMatch(/^\d{2}\/\d{2}-\d{2}\/\d{2}$/);
     expect(summary.byFormat.some((row) => row.key === 'BO3')).toBe(true);
     expect(summary.suggestions.length).toBeGreaterThan(0);
 

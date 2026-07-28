@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import type { EsportsGame } from '@polyrader/core';
+import { P5VerificationService } from '../services/p5-verification-service';
 import { FactNormalizationService } from '../services/fact-normalization-service';
 import { EsportsSourceService } from '../services/esports-source-service';
 import { ReleaseGateService } from '../services/release-gate-service';
@@ -12,8 +13,31 @@ import {
   LolMarketDiscoveryService,
   ValorantMarketDiscoveryService,
 } from '../services/riot-games-market-discovery-service';
+import { envNumber, withTimeout } from '../utils/timeout';
 
-const GAMES = new Set(['cs2', 'lol', 'dota2', 'valorant']);
+const GAME_LIST = ['cs2', 'lol', 'dota2', 'valorant'] as const;
+const GAMES = new Set<string>(GAME_LIST);
+const CURRENT_SOURCE_SMOKE_BOARD_TIMEOUT_MS = 30_000;
+
+interface CurrentSourceSmokeBoard {
+  game: EsportsGame;
+  status: 'verified' | 'blocked' | 'failed';
+  boardState?: string;
+  completeness?: number;
+  analysis?: string;
+  gate: string;
+  blocker?: string | null;
+  auditId?: string;
+}
+
+interface CurrentSourceSmokeReport {
+  generatedAt: string;
+  executeAnalysis: boolean;
+  verifiedCount: number;
+  total: number;
+  releaseReady: boolean;
+  boards: CurrentSourceSmokeBoard[];
+}
 
 export class ValidationLabController {
   private service = new FactNormalizationService();
@@ -26,6 +50,23 @@ export class ValidationLabController {
   private cs2Markets = new Cs2MarketDiscoveryService();
   private lolMarkets = new LolMarketDiscoveryService();
   private valorantMarkets = new ValorantMarketDiscoveryService();
+
+  verifyP5(req: Request, res: Response): void {
+    if (process.env.NODE_ENV === 'production') {
+      res.status(403).json({
+        error: 'P5 verification is only available outside production',
+      });
+      return;
+    }
+    try {
+      const report = new P5VerificationService().verifyAll({
+        nonce: typeof req.body?.nonce === 'string' ? req.body.nonce : undefined,
+      });
+      res.status(201).json({ data: report });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  }
 
   listReleaseGates(_req: Request, res: Response): void {
     try {
@@ -75,6 +116,72 @@ export class ValidationLabController {
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }
+  }
+
+  async runCurrentSourceSmoke(req: Request, res: Response): Promise<void> {
+    const executeAnalysis = req.body?.executeAnalysis === true;
+    const boardTimeoutMs = envNumber(
+      'POLYRADER_CURRENT_SOURCE_SMOKE_BOARD_TIMEOUT_MS',
+      CURRENT_SOURCE_SMOKE_BOARD_TIMEOUT_MS,
+      1_000,
+      180_000,
+    );
+    const preferredMatchIds =
+      req.body?.preferredMatchIds && typeof req.body.preferredMatchIds === 'object'
+        ? (req.body.preferredMatchIds as Record<string, unknown>)
+        : {};
+    const boards: CurrentSourceSmokeBoard[] = [];
+
+    for (const game of GAME_LIST) {
+      try {
+        const preferredExternalMatchId =
+          typeof preferredMatchIds[game] === 'string'
+            ? String(preferredMatchIds[game])
+            : undefined;
+        const result = await withTimeout(
+          this.releaseAudit.run(game, {
+            executeAnalysis,
+            preferredExternalMatchId,
+          }),
+          boardTimeoutMs,
+          `current-source smoke ${game}`,
+        );
+        const blockers = result.gate.currentSource.blockers;
+        boards.push({
+          game,
+          status: result.gate.status === 'verified' ? 'verified' : 'blocked',
+          boardState: result.board.boardState,
+          completeness: result.board.completeness,
+          analysis: result.analysis.status,
+          gate: result.gate.status,
+          blocker:
+            blockers[0] ??
+            result.analysis.detail ??
+            result.board.stages.find((stage) => stage.status !== 'passed')?.detail ??
+            null,
+          auditId: result.auditId,
+        });
+      } catch (err) {
+        boards.push({
+          game,
+          status: 'failed',
+          analysis: 'failed',
+          gate: 'failed',
+          blocker: (err as Error).message,
+        });
+      }
+    }
+
+    const verifiedCount = boards.filter((item) => item.status === 'verified').length;
+    const report: CurrentSourceSmokeReport = {
+      generatedAt: new Date().toISOString(),
+      executeAnalysis,
+      verifiedCount,
+      total: GAME_LIST.length,
+      releaseReady: verifiedCount === GAME_LIST.length,
+      boards,
+    };
+    res.status(201).json({ data: report });
   }
 
   listReleaseAudits(req: Request, res: Response): void {

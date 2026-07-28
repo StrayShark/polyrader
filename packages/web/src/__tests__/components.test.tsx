@@ -8,10 +8,13 @@ import { CalibrationChart } from '../components/CalibrationChart';
 import { DotaDataQualityPanel } from '../components/DotaDataQualityPanel';
 import { DotaSprint3EvidencePanel } from '../components/DotaSprint3EvidencePanel';
 import { RiotGameDataQualityPanel } from '../components/RiotGameDataQualityPanel';
+import { BetResultAnalysisPanel } from '../components/BetResultAnalysisPanel';
+import { useReviewStore } from '../stores/review-store';
 import {
   buildDota2FixtureFacts,
   buildLolFixtureFacts,
   buildValorantFixtureFacts,
+  type BetResultAnalysisArtifact,
   type DotaAnalysisEligibility,
   type DotaDataQuality,
   type EsportsTeamAlias,
@@ -280,6 +283,85 @@ describe('DotaSprint3EvidencePanel', () => {
     expect(getByText('LOW_LIQUIDITY_OBSERVE_ONLY')).toBeInTheDocument();
     fireEvent.click(getByRole('button', { name: /match winner/i }));
     expect(onSelectMarket).toHaveBeenCalledWith('fixture-winner');
+  });
+});
+
+describe('BetResultAnalysisPanel', () => {
+  it('shows suggested error tags and standardized artifacts without accepting tags automatically', () => {
+    const artifact: BetResultAnalysisArtifact = {
+      id: 'bra-test',
+      betId: 'bet-1',
+      status: 'valid',
+      contractVersion: 'bet-review.v1',
+      promptVersion: 'bet-review.v1.0.0',
+      responseSchemaVersion: 'bet-review-response.v1',
+      provider: 'minimax',
+      model: 'MiniMax-M3',
+      promptHash: 'abcdef1234567890abcdef1234567890',
+      systemPrompt: 'Return JSON only.',
+      inputJson: JSON.stringify({ contractVersion: 'bet-review.v1', betId: 'bet-1' }),
+      outputSchemaJson: JSON.stringify({ type: 'object' }),
+      normalizedResponseJson: JSON.stringify({ contractVersion: 'bet-review-response.v1' }),
+      validationErrors: [],
+      response: {
+        contractVersion: 'bet-review-response.v1',
+        analysisId: 'bra-test',
+        betId: 'bet-1',
+        verdict: {
+          decisionQuality: 'good_process_bad_result',
+          processScore: 0.72,
+          confidence: 'medium',
+          summary: 'The process was evidence-backed despite the result.',
+        },
+        attribution: {
+          primary: 'market_price',
+          factors: [{
+            code: 'CLOSING_PRICE',
+            category: 'market_price',
+            impact: 'positive',
+            evidenceIds: ['metric:outcome-quality'],
+            summary: 'Entry price beat the close.',
+          }],
+        },
+        calibration: {
+          brierScore: 0.16,
+          assessment: 'acceptable',
+          summary: 'Calibration is usable for this sample.',
+        },
+        priceQuality: {
+          closingLineValue: 0.04,
+          assessment: 'beat_close',
+          summary: 'The entry captured positive CLV.',
+        },
+        riskDiscipline: {
+          assessment: 'within_policy',
+          reasonCodes: ['STAKE_OK'],
+          summary: 'Stake remained inside the policy.',
+        },
+        lessons: [{ code: 'LOG_LATE_INFO', priority: 'medium', action: 'Record late lineup changes before entry.' }],
+        suggestedErrorTags: ['overtrusted_ai', 'missing_late_info'],
+        summary: 'Keep the process, tighten late-information checks.',
+      },
+      createdAt: '2026-07-25T00:00:00.000Z',
+      updatedAt: '2026-07-25T00:00:00.000Z',
+    };
+    const fetchResultAnalysis = vi.fn();
+    const analyzeBetResult = vi.fn();
+    useReviewStore.setState({
+      resultAnalysis: artifact,
+      resultAnalysisError: null,
+      isAnalyzingResult: false,
+      fetchResultAnalysis,
+      analyzeBetResult,
+    });
+
+    const { getByText } = render(<BetResultAnalysisPanel betId="bet-1" />);
+
+    expect(fetchResultAnalysis).toHaveBeenCalledWith('bet-1');
+    expect(getByText('建议错误标签')).toBeInTheDocument();
+    expect(getByText('过度信任 AI')).toBeInTheDocument();
+    expect(getByText('错过赛前信息')).toBeInTheDocument();
+    expect(getByText('查看标准化输入输出')).toBeInTheDocument();
   });
 });
 

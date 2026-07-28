@@ -20,12 +20,9 @@ test.describe('Unified account workspace', () => {
 
     await page.goto('/#/bankroll');
     const tabs = page.getByTestId('account-workspace-tabs');
-    await expect(page.getByRole('heading', { name: '我的账本' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '模拟盘' })).toBeVisible();
     await expect(tabs.getByRole('tab')).toHaveCount(5);
-    await expect(tabs.getByRole('tab', { name: '概览' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(tabs.getByRole('tab', { name: '概览' })).toHaveAttribute('aria-selected', 'true');
     expect(requestedModules.size).toBe(0);
 
     await tabs.getByRole('tab', { name: '策略参数' }).click();
@@ -44,6 +41,10 @@ test.describe('Unified account workspace', () => {
       'true',
     );
     await expect(page.getByTestId('paper-orders-page')).toBeVisible();
+    const marketSummary = page.getByTestId('bet-market-summary-sim-bet-1');
+    await expect(marketSummary).toContainText('Spirit vs G2 · IEM Cologne');
+    await expect(marketSummary).toContainText('Spirit @ 1.80');
+    await expect(marketSummary).toContainText('ID m1');
     await expect
       .poll(() => [...requestedModules].sort())
       .toEqual(['orders', 'performance', 'simulation']);

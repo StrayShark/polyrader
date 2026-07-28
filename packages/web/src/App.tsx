@@ -9,6 +9,7 @@ import { isFirstRun, onTauriEvent } from './utils/tauri-bridge';
 import { checkForUpdates } from './utils/update-checker';
 import { useI18n } from './hooks/use-i18n';
 import { useFeatureFlagStore } from './stores/feature-flag-store';
+import { LoadingState } from './components/LoadingState';
 
 export default function App() {
   const [showSetup, setShowSetup] = useState(false);
@@ -61,12 +62,7 @@ export default function App() {
   // Show loading while checking setup state
   if (!setupChecked) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-          <span className="text-sm text-muted-foreground">{t('app.starting')}</span>
-        </div>
-      </div>
+      <LoadingState className="min-h-screen bg-background" label={t('app.starting')} />
     );
   }
 
@@ -78,12 +74,7 @@ export default function App() {
   // Waiting for sidecar
   if (!sidecarReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-          <span className="text-sm text-muted-foreground">{t('app.startingBackend')}</span>
-        </div>
-      </div>
+      <LoadingState className="min-h-screen bg-background" label={t('app.startingBackend')} />
     );
   }
 

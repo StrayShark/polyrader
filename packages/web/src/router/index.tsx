@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { createHashRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '../layouts/app-layout';
 import { useI18n } from '../hooks/use-i18n';
+import { LoadingState } from '../components/LoadingState';
 
 // Code-split all pages for lazy loading
 const DailyPage = lazy(() => import('../pages/daily-page').then((m) => ({ default: m.DailyPage })));
@@ -27,14 +28,7 @@ const SettingsPage = lazy(() => import('../pages/settings-page').then((m) => ({ 
 
 function PageLoader() {
   const { t } = useI18n();
-  return (
-    <div className="flex items-center justify-center py-20">
-      <div className="flex flex-col items-center gap-2">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-        <span className="text-sm text-muted-foreground">{t('common.loading')}</span>
-      </div>
-    </div>
-  );
+  return <LoadingState className="py-20" label={t('common.loading')} />;
 }
 
 function withSuspense(Component: React.ComponentType) {

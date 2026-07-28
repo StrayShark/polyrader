@@ -6,6 +6,7 @@ import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { MarketHeatmap } from '../components/market-heatmap';
 import { StatsSkeleton, TableSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import { useWebSocket } from '../hooks/use-websocket';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Badge, Button } from '@/components/ui';
@@ -91,10 +92,9 @@ export function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('dashboard.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('dashboard.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchMarkets()} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

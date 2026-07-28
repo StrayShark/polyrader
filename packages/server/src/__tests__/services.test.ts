@@ -30,6 +30,9 @@ vi.mock('@polyrader/infra', () => ({
   })),
   cacheGet: vi.fn(),
   cacheSet: vi.fn(),
+  PolymarketDataClient: vi.fn().mockImplementation(() => ({
+    getCurrentPositions: vi.fn().mockResolvedValue([]),
+  })),
   PolymarketGammaClient: vi.fn(),
   PolymarketClobClient: vi.fn(),
 }));
@@ -108,6 +111,35 @@ describe('WhaleService', () => {
 
       expect(result?.address).toBe('0xfound');
       expect(cacheSet).toHaveBeenCalledWith('whale:0xfound', mockWhale, 120);
+    });
+  });
+
+  describe('getWhalePositions', () => {
+    it('fetches current positions from the Polymarket data API and caches them by address', async () => {
+      vi.mocked(cacheGet).mockResolvedValue(null);
+      const dataClient = (service as unknown as {
+        dataClient: { getCurrentPositions: ReturnType<typeof vi.fn> };
+      }).dataClient;
+      dataClient.getCurrentPositions.mockResolvedValue([
+        { marketId: 'low', question: 'Low', outcome: 'Yes', shares: 10, value: 20 },
+        { marketId: 'high', question: 'High', outcome: 'No', shares: 12, value: 80 },
+      ]);
+
+      const positions = await service.getWhalePositions(
+        '0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD',
+        500,
+      );
+
+      expect(dataClient.getCurrentPositions).toHaveBeenCalledWith(
+        '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+        100,
+      );
+      expect(positions.map((position) => position.marketId)).toEqual(['high', 'low']);
+      expect(cacheSet).toHaveBeenCalledWith(
+        'whale:positions:0xabcdefabcdefabcdefabcdefabcdefabcdefabcd:100',
+        positions,
+        60,
+      );
     });
   });
 });

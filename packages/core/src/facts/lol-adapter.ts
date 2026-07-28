@@ -196,11 +196,10 @@ export function normalizeLolMatchFacts(
   };
 }
 
-export function buildLolFixtureFacts(now = new Date()): NormalizedMatchFacts {
+export function buildLolFixtureSnapshots(now = new Date()): SourceSnapshotLike[] {
   const observedAt = now.toISOString();
   const startsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
-  return normalizeLolMatchFacts(
-    [
+  return [
       {
         game: 'lol',
         source: 'grid',
@@ -266,9 +265,11 @@ export function buildLolFixtureFacts(now = new Date()): NormalizedMatchFacts {
         },
         observedAt,
       },
-    ],
-    { now },
-  )!;
+  ];
+}
+
+export function buildLolFixtureFacts(now = new Date()): NormalizedMatchFacts {
+  return normalizeLolMatchFacts(buildLolFixtureSnapshots(now), { now })!;
 }
 
 export function buildRiotGameDataQuality(input: {

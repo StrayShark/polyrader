@@ -142,6 +142,7 @@ export class WhaleIngestionService {
       const record: WhaleTrade = {
         txHash: trade.txHash,
         marketId: trade.tokenId,
+        marketQuestion: trade.question,
         outcome: trade.outcome ?? this.lookupOutcome(trade.tokenId),
         amount: trade.value,
         price: trade.price,

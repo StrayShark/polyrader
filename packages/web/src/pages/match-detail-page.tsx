@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   TrendingUp,
@@ -6,11 +6,9 @@ import {
   BarChart3,
   Users,
   AlertTriangle,
-  Loader2,
+  ArrowLeft,
   Target,
   Info,
-  Trophy,
-  ChevronRight,
   Swords,
 } from 'lucide-react';
 import { api } from '../utils/api';
@@ -20,6 +18,7 @@ import { WinRateTimeline, type TimelineSnapshot } from '../components/WinRateTim
 import { MatchDetailSkeleton } from '../components/Skeletons';
 import { useWebSocket } from '../hooks/use-websocket';
 import { useI18n } from '../hooks/use-i18n';
+import { LoadingSpinner } from '../components/LoadingState';
 import {
   Card,
   CardHeader,
@@ -53,6 +52,7 @@ import type {
 
 export function MatchDetailPage() {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const { subscribe } = useWebSocket();
   const { t, locale } = useI18n();
   const { markets, fetchMarkets } = useMarketStore();
@@ -73,6 +73,8 @@ export function MatchDetailPage() {
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [marketSource, setMarketSource] = useState<'local-sim' | 'polymarket' | null>(null);
   const [normalizedFacts, setNormalizedFacts] = useState<NormalizedMatchFacts | null>(null);
+  const [isRefreshingIntelligence, setIsRefreshingIntelligence] = useState(false);
+  const [intelligenceError, setIntelligenceError] = useState<string | null>(null);
 
   const loadMatch = useCallback(async () => {
     if (!slug) return;
@@ -224,6 +226,29 @@ export function MatchDetailPage() {
     setIsAnalyzing(false);
   };
 
+  const refreshMatchIntelligence = async () => {
+    if (!slug) return;
+    setIsRefreshingIntelligence(true);
+    setIntelligenceError(null);
+    try {
+      const { data } = await api.post<{
+        data: { refreshed: boolean; reason?: string; message?: string; match?: MatchInfo | null };
+      }>(`/esports/matches/${encodeURIComponent(slug)}/refresh-intelligence`, undefined, {
+        timeoutMs: 60_000,
+      });
+      if (!data.refreshed) {
+        setIntelligenceError(t('match.hltvFetchUnavailable'));
+        return;
+      }
+      if (data.match) setMatch(data.match);
+      else await loadMatch();
+    } catch (err) {
+      setIntelligenceError((err as Error).message || t('match.hltvFetchUnavailable'));
+    } finally {
+      setIsRefreshingIntelligence(false);
+    }
+  };
+
   const matchOddsA = livePrice && livePrice > 0 ? 1 / livePrice : undefined;
   const matchOddsB = livePrice && livePrice > 0 && livePrice < 1 ? 1 / (1 - livePrice) : undefined;
 
@@ -292,10 +317,22 @@ export function MatchDetailPage() {
 
   if (!match) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <AlertTriangle className="h-8 w-8 text-muted-foreground" />
-        <p className="mt-4 text-sm text-muted-foreground">{t('match.notFound')}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{t('match.waitForHltv')}</p>
+      <div className="space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/')}
+          className="-ml-2"
+          data-testid="back-to-lobby"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('match.backToLobby')}
+        </Button>
+        <div className="flex flex-col items-center justify-center py-20">
+          <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+          <p className="mt-4 text-sm text-muted-foreground">{t('match.notFound')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('match.waitForHltv')}</p>
+        </div>
       </div>
     );
   }
@@ -306,6 +343,9 @@ export function MatchDetailPage() {
   const lineupsConfirmed = Boolean(lineups?.teamA?.isConfirmed && lineups?.teamB?.isConfirmed);
   const teamAHasStandin = lineups?.teamA?.hasStandin ?? false;
   const teamBHasStandin = lineups?.teamB?.hasStandin ?? false;
+  const isHltvEligible = match.matchId.startsWith('local-hltv-')
+    || Boolean(slug?.startsWith('local-hltv-'))
+    || relatedMarkets.some((market) => parsePolymarketMatch(market.question)?.game === 'cs2');
 
   const handleAddMarketLeg = (market: Market, sideIndex: number) => {
     const parsed = parsePolymarketMatch(market.question);
@@ -359,15 +399,20 @@ export function MatchDetailPage() {
     <div className="space-y-6">
       {/* Match header */}
       <div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/" className="hover:text-foreground transition-colors">
-            {t('nav.lobby')}
-          </Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span>{match.eventName}</span>
+        <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/')}
+            className="-ml-2 shrink-0"
+            data-testid="back-to-lobby"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('match.backToLobby')}
+          </Button>
+          <span className="truncate border-l border-border pl-3">{match.eventName}</span>
         </div>
         <div className="mt-2 flex items-center gap-3">
-          <Trophy className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-semibold tracking-tight">
             {match.teamA.name} <span className="text-muted-foreground">vs</span> {match.teamB.name}
           </h1>
@@ -394,15 +439,12 @@ export function MatchDetailPage() {
               {t('match.statusCancelled')}
             </Badge>
           )}
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {match.eventName} · {match.format}
           {livePrice !== null && (
-            <span className="ml-2 tabular-nums">
-              · {t('match.livePrice')} {(livePrice * 100).toFixed(1)}¢
-            </span>
+            <Badge variant="outline" className="text-[10px] tabular-nums">
+              {t('match.livePrice')} {(livePrice * 100).toFixed(1)}¢
+            </Badge>
           )}
-        </p>
+        </div>
       </div>
 
       {analysisError && (
@@ -450,6 +492,39 @@ export function MatchDetailPage() {
               <MatchTeamIdentity team={match.teamB} align="right" />
             </div>
           </Card>
+
+          {isHltvEligible && !match.teamDetails?.isComplete && (
+            <Card data-testid="match-intelligence-empty" className="p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-medium">{t('match.hltvDataMissingTitle')}</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {t('match.hltvDataMissingDetail')}
+                  </p>
+                  {intelligenceError && (
+                    <p className="mt-2 text-xs text-red">{intelligenceError}</p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshMatchIntelligence}
+                  disabled={isRefreshingIntelligence}
+                  className="shrink-0"
+                  data-testid="fetch-hltv-intelligence"
+                >
+                  {isRefreshingIntelligence ? (
+                    <LoadingSpinner className="h-3.5 w-3.5" size={14} />
+                  ) : (
+                    <BarChart3 className="h-3.5 w-3.5" />
+                  )}
+                  {isRefreshingIntelligence
+                    ? t('match.fetchingHltvData')
+                    : t('match.fetchHltvData')}
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {match.teamDetails && (
             <TeamIntelligencePanel
@@ -737,7 +812,7 @@ export function MatchDetailPage() {
               <Button variant="outline" size="sm" onClick={triggerAnalysis} disabled={isAnalyzing}>
                 {isAnalyzing ? (
                   <>
-                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> {t('match.analyzing')}
+                    <LoadingSpinner className="mr-1 h-3.5 w-3.5" size={14} /> {t('match.analyzing')}
                   </>
                 ) : (
                   <>
@@ -999,7 +1074,6 @@ export function MatchDetailPage() {
             </Card>
           </div>
         </TabsContent>
-
       </Tabs>
     </div>
   );
@@ -1012,28 +1086,10 @@ function MatchTeamIdentity({
   team: TeamBrief;
   align?: 'left' | 'right';
 }) {
-  const mark = team.name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
   return (
     <div
       className={`flex min-w-0 flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}
     >
-      {team.logo ? (
-        <img
-          src={team.logo}
-          alt=""
-          className="h-14 w-14 shrink-0 rounded border border-border bg-white p-2 object-contain sm:h-16 sm:w-16"
-        />
-      ) : (
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded border border-border bg-muted/30 text-base font-semibold text-muted-foreground sm:h-16 sm:w-16">
-          {mark || '?'}
-        </div>
-      )}
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold sm:text-lg">{team.name}</div>
         <div className="mt-1 font-mono text-[11px] text-muted-foreground">

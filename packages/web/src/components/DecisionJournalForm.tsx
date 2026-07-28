@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { BookOpen, Loader2 } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { useI18n } from '@/hooks/use-i18n';
 import { useToast } from './ToastProvider';
 import { api } from '@/utils/api';
 import { Card, CardHeader, CardTitle, Button, Input, Textarea } from '@/components/ui';
+import { LoadingSpinner } from './LoadingState';
 
 const EMPTY_FORM = {
   matchId: '',
@@ -119,7 +120,7 @@ export function DecisionJournalForm() {
         </div>
         <Button onClick={handleSubmit} disabled={submitting}>
           {submitting ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <LoadingSpinner className="mr-2 h-4 w-4" size={16} />
           ) : (
             <BookOpen className="h-4 w-4 mr-2" />
           )}

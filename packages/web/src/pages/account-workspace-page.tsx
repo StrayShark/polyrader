@@ -59,12 +59,8 @@ export function AccountWorkspacePage() {
 
   return (
     <div className="space-y-4" data-testid="account-workspace">
-      <div className="flex items-start gap-2">
-        <Wallet className="mt-0.5 h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('accountWorkspace.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('accountWorkspace.subtitle')}</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">{t('accountWorkspace.title')}</h1>
       </div>
 
       <Tabs value={section} onValueChange={changeSection} className="space-y-4">

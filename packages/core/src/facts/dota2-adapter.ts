@@ -429,11 +429,11 @@ export function normalizeDota2MatchFacts(
   };
 }
 
-/** Deterministic Dota fixture used by Validation Lab when live snapshots are empty. */
-export function buildDota2FixtureFacts(now = new Date()): NormalizedMatchFacts {
+/** Deterministic Dota source snapshots for Validation Lab and release-gate seeding. */
+export function buildDota2FixtureSnapshots(now = new Date()): SourceSnapshotLike[] {
   const observedAt = now.toISOString();
   const startsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
-  const snapshots: SourceSnapshotLike[] = [
+  return [
     {
       game: 'dota2',
       source: 'opendota',
@@ -498,7 +498,11 @@ export function buildDota2FixtureFacts(now = new Date()): NormalizedMatchFacts {
       observedAt,
     ),
   ];
-  return normalizeDota2MatchFacts(snapshots, { now })!;
+}
+
+/** Deterministic Dota fixture used by Validation Lab when live snapshots are empty. */
+export function buildDota2FixtureFacts(now = new Date()): NormalizedMatchFacts {
+  return normalizeDota2MatchFacts(buildDota2FixtureSnapshots(now), { now })!;
 }
 
 function fixturePlayers(

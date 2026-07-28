@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { AlertCircle, Inbox, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useI18n } from '../hooks/use-i18n';
+import { LoadingState } from './LoadingState';
 
 interface Props {
   children: ReactNode;
@@ -12,7 +13,7 @@ interface Props {
   emptyAction?: { label: string; onClick: () => void };
   error?: string | null;
   onRetry?: () => void;
-  /** Custom skeleton layout (uses Skeleton component). If provided, shown during loading instead of spinner */
+  /** Deprecated: loading now uses the theme-colored BounceLoader for visual consistency. */
   skeleton?: ReactNode;
 }
 
@@ -25,7 +26,6 @@ export function DataState({
   emptyAction,
   error,
   onRetry,
-  skeleton,
 }: Props) {
   const { t } = useI18n();
   if (error) {
@@ -45,17 +45,7 @@ export function DataState({
     );
   }
 
-  if (isLoading) {
-    if (skeleton) return <>{skeleton}</>;
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-          <span className="text-sm text-muted-foreground">{t('common.loading')}</span>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <LoadingState className="py-12" label={t('common.loading')} />;
 
   if (isEmpty) {
     return (

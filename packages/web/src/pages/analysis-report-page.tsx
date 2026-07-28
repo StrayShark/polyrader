@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { FileJson2, Copy, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
+import { Copy, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -130,11 +130,7 @@ export function AnalysisReportPage() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <FileJson2 className="h-6 w-6 text-primary" />
-            {t('analysisReport.title')}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('analysisReport.subtitle')}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('analysisReport.title')}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={view.validationStatus === 'valid' ? 'green' : 'destructive'}>

@@ -1,4 +1,9 @@
-import type { Market, PolymarketHolder, PolymarketMarketPosition } from '@polyrader/core';
+import type {
+  EsportsGame,
+  Market,
+  PolymarketHolder,
+  PolymarketMarketPosition,
+} from '@polyrader/core';
 import {
   PolymarketGammaClient,
   PolymarketClobClient,
@@ -20,6 +25,7 @@ import { parsePolymarketMatch } from '@polyrader/core';
 
 const CACHE_TTL = 60; // 1 minute
 const ORDERBOOK_CACHE_TTL = 10; // 10 seconds for orderbook
+const SUPPORTED_LOBBY_GAMES: EsportsGame[] = ['cs2', 'lol', 'dota2', 'valorant'];
 
 export interface MarketAnomaly {
   conditionId: string;
@@ -73,19 +79,17 @@ export class MarketService {
     return this.dedup.run(cacheKey, async () => {
       try {
         const markets = await withTimeout(
-          this.gammaClient.getMarkets(limit, offset),
+          this.fetchOpenMarketsForLobby(limit + offset),
           marketTimeoutMs(),
-          `polymarket gamma markets ${limit}:${offset}`,
+          `polymarket gamma esports markets ${limit}:${offset}`,
         );
-        const openMarkets = markets.filter((market) => isOpenMarket(market));
+        const openMarkets = markets;
         if (openMarkets.length === 0) {
           logger.info(
             'Polymarket returned no open markets, falling back to local practice markets',
             { cacheKey },
           );
-          const fallbackMarkets = await this.getDbOrSeedMarkets(limit, offset);
-          await cacheSet(cacheKey, fallbackMarkets, CACHE_TTL);
-          return fallbackMarkets;
+          return this.getDbOrSeedMarkets(limit, offset, { cacheSeeds: false });
         }
         for (const market of openMarkets) {
           try {
@@ -99,12 +103,14 @@ export class MarketService {
         }
         const localMarkets = (
           (await Promise.resolve(this.marketRepo.findAll(200, 0))) ?? []
-        ).filter((market) => isLobbyVisibleMarket(market));
+        )
+          .filter((market) => isLobbyVisibleMarket(market))
+          .map(normalizeMarketGameTags);
         const withMaps = this.ensureLocalMapWinnerMarkets(localMarkets);
-        const merged = mergeCanonicalMarkets([
+        const merged = prioritizeLobbyGameCoverage(ensureLobbyGameCoverageFallback(mergeCanonicalMarkets([
           ...withMaps,
           ...openMarkets.filter((market) => isLobbyVisibleMarket(market)),
-        ]).slice(offset, offset + limit);
+        ]))).slice(offset, offset + limit);
         for (const market of merged) {
           if (market.canonicalMatchId && market.match) this.marketRepo.upsert(market);
         }
@@ -116,7 +122,7 @@ export class MarketService {
           cacheKey,
           error: (err as Error).message,
         });
-        return this.getDbOrSeedMarkets(limit, offset);
+        return this.getDbOrSeedMarkets(limit, offset, { cacheSeeds: false });
       }
     }) as Promise<Market[]>;
   }
@@ -205,18 +211,16 @@ export class MarketService {
     return this.dedup.run('refresh:markets', async () => {
       try {
         const markets = await withTimeout(
-          this.gammaClient.getMarkets(100, 0),
+          this.fetchOpenMarketsForLobby(100),
           marketTimeoutMs(),
-          'polymarket gamma refresh markets',
+          'polymarket gamma esports refresh markets',
         );
-        const openMarkets = markets.filter((market) => isOpenMarket(market));
+        const openMarkets = markets;
         if (openMarkets.length === 0) {
           logger.info(
             'Polymarket refresh returned no open markets, preserving local practice markets',
           );
-          const fallbackMarkets = await this.getDbOrSeedMarkets(100, 0);
-          await cacheSet('markets:50:0', fallbackMarkets.slice(0, 50), CACHE_TTL);
-          return fallbackMarkets;
+          return this.getDbOrSeedMarkets(100, 0, { cacheSeeds: false });
         }
         for (const market of openMarkets) {
           try {
@@ -230,11 +234,13 @@ export class MarketService {
         }
         const localMarkets = (
           (await Promise.resolve(this.marketRepo.findAll(200, 0))) ?? []
-        ).filter((market) => isLobbyVisibleMarket(market));
-        const merged = mergeCanonicalMarkets([
+        )
+          .filter((market) => isLobbyVisibleMarket(market))
+          .map(normalizeMarketGameTags);
+        const merged = prioritizeLobbyGameCoverage(ensureLobbyGameCoverageFallback(mergeCanonicalMarkets([
           ...localMarkets,
           ...openMarkets.filter((market) => isLobbyVisibleMarket(market)),
-        ]);
+        ])));
         for (const market of merged) {
           if (market.canonicalMatchId && market.match) this.marketRepo.upsert(market);
         }
@@ -245,7 +251,7 @@ export class MarketService {
         logger.error('Failed to refresh markets from Polymarket', {
           error: (err as Error).message,
         });
-        return this.getDbOrSeedMarkets(100, 0);
+        return this.getDbOrSeedMarkets(100, 0, { cacheSeeds: false });
       }
     }) as Promise<Market[]>;
   }
@@ -395,12 +401,18 @@ export class MarketService {
     return updated;
   }
 
-  private async getDbOrSeedMarkets(limit: number, offset: number): Promise<Market[]> {
+  private async getDbOrSeedMarkets(
+    limit: number,
+    offset: number,
+    options: { cacheSeeds?: boolean } = {},
+  ): Promise<Market[]> {
     const dbMarkets = (await Promise.resolve(this.marketRepo.findAll(200, 0))) ?? [];
-    const openDbMarkets = dbMarkets.filter((market) => isLobbyVisibleMarket(market));
+    const openDbMarkets = dbMarkets
+      .filter((market) => isLobbyVisibleMarket(market))
+      .map(normalizeMarketGameTags);
     if (openDbMarkets.length > 0) {
       const withMaps = this.ensureLocalMapWinnerMarkets(openDbMarkets);
-      const merged = mergeCanonicalMarkets(withMaps);
+      const merged = prioritizeLobbyGameCoverage(ensureLobbyGameCoverageFallback(mergeCanonicalMarkets(withMaps)));
       return merged.slice(offset, offset + limit);
     }
 
@@ -425,8 +437,45 @@ export class MarketService {
         });
       }
     }
-    await cacheSet(`markets:${limit}:${offset}`, persisted, CACHE_TTL);
+    if (options.cacheSeeds ?? true) {
+      await cacheSet(`markets:${limit}:${offset}`, persisted, CACHE_TTL);
+    }
     return persisted;
+  }
+
+  private async fetchOpenMarketsForLobby(limit: number): Promise<Market[]> {
+    const perGameLimit = Math.max(limit, 200);
+    const results = await Promise.allSettled(
+      SUPPORTED_LOBBY_GAMES.map(async (game) => ({
+        game,
+        markets: (await this.gammaClient.getMarketsForGame(game, perGameLimit, 0)).map((market) =>
+          tagMarketForGame(market, game),
+        ),
+      })),
+    );
+
+    const openMarkets: Market[] = [];
+    const failures: Array<{ game: EsportsGame; error: string }> = [];
+    for (const [index, result] of results.entries()) {
+      if (result.status === 'fulfilled') {
+        openMarkets.push(...result.value.markets.filter((market) => isOpenMarket(market)));
+        continue;
+      }
+      const game = SUPPORTED_LOBBY_GAMES[index] ?? 'cs2';
+      failures.push({
+        game,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
+
+    if (failures.length > 0) {
+      logger.warn('Some Polymarket esports market fetches failed', { failures });
+    }
+    if (openMarkets.length === 0 && failures.length === SUPPORTED_LOBBY_GAMES.length) {
+      throw new Error('All Polymarket esports market fetches failed');
+    }
+
+    return mergeCanonicalMarkets(openMarkets);
   }
 
   /** Persist missing Map Winner markets for local practice series so lobby can expand +N. */
@@ -512,7 +561,7 @@ export class MarketService {
 function marketTimeoutMs(): number {
   return envNumber(
     'POLYRADER_MARKET_TIMEOUT_MS',
-    envNumber('POLYRADER_EXTERNAL_TIMEOUT_MS', 8000, 250, 30000),
+    envNumber('POLYRADER_EXTERNAL_TIMEOUT_MS', 25000, 250, 30000),
     250,
     30000,
   );
@@ -522,10 +571,158 @@ function externalMarketsDisabled(): boolean {
   return process.env.POLYRADER_SKIP_EXTERNAL_MARKETS === '1';
 }
 
+function tagMarketForGame(market: Market, game: EsportsGame): Market {
+  return {
+    ...market,
+    tags: [...new Set([...(market.tags ?? []), game, 'polymarket'])],
+  };
+}
+
+function normalizeMarketGameTags(market: Market): Market {
+  const game = inferMarketGame(market);
+  if (!game || market.tags?.includes(game)) return market;
+  return tagMarketForGame(market, game);
+}
+
+function inferMarketGame(market: Market): EsportsGame | null {
+  const tags = market.tags ?? [];
+  for (const game of SUPPORTED_LOBBY_GAMES) {
+    if (tags.includes(game)) return game;
+  }
+  const canonical = market.canonicalMatchId ?? market.match?.canonicalMatchId ?? '';
+  if (canonical.startsWith('lol:')) return 'lol';
+  if (canonical.startsWith('dota2:')) return 'dota2';
+  if (canonical.startsWith('valorant:')) return 'valorant';
+  if (canonical.startsWith('hltv:')) return 'cs2';
+
+  const question = market.question.toLowerCase();
+  if (question.startsWith('counter-strike') || question.startsWith('cs2:') || question.includes('csgo')) return 'cs2';
+  if (question.startsWith('lol:') || question.startsWith('league of legends:')) return 'lol';
+  if (question.startsWith('dota 2:') || question.startsWith('dota2:')) return 'dota2';
+  if (question.startsWith('valorant:')) return 'valorant';
+  return null;
+}
+
+function prioritizeLobbyGameCoverage(markets: Market[]): Market[] {
+  if (markets.length <= SUPPORTED_LOBBY_GAMES.length) return markets;
+
+  const promoted: Market[] = [];
+  const promotedIds = new Set<string>();
+  for (const game of SUPPORTED_LOBBY_GAMES) {
+    const market = markets.find(
+      (candidate) => hasGameTag(candidate, game) && isRecentSingleMatchMarket(candidate),
+    );
+    if (!market || promotedIds.has(market.conditionId)) continue;
+    promoted.push(market);
+    promotedIds.add(market.conditionId);
+  }
+
+  const rest = markets
+    .filter((market) => !promotedIds.has(market.conditionId))
+    .sort(compareLobbyMarkets);
+  if (promoted.length === 0) return rest;
+  return [...promoted, ...rest];
+}
+
+function ensureLobbyGameCoverageFallback(markets: Market[]): Market[] {
+  const covered = new Set<EsportsGame>();
+  for (const game of SUPPORTED_LOBBY_GAMES) {
+    if (markets.some((market) => hasGameTag(market, game) && isRecentSingleMatchMarket(market))) {
+      covered.add(game);
+    }
+  }
+  if (covered.size === SUPPORTED_LOBBY_GAMES.length) return markets;
+
+  const additions: Market[] = [];
+  const seeds = getLocalSeedMarkets(200, 0).map(normalizeMarketGameTags);
+  for (const game of SUPPORTED_LOBBY_GAMES) {
+    if (covered.has(game)) continue;
+    const seed = seeds.find(
+      (market) =>
+        hasGameTag(market, game) &&
+        isLobbyVisibleMarket(market) &&
+        isRecentSingleMatchMarket(market),
+    );
+    if (seed) additions.push(seed);
+  }
+  return additions.length > 0 ? mergeCanonicalMarkets([...markets, ...additions]) : markets;
+}
+
+function hasGameTag(market: Market, game: EsportsGame): boolean {
+  return market.tags?.includes(game) ?? false;
+}
+
+function isPrimaryWinnerMarket(market: Market): boolean {
+  const parsed = parsePolymarketMatch(market.question);
+  if (!parsed || parsed.isMapMarket) return false;
+  const question = market.question.toLowerCase();
+  return !(
+    question.includes('handicap') ||
+    question.includes('spread') ||
+    question.includes('correct score') ||
+    question.includes('total maps') ||
+    question.includes('total games') ||
+    question.includes('total rounds') ||
+    /\bo\/u\b/.test(question) ||
+    /over\/under/.test(question) ||
+    /\+\d+\.5/.test(question) ||
+    /-\d+\.5/.test(question)
+  );
+}
+
+function isRecentSingleMatchMarket(market: Market): boolean {
+  const parsed = parsePolymarketMatch(market.question);
+  return Boolean(
+    parsed &&
+      (isPrimaryWinnerMarket(market) || isMapOrGameWinnerMarket(market)) &&
+      !isDerivativeMarketQuestion(market.question),
+  );
+}
+
+function compareLobbyMarkets(a: Market, b: Market): number {
+  const singleMatchDelta = Number(isRecentSingleMatchMarket(b)) - Number(isRecentSingleMatchMarket(a));
+  if (singleMatchDelta !== 0) return singleMatchDelta;
+
+  const primaryDelta = Number(isPrimaryWinnerMarket(b)) - Number(isPrimaryWinnerMarket(a));
+  if (primaryDelta !== 0) return primaryDelta;
+
+  const timeDelta = marketTimeMs(a) - marketTimeMs(b);
+  if (timeDelta !== 0) return timeDelta;
+
+  return (b.volume24h ?? b.volume ?? 0) - (a.volume24h ?? a.volume ?? 0);
+}
+
+function marketTimeMs(market: Market): number {
+  const value = market.match?.scheduledAt ?? market.endDate ?? market.startDate;
+  const parsed = Date.parse(value ?? '');
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+
+function isDerivativeMarketQuestion(question: string): boolean {
+  const normalized = question.toLowerCase();
+  return (
+    normalized.includes('handicap') ||
+    normalized.includes('spread') ||
+    normalized.includes('correct score') ||
+    normalized.includes('total maps') ||
+    normalized.includes('total games') ||
+    normalized.includes('total rounds') ||
+    /\bo\/u\b/.test(normalized) ||
+    /over\/under/.test(normalized) ||
+    /\+\d+\.5/.test(normalized) ||
+    /-\d+\.5/.test(normalized)
+  );
+}
+
+function isMapOrGameWinnerMarket(market: Market): boolean {
+  return /(?:Map|Game)\s+\d+\s+Winner/i.test(market.question);
+}
+
 function isLocalPracticeSeriesMarket(market: Market): boolean {
   const tags = market.tags ?? [];
   if (tags.includes('map-winner')) return false;
   if (!tags.includes('local-sim') && !tags.includes('local-seed')) return false;
+  if (!tags.includes('cs2')) return false;
   const parsed = parsePolymarketMatch(market.question);
   return Boolean(parsed && !parsed.isMapMarket);
 }

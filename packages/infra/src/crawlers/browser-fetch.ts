@@ -7,6 +7,8 @@
 // This module provides a drop-in replacement for fetch() that routes JSON
 // requests through a shared headless Chromium instance.
 
+import { chromium } from 'playwright';
+
 type BrowserLike = {
   isConnected(): boolean;
   newContext(options: { extraHTTPHeaders: Record<string, string> }): Promise<{
@@ -33,9 +35,7 @@ async function getBrowser(): Promise<BrowserLike> {
     return browserLaunchPromise;
   }
 
-  const playwrightModule = ['play', 'wright'].join('');
-  const playwright = await import(playwrightModule) as typeof import('playwright');
-  browserLaunchPromise = playwright.chromium.launch({
+  browserLaunchPromise = chromium.launch({
     headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',

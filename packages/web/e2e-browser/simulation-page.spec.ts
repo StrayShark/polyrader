@@ -5,7 +5,7 @@ import { blockWs } from './fixtures/block-ws';
 async function openLegacySimulation(page: Page) {
   await page.goto('/#/simulation');
   await expect(page).toHaveURL(/#\/bankroll\?section=simulation$/);
-  await expect(page.getByRole('heading', { name: '我的账本' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '模拟盘' })).toBeVisible();
 }
 
 test.describe('Legacy simulation route', () => {

@@ -2,6 +2,7 @@ const PREMATCH_STATUSES = new Set(['scheduled', 'upcoming', 'pre_match', 'premat
 const LIVE_STATUSES = new Set(['live', 'in_progress', 'running']);
 const TERMINAL_STATUSES = new Set(['finished', 'settled', 'cancelled']);
 const PREMATCH_GRACE_MS = 15 * 60 * 1000;
+const RESOLVED_PRICE_EDGE = 0.005;
 
 export function isPrematchAnalysisEligible(
   status: string,
@@ -26,4 +27,16 @@ export function isLobbyVisibleMatch(
   if (!scheduledAt) return true;
   const timestamp = Date.parse(scheduledAt);
   return Number.isFinite(timestamp) && timestamp >= nowMs - PREMATCH_GRACE_MS;
+}
+
+/** Extreme two-way prices are treated as a closed or already resolved market in the lobby. */
+export function hasDisplayableTwoWayPrices(outcomePrices: readonly string[]): boolean {
+  if (outcomePrices.length < 2) return false;
+  const prices = outcomePrices.slice(0, 2).map(Number);
+  return prices.every(
+    (price) =>
+      Number.isFinite(price) &&
+      price > RESOLVED_PRICE_EDGE &&
+      price < 1 - RESOLVED_PRICE_EDGE,
+  );
 }

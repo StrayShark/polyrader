@@ -3,6 +3,7 @@ import { CalendarDays, TrendingUp, AlertTriangle, Fish, RefreshCw } from 'lucide
 import { useDailyStore } from '../stores/daily-store';
 import { DataState } from '../components/DataState';
 import { StatsSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import { useWebSocket } from '../hooks/use-websocket';
 import { useI18n } from '../hooks/use-i18n';
 
@@ -32,14 +33,13 @@ export function DailyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('daily.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('daily.subtitle')}</p>
         </div>
         <button
           onClick={() => refreshDashboard()}
           disabled={isLoading}
           className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('daily.refreshAnalysis')}
         </button>
       </div>

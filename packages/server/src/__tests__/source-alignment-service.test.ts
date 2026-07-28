@@ -20,14 +20,14 @@ function lineup(prefix: string): Lineup {
   };
 }
 
-function team(teamId: string, name: string, rank: number, prefix: string): Team {
+function team(teamId: string, name: string, rank: number, prefix: string, playerCount = 5): Team {
   return {
     teamId,
     name,
     logo: '',
     rank,
     region: '',
-    players: Array.from({ length: 5 }, (_value, index) => ({
+    players: Array.from({ length: playerCount }, (_value, index) => ({
       playerId: `${prefix}${index}`,
       name: `Player ${index}`,
       nickname: `${prefix.toUpperCase()}${index}`,
@@ -64,7 +64,7 @@ describe('SourceAlignmentService HLTV analysis enrichment', () => {
         url: 'https://www.hltv.org/matches/2395534/ence-vs-sparta-event', lineups: { teamA: teamALineup, teamB: teamBLineup },
       }),
       getTeam: vi.fn().mockImplementation((id: string) => Promise.resolve(
-        id === '4869' ? team('4869', 'ENCE', 163, 'a') : team('13214', 'SPARTA', 103, 'b'),
+        id === '4869' ? team('4869', 'ENCE', 163, 'a') : team('13214', 'SPARTA', 103, 'b', 4),
       )),
     };
     const llmRepo = {
@@ -113,6 +113,10 @@ describe('SourceAlignmentService HLTV analysis enrichment', () => {
     }));
     expect(llmRepo.upsertTeam).toHaveBeenCalledTimes(2);
     expect(esportsRepo.upsertPlayer).toHaveBeenCalledTimes(10);
+    expect(llmRepo.upsertTeam).toHaveBeenCalledWith(expect.objectContaining({
+      teamId: '13214',
+      players: expect.stringContaining('b4'),
+    }));
     expect(esportsRepo.upsertTeamMatchHistory).toHaveBeenCalledTimes(2);
     expect(esportsRepo.upsertMapPool).toHaveBeenCalledTimes(2);
     expect(esportsRepo.upsertMatchLineup).toHaveBeenCalledOnce();

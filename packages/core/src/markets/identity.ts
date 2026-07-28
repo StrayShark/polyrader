@@ -75,6 +75,15 @@ export const SETTLEMENT_RULE_REGISTRY: SettlementRuleDefinition[] = [
     supported: true,
   },
   {
+    ruleId: 'dota2.map_winner.v1',
+    game: 'dota2',
+    kind: 'map_winner',
+    version: 'v1',
+    description: 'Individual game winner from structured OpenDota/GRID series results',
+    authoritativeSources: ['opendota', 'grid'],
+    supported: true,
+  },
+  {
     ruleId: 'dota2.handicap.v1',
     game: 'dota2',
     kind: 'handicap',

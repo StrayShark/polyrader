@@ -5,6 +5,7 @@ import { useWhaleStore, type WhaleListMode } from '../stores/whale-store';
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
 import { DataState } from '../components/DataState';
 import { StatsSkeleton, TableSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import { VirtualList } from '../components/VirtualList';
 import { AddressGraph as AddressGraphView } from '../components/address-graph';
 import { CopyFollowPanel, FollowWalletButton } from '../components/CopyFollowPanel';
@@ -35,8 +36,8 @@ export function WhalesPage() {
   const { t } = useI18n();
   const [pageTab, setPageTab] = useState<PageTab>('volume');
   const [minWinRate, setMinWinRate] = useState(0.6);
-  const [minSamples, setMinSamples] = useState(10);
-  const [minRoi, setMinRoi] = useState(0.02);
+  const [minSamples, setMinSamples] = useState(5);
+  const [minRoi, setMinRoi] = useState(-1);
 
   const loadWhales = useCallback((mode: WhaleListMode = listMode) => {
     void fetchWhales({
@@ -163,13 +164,12 @@ export function WhalesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('whales.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('whales.subtitle')}</p>
           {ingestionHint && (
             <p className="mt-1 text-xs text-muted-foreground">{ingestionHint}</p>
           )}
         </div>
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>
@@ -273,6 +273,7 @@ export function WhalesPage() {
                       }}
                       className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
                     >
+                      <option value={5}>5</option>
                       <option value={10}>10</option>
                       <option value={20}>20</option>
                       <option value={50}>50</option>
@@ -290,6 +291,8 @@ export function WhalesPage() {
                       }}
                       className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
                     >
+                      <option value={-1}>{t('common.all')}</option>
+                      <option value={0}>0%</option>
                       <option value={0.02}>2%</option>
                       <option value={0.05}>5%</option>
                       <option value={0.1}>10%</option>

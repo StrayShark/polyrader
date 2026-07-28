@@ -1,10 +1,15 @@
+import type { EsportsGame } from '@polyrader/core/browser';
+
 /**
- * Polymarket CS2 match parser.
+ * Polymarket esports match parser.
  *
  * Extracts structured match info from Polymarket market questions.
  *
  * Question format examples:
  *   "Counter-Strike: Acend vs Bebop (BO3) - CCT Europe Series #14 Play-In Group B"
+ *   "Dota 2: Team Liquid vs Team Falcons - Match Winner"
+ *   "League of Legends: T1 vs Gen.G - Match Winner"
+ *   "Valorant: Sentinels vs G2 Esports - Map 1 Winner"
  *   "Counter-Strike: FC Famalicão Esports vs Falcons Force - Map 1 Winner"
  *   "Counter-Strike: 3DMAX vs FOKUS - Map 2 Winner"
  *   "Counter-Strike: Spirit vs G2 (BO5) - IEM Cologne 2026 Quarterfinal"
@@ -21,6 +26,8 @@ export type MarketCategory =
 export interface ParsedPolymarketMatch {
   /** Original Polymarket question */
   question: string;
+  /** Esports title inferred from the question prefix, if present. */
+  game: EsportsGame | null;
   /** Team A name as written in the question */
   teamAName: string;
   /** Team B name as written in the question */
@@ -41,34 +48,55 @@ export interface ParsedPolymarketMatch {
   marketLabel: string;
 }
 
-function classifyMarketCategory(eventPart: string, isMapMarket: boolean, mapNumber: number | null): { category: MarketCategory; marketLabel: string } {
-  const lower = eventPart.toLowerCase();
+export function isSubgameMarketQuestion(question: string): boolean {
+  return /(?:\b(?:Map|Game)\s*#?\d+\b|(?:地图|小局)\s*\d+)/i.test(question);
+}
+
+function classifyMarketCategory(
+  marketText: string,
+  eventPart: string,
+  isMapMarket: boolean,
+  mapNumber: number | null,
+): { category: MarketCategory; marketLabel: string } {
+  const lower = marketText.toLowerCase();
 
   if (isMapMarket && mapNumber !== null) {
     return { category: 'map_winner', marketLabel: `Map ${mapNumber} Winner` };
   }
 
-  if (lower.includes('handicap') || lower.includes('spread') || /\+\d+\.5/.test(eventPart) || /-\d+\.5/.test(eventPart)) {
+  if (
+    lower.includes('handicap') ||
+    lower.includes('spread') ||
+    /\+\d+\.5/.test(marketText) ||
+    /-\d+\.5/.test(marketText)
+  ) {
     return { category: 'handicap', marketLabel: 'Handicap' };
   }
 
-  if (lower.includes('total maps') || lower.includes('total rounds') || /over\/under/i.test(eventPart)) {
-    const lineMatch = eventPart.match(/(\d+\.5)/);
+  if (
+    lower.includes('total maps') ||
+    lower.includes('total games') ||
+    lower.includes('total rounds') ||
+    /\bo\/u\b/i.test(marketText) ||
+    /over\/under/i.test(marketText)
+  ) {
+    const lineMatch = marketText.match(/(\d+\.5)/);
     return {
       category: 'total_maps',
       marketLabel: lineMatch ? `Total Maps O/U ${lineMatch[1]}` : 'Total Maps',
     };
   }
 
-  if (lower.includes('correct score') || /\d-\d/.test(eventPart)) {
+  if (lower.includes('correct score') || /\d-\d/.test(marketText)) {
     return { category: 'correct_score', marketLabel: 'Correct Score' };
   }
 
   // Default: if the event part is empty or only contains event/stage info, treat as match winner.
   const stripped = eventPart
-    .replace(/Map\s+\d+\s+Winner/gi, '')
+    .replace(/(?:Map|Game)\s+\d+\s+Winner/gi, '')
     .replace(/Handicap/gi, '')
     .replace(/Total Maps/gi, '')
+    .replace(/Total Games/gi, '')
     .replace(/Correct Score/gi, '')
     .replace(/Over\/Under/gi, '')
     .trim();
@@ -76,28 +104,63 @@ function classifyMarketCategory(eventPart: string, isMapMarket: boolean, mapNumb
     return { category: 'match_winner', marketLabel: 'Match Winner' };
   }
 
-  return { category: 'other', marketLabel: eventPart || 'Other' };
+  return { category: 'other', marketLabel: marketText || 'Other' };
+}
+
+function stripGamePrefix(question: string): { text: string; game: EsportsGame | null } {
+  const prefixPatterns: Array<{ pattern: RegExp; game: EsportsGame }> = [
+    { pattern: /^Counter-Strike(?:\s*2)?:\s*/i, game: 'cs2' },
+    { pattern: /^CS2:\s*/i, game: 'cs2' },
+    { pattern: /^CSGO:\s*/i, game: 'cs2' },
+    { pattern: /^Dota\s*2:\s*/i, game: 'dota2' },
+    { pattern: /^League\s+of\s+Legends:\s*/i, game: 'lol' },
+    { pattern: /^LoL:\s*/i, game: 'lol' },
+    { pattern: /^Valorant:\s*/i, game: 'valorant' },
+  ];
+  let text = question.trim();
+  for (const { pattern, game } of prefixPatterns) {
+    if (pattern.test(text)) {
+      text = text.replace(pattern, '');
+      return { text, game };
+    }
+  }
+  return { text, game: null };
+}
+
+function stripMarketPrefix(text: string): string {
+  return text
+    .replace(/^(?:Game|Map)\s+\d+\s+Rounds?\s+Handicap\s*:\s*/i, '')
+    .replace(/^(?:Game|Map)\s+\d+\s+Handicap\s*:\s*/i, '')
+    .replace(/^(?:Game|Map)\s+Handicap\s*:\s*/i, '')
+    .replace(/^Handicap\s*:\s*/i, '')
+    .replace(
+      /^Total\s+(?:Maps|Games|Rounds)(?:\s+(?:O\/U|Over\/Under))?\s+\d+(?:\.\d+)?\s*:\s*/i,
+      '',
+    )
+    .replace(/^Total\s+(?:Maps|Games|Rounds)\s*:\s*/i, '')
+    .trim();
+}
+
+function cleanTeamName(name: string): string {
+  return name
+    .replace(/\s*\(BO[135]\)\s*$/i, '')
+    .replace(/\s*-\s*(?:Map|Game)\s+\d+\s+Winner\s*$/i, '')
+    .replace(/\s*\([+-]?\d+(?:\.\d+)?\)\s*$/i, '')
+    .replace(/\s+[+-]\d+(?:\.\d+)?\s*$/i, '')
+    .trim();
 }
 
 /**
- * Parse a Polymarket CS2 market question into structured data.
+ * Parse a Polymarket esports market question into structured data.
  *
- * Returns null if the question doesn't look like a CS2 match market.
+ * Returns null if the question doesn't look like a two-team match market.
  */
 export function parsePolymarketMatch(question: string): ParsedPolymarketMatch | null {
   // Must contain "vs" to be a match market
   if (!question.includes(' vs ')) return null;
 
-  // Strip "Counter-Strike: " prefix
-  let text = question.trim();
-  const prefixPatterns = [
-    /^Counter-Strike:\s*/i,
-    /^CS2:\s*/i,
-    /^CSGO:\s*/i,
-  ];
-  for (const p of prefixPatterns) {
-    text = text.replace(p, '');
-  }
+  const { text: rawText, game } = stripGamePrefix(question);
+  const text = stripMarketPrefix(rawText);
 
   // Split into match part and event part by " - " (first occurrence)
   const dashIdx = text.indexOf(' - ');
@@ -106,12 +169,10 @@ export function parsePolymarketMatch(question: string): ParsedPolymarketMatch | 
 
   // Extract format (BO1/BO3/BO5) from match part
   const formatMatch = matchPart.match(/\((BO[135])\)/i);
-  const format = formatMatch
-    ? (formatMatch[1].toUpperCase() as 'BO1' | 'BO3' | 'BO5')
-    : null;
+  const format = formatMatch ? (formatMatch[1].toUpperCase() as 'BO1' | 'BO3' | 'BO5') : null;
 
   // Extract map number (e.g. "Map 1 Winner", "Map 2 Winner")
-  const mapMatch = eventPart.match(/Map\s+(\d+)\s+Winner/i);
+  const mapMatch = eventPart.match(/(?:Map|Game)\s+(\d+)\s+Winner/i);
   const mapNumber = mapMatch ? parseInt(mapMatch[1], 10) : null;
   const isMapMarket = mapNumber !== null;
 
@@ -119,13 +180,8 @@ export function parsePolymarketMatch(question: string): ParsedPolymarketMatch | 
   const vsIdx = matchPart.indexOf(' vs ');
   if (vsIdx < 0) return null;
 
-  const teamAName = matchPart.substring(0, vsIdx).trim();
-  let teamBName = matchPart.substring(vsIdx + 4).trim();
-
-  // Remove format suffix from team B name: "Bebop (BO3)" → "Bebop"
-  teamBName = teamBName.replace(/\s*\(BO[135]\)\s*$/i, '').trim();
-  // Remove "Map X Winner" suffix if present in team B
-  teamBName = teamBName.replace(/\s*-\s*Map\s+\d+\s+Winner\s*$/i, '').trim();
+  const teamAName = cleanTeamName(matchPart.substring(0, vsIdx));
+  const teamBName = cleanTeamName(matchPart.substring(vsIdx + 4));
 
   // Parse event name and stage
   let eventName = eventPart;
@@ -137,20 +193,32 @@ export function parsePolymarketMatch(question: string): ParsedPolymarketMatch | 
   );
   if (stageMatch) {
     eventStage = stageMatch[1];
-    eventName = eventPart.replace(stageMatch[0], '').replace(/\s*-\s*$/, '').trim();
+    eventName = eventPart
+      .replace(stageMatch[0], '')
+      .replace(/\s*-\s*$/, '')
+      .trim();
   }
 
   // If no stage found, check if event part has "Map X Winner" and strip it
   if (isMapMarket && !eventStage) {
-    eventName = eventPart.replace(/Map\s+\d+\s+Winner/i, '').replace(/\s*-\s*$/, '').trim();
+    eventName = eventPart
+      .replace(/(?:Map|Game)\s+\d+\s+Winner/i, '')
+      .replace(/\s*-\s*$/, '')
+      .trim();
   }
 
   if (!eventName) eventName = 'Unknown Event';
 
-  const { category, marketLabel } = classifyMarketCategory(eventPart, isMapMarket, mapNumber);
+  const { category, marketLabel } = classifyMarketCategory(
+    `${rawText} - ${eventPart}`.trim(),
+    eventPart,
+    isMapMarket,
+    mapNumber,
+  );
 
   return {
     question,
+    game,
     teamAName,
     teamBName,
     format,

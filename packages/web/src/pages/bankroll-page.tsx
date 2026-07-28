@@ -1,4 +1,4 @@
-import { Wallet, TrendingUp, Activity, Target, AlertTriangle, Trophy, TrendingDown, Shield, Plus, Pencil, Trash2 } from 'lucide-react';
+import { TrendingUp, Activity, Target, AlertTriangle, Trophy, TrendingDown, Shield, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useI18n } from '../hooks/use-i18n';
 import { Card, CardHeader, CardTitle, Tabs, TabsList, TabsTrigger, Badge, Button, Input, Skeleton, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui';
@@ -7,6 +7,7 @@ import { useTrainingSessionStore } from '../stores/training-session-store';
 import { RiskMeter } from '../components/RiskMeter';
 import { cn } from '../utils/cn';
 import type { EquityCurveGranularity, SimBet, TrainingSession, TrainingGoalType, TrainingSessionStatus } from '@polyrader/core/browser';
+import { SimBetMarketSummary } from '../components/SimBetMarketSummary';
 
 const GRANULARITIES: EquityCurveGranularity[] = ['day', 'week', 'month', 'all'];
 
@@ -49,7 +50,6 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
       <div className="space-y-4">
         {!embedded && (
           <div className="flex items-center gap-2">
-            <Wallet className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
           </div>
         )}
@@ -68,7 +68,6 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
       <div className="space-y-4">
         {!embedded && (
           <div className="flex items-center gap-2">
-            <Wallet className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
           </div>
         )}
@@ -159,7 +158,6 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
     <div className="space-y-4">
       {!embedded && (
         <div className="flex items-center gap-2">
-          <Wallet className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-semibold tracking-tight">{t('bankroll.title')}</h1>
         </div>
       )}
@@ -253,13 +251,17 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
 
       {/* Equity curve */}
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
+        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+          <div className="flex min-w-0 items-center gap-2 pt-1">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('bankroll.equityCurve')}</CardTitle>
+            <CardTitle className="whitespace-nowrap text-sm">{t('bankroll.equityCurve')}</CardTitle>
           </div>
-          <Tabs value={granularity} onValueChange={(v) => setGranularity(v as EquityCurveGranularity)}>
-            <TabsList>
+          <Tabs
+            value={granularity}
+            onValueChange={(v) => setGranularity(v as EquityCurveGranularity)}
+            className="w-auto max-w-[calc(100%-9rem)] shrink-0 overflow-x-auto"
+          >
+            <TabsList className="w-max">
               {GRANULARITIES.map((g) => (
                 <TabsTrigger key={g} value={g} className="text-xs">
                   {t(`bankroll.granularity_${g}`)}
@@ -300,12 +302,12 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
 
       {/* Training sessions */}
       <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
             <Target className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-medium">{t('bankroll.trainingGoals')}</h3>
+            <h3 className="whitespace-nowrap text-sm font-medium">{t('bankroll.trainingGoals')}</h3>
           </div>
-          <Button size="sm" variant="outline" onClick={openCreate}>
+          <Button size="sm" variant="outline" className="shrink-0" onClick={openCreate}>
             <Plus className="mr-1 h-3.5 w-3.5" />
             {t('bankroll.newTrainingGoal')}
           </Button>
@@ -440,13 +442,17 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
 
       {/* Bets tables */}
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
+        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+          <div className="flex min-w-0 items-center gap-2 pt-1">
             <Trophy className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">{t('bankroll.bets')}</CardTitle>
+            <CardTitle className="whitespace-nowrap text-sm">{t('bankroll.bets')}</CardTitle>
           </div>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'settled' | 'voided')}>
-            <TabsList>
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as 'open' | 'settled' | 'voided')}
+            className="w-auto max-w-[calc(100%-9rem)] shrink-0 overflow-x-auto"
+          >
+            <TabsList className="w-max">
               <TabsTrigger value="open" className="text-xs">
                 {t('bankroll.openBets')} ({openBets.length})
               </TabsTrigger>
@@ -463,11 +469,12 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
           {betsToShow.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">{t('bankroll.noBets')}</div>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-4 py-2 text-xs">{t('common.time')}</TableHead>
-                  <TableHead className="px-4 py-2 text-xs">{t('common.market')}</TableHead>
+                  <TableHead className="px-4 py-2 text-xs">{t('paperOrders.match')}</TableHead>
                   <TableHead className="px-4 py-2 text-xs">{t('slip.stake')}</TableHead>
                   <TableHead className="px-4 py-2 text-xs">{t('slip.totalOdds')}</TableHead>
                   <TableHead className="px-4 py-2 text-xs">{t('common.status')}</TableHead>
@@ -480,8 +487,8 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
                     <TableCell className="px-4 py-2 text-xs tabular-nums">
                       {new Date(bet.placedAt).toLocaleDateString()}
                     </TableCell>
-                    <TableCell className="px-4 py-2 text-xs">
-                      <div className="max-w-[200px] truncate">{bet.matchId ?? bet.marketId ?? '-'}</div>
+                    <TableCell className="max-w-[280px] px-4 py-2 text-xs">
+                      <SimBetMarketSummary bet={bet} />
                     </TableCell>
                     <TableCell className="px-4 py-2 text-xs tabular-nums">{formatCurrency(bet.stake)}</TableCell>
                     <TableCell className="px-4 py-2 text-xs tabular-nums">{bet.totalOdds.toFixed(2)}</TableCell>
@@ -499,7 +506,8 @@ export function BankrollPage({ embedded = false }: { embedded?: boolean }) {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </div>
       </Card>

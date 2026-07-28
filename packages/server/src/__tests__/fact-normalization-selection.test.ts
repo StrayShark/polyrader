@@ -61,15 +61,56 @@ describe('LoL / Valorant board sample selection', () => {
     expect(sample?.externalMatchId).toBe(complete.externalMatchId);
   });
 
-  it('keeps time order for CS2 boards', () => {
+  it('keeps time order for CS2 boards when quality is equal', () => {
     const now = new Date('2026-07-23T08:00:00.000Z');
     const first = buildLolFixtureFacts(now);
     first.game = 'cs2';
     first.externalMatchId = 'near';
+    first.conflictFlags = [];
+    first.completeness = 1;
     const second = buildLolFixtureFacts(now);
     second.game = 'cs2';
     second.externalMatchId = 'later';
+    second.startsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
+    second.conflictFlags = [];
+    second.completeness = 1;
     expect(selectBoardSample('cs2', [first, second], now.getTime())?.externalMatchId).toBe('near');
+  });
+
+  it('prefers a conflict-free CS2 sample over an earlier conflicted one', () => {
+    const now = new Date('2026-07-23T08:00:00.000Z');
+    const conflicted = buildLolFixtureFacts(now);
+    conflicted.game = 'cs2';
+    conflicted.externalMatchId = 'near-conflict';
+    conflicted.conflictFlags = ['identity_collision', 'schedule_mismatch'];
+    conflicted.completeness = 0.86;
+    const clean = buildLolFixtureFacts(now);
+    clean.game = 'cs2';
+    clean.externalMatchId = 'later-clean';
+    clean.startsAt = new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
+    clean.conflictFlags = [];
+    clean.completeness = 0.86;
+    expect(selectBoardSample('cs2', [conflicted, clean], now.getTime())?.externalMatchId).toBe(
+      'later-clean',
+    );
+  });
+
+  it('demotes Dota page_does_not_exist placeholders behind real series ids', () => {
+    const now = new Date('2026-07-23T08:00:00.000Z');
+    const placeholder = buildLolFixtureFacts(now);
+    placeholder.game = 'dota2';
+    placeholder.externalMatchId = 'abc_page_does_not_exist';
+    placeholder.completeness = 0.5;
+    placeholder.conflictFlags = [];
+    const real = buildLolFixtureFacts(now);
+    real.game = 'dota2';
+    real.externalMatchId = 'real-series-1';
+    real.startsAt = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+    real.completeness = 0.5;
+    real.conflictFlags = [];
+    expect(selectBoardSample('dota2', [placeholder, real], now.getTime())?.externalMatchId).toBe(
+      'real-series-1',
+    );
   });
 
   it('prefers a market-hinted LoL series over an unrelated dual-roster sample', () => {

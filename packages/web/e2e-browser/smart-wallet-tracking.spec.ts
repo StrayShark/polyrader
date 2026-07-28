@@ -39,6 +39,19 @@ test.describe('Smart wallet tracking', () => {
     await expect(page.getByText('18.0%')).toBeVisible();
   });
 
+  test('shows current holdings for a high-win-rate wallet detail', async ({ page }) => {
+    await page.goto('/#/whales');
+    await waitForMainHeading(page);
+    await page.getByRole('tab', { name: '高胜率钱包', exact: true }).click();
+    await page.getByRole('link', { name: '0xabc1...abcd' }).first().click();
+
+    await expect(page.getByText('当前持仓')).toBeVisible();
+    await expect(page.getByText('LPL Group Ascend: Team WE vs JD Gaming')).toBeVisible();
+    await expect(page.getByText('Dota 2: PuckChamp vs Nemiga Gaming')).toBeVisible();
+    await expect(page.getByText('+$25.21')).toBeVisible();
+    await expect(page.getByText('CS2: Spirit vs G2 - Match Winner')).toBeVisible();
+  });
+
   test('applies common copy presets in paper mode', async ({ page }) => {
     await page.goto('/#/whales');
     await waitForMainHeading(page);

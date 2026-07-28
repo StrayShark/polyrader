@@ -120,7 +120,9 @@ export class EsportsController {
               failed: 0,
             };
             await this.hydrateStoredHltvMarkets(hltvResult.map((match) => match.matchId));
-            await marketService.primeLocalMarketsCache(100);
+            if (process.env.POLYRADER_SKIP_EXTERNAL_MARKETS === '1') {
+              await marketService.primeLocalMarketsCache(100);
+            }
             const enrichmentStarted = this.queueHltvEnrichment(hltvResult, req.headers['x-request-id']);
             enrichmentQueued = enrichmentStarted || this.hltvEnrichmentTask !== null;
             ctx.log(`本地模拟盘口: ${localMarketCount} 个`);
@@ -194,8 +196,10 @@ export class EsportsController {
       const sync = await this.sourceAlignment.syncDiscoveredHltvMatches(hltvMatches);
       ctx.setProgress(90, '更新赛事大厅本地快照');
       await this.hydrateStoredHltvMarkets(hltvMatches.map((match) => match.matchId));
-      const { MarketService } = await import('../services/market-service');
-      await new MarketService().primeLocalMarketsCache(100);
+      if (process.env.POLYRADER_SKIP_EXTERNAL_MARKETS === '1') {
+        const { MarketService } = await import('../services/market-service');
+        await new MarketService().primeLocalMarketsCache(100);
+      }
       ctx.log(`补全 ${sync.enriched}，阵容刷新 ${sync.lineupRefreshed}，复用 ${sync.reused}，失败 ${sync.failed}`);
       return {
         discovered: sync.discovered,
@@ -538,18 +542,22 @@ export class EsportsController {
   async getMatch(req: Request, res: Response): Promise<void> {
     try {
       const matchId = req.params.matchId;
-      const stored = this.llmRepo.getMatch(matchId);
+      const resolved = this.resolveStoredMatch(matchId);
+      const stored = resolved?.match;
       if (stored?.hltv_match_id) {
         const teamARow = this.llmRepo.getTeam(String(stored.team_a_id ?? ''));
         const teamBRow = this.llmRepo.getTeam(String(stored.team_b_id ?? ''));
         const snapshot = buildMatchInfo(stored, teamARow, teamBRow);
-        const lastAttempt = this.matchSelfHealAttempts.get(matchId) ?? 0;
+        const storedMatchId = String(stored.match_id ?? matchId);
+        const lastAttempt = this.matchSelfHealAttempts.get(storedMatchId) ?? 0;
         const missingVisualAssets = !snapshot.teamA.logo || !snapshot.teamB.logo;
         if ((!snapshot.teamDetails?.isComplete || missingVisualAssets) && Date.now() - lastAttempt > 10 * 60 * 1000) {
-          this.matchSelfHealAttempts.set(matchId, Date.now());
+          this.matchSelfHealAttempts.set(storedMatchId, Date.now());
           const result = await this.sourceAlignment.enrichHltvMatchForAnalysis(stored);
           if (!result.refreshed) {
-            logger.warn('Match detail self-heal did not complete', { matchId, message: result.message ?? 'unknown' });
+            logger.warn('Match detail self-heal did not complete', { matchId: storedMatchId, message: result.message ?? 'unknown' });
+          } else if (storedMatchId !== matchId) {
+            await cacheDelete(`esports:match:${matchId}`);
           }
         }
       }
@@ -563,6 +571,105 @@ export class EsportsController {
       logger.error('Failed to fetch match', { error: (err as Error).message, requestId: req.headers['x-request-id'] });
       res.status(500).json({ error: 'Failed to fetch match', message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined });
     }
+  }
+
+  async refreshMatchIntelligence(req: Request, res: Response): Promise<void> {
+    try {
+      const requestedMatchId = req.params.matchId;
+      const resolved = this.resolveStoredMatch(requestedMatchId);
+      if (!resolved) {
+        res.status(404).json({ error: 'Match not found' });
+        return;
+      }
+
+      let stored = resolved.match;
+      let hltvMatchId = stored.hltv_match_id ? String(stored.hltv_match_id) : '';
+      if (!hltvMatchId) {
+        const teamAName = String(stored.team_a_name ?? '');
+        const teamBName = String(stored.team_b_name ?? '');
+        hltvMatchId = await withTimeout(
+          this.hltv.findMatchIdByTeams(teamAName, teamBName),
+          envNumber('POLYRADER_HLTV_DISCOVERY_TIMEOUT_MS', 15_000, 1_000, 30_000),
+          'HLTV match discovery',
+        ) ?? '';
+        if (!hltvMatchId) {
+          res.json({
+            data: {
+              matchId: resolved.matchId,
+              refreshed: false,
+              reason: 'HLTV_MATCH_NOT_FOUND',
+              message: 'No current HLTV match matched both teams',
+            },
+          });
+          return;
+        }
+
+        const snapshot = buildMatchInfo(
+          stored,
+          this.llmRepo.getTeam(String(stored.team_a_id ?? '')),
+          this.llmRepo.getTeam(String(stored.team_b_id ?? '')),
+        );
+        this.llmRepo.upsertMatch({
+          matchId: resolved.matchId,
+          canonicalMatchId: stored.canonical_match_id ? String(stored.canonical_match_id) : undefined,
+          teamAId: snapshot.teamA.teamId,
+          teamBId: snapshot.teamB.teamId,
+          teamAName: snapshot.teamA.name,
+          teamBName: snapshot.teamB.name,
+          eventName: snapshot.eventName,
+          eventType: snapshot.eventType,
+          format: snapshot.format,
+          scheduledAt: snapshot.scheduledAt,
+          status: String(stored.status ?? snapshot.status),
+          maps: snapshot.maps ?? [],
+          hasTeamData: Number(stored.has_team_data ?? 0) === 1,
+          lineups: typeof stored.lineups === 'string'
+            ? stored.lineups
+            : snapshot.lineups
+              ? JSON.stringify(snapshot.lineups)
+              : null,
+          hltvMatchId,
+        });
+        this.sourceAlignment.linkHltvMatch(resolved.matchId, hltvMatchId);
+        stored = this.llmRepo.getMatch(resolved.matchId) ?? stored;
+      }
+
+      const result = await withTimeout(
+        this.sourceAlignment.enrichHltvMatchForAnalysis(stored),
+        envNumber('POLYRADER_HLTV_INTELLIGENCE_TIMEOUT_MS', 45_000, 5_000, 90_000),
+        'HLTV match intelligence refresh',
+      );
+      await Promise.all([
+        cacheDelete(`esports:match:${resolved.matchId}`),
+        cacheDelete(`esports:match:${requestedMatchId}`),
+      ]);
+      const match = await this.service.getMatch(requestedMatchId);
+      res.json({ data: { ...result, match } });
+    } catch (err) {
+      logger.error('Failed to refresh match intelligence', {
+        matchId: req.params.matchId,
+        error: (err as Error).message,
+        requestId: req.headers['x-request-id'],
+      });
+      res.status(500).json({
+        error: 'Failed to refresh HLTV match intelligence',
+        message: process.env.NODE_ENV === 'development' ? (err as Error).message : undefined,
+      });
+    }
+  }
+
+  private resolveStoredMatch(requestedMatchId: string): {
+    matchId: string;
+    match: Record<string, unknown>;
+  } | null {
+    const direct = this.llmRepo.getMatch(requestedMatchId);
+    if (direct) return { matchId: requestedMatchId, match: direct };
+    const market = this.marketRepo.findBySlug(requestedMatchId)
+      ?? this.marketRepo.findByConditionId(requestedMatchId);
+    const linkedMatchId = market?.match?.matchId;
+    if (!linkedMatchId) return null;
+    const linked = this.llmRepo.getMatch(linkedMatchId);
+    return linked ? { matchId: linkedMatchId, match: linked } : null;
   }
 
   async reconcileMatch(req: Request, res: Response): Promise<void> {

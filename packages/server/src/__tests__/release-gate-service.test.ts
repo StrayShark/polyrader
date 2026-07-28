@@ -88,6 +88,74 @@ describe('Sprint F four-board release gate', () => {
     expect(gate.currentSource.blockers).toContain('prompt: no current-source provider run');
   });
 
+  it('reuses a same-match current-source run when the snapshot hash drifts after refresh', () => {
+    const board = readyBoard('cs2', 'current-match', 'sha256:after-refresh');
+    const driftedRun = runRecord({
+      matchId: 'current-match',
+      dataSnapshotHash: 'sha256:before-refresh',
+      runId: 'drifted-run',
+    });
+    const service = new ReleaseGateService({
+      normalization: { getBoard: () => ({ summary: board, persisted: [] }) },
+      runs: {
+        listRuns: () => [driftedRun],
+        getPromptArtifact: () => ({ promptHash: 'prompt-hash' }),
+        listResponseArtifacts: () => [{ isValid: true }],
+        getReportByRun: () => ({ id: 'report-1' }),
+        getPaperDecisionByRun: () => ({
+          action: 'paper_bet',
+          policyVersion: 'policy.v1',
+          betId: 'linked-bet',
+        }),
+      } as unknown as AnalysisRunRepository,
+      bets: {
+        getById: () => ({
+          id: 'linked-bet',
+          accountId: 'default',
+          betType: 'single',
+          stake: 10,
+          totalOdds: 2,
+          status: 'open',
+          result: null,
+          pnl: 0,
+          placedAt: '2026-07-22T00:00:00.000Z',
+        }),
+      } as unknown as SimBetRepository,
+    });
+
+    const gate = service.get('cs2');
+    expect(gate.currentSource.runId).toBe('drifted-run');
+    expect(gate.currentSource.blockers).toContain('settlement: linked bet is not settled');
+  });
+
+  it('prefers an explicit audit runId over a re-normalized board lookup', () => {
+    const board = readyBoard('lol', 'other-match', 'sha256:other');
+    const auditRun = runRecord({
+      runId: 'audit-run',
+      matchId: 'audit-match',
+      dataSnapshotHash: 'sha256:audit',
+      marketId: 'real-market-1',
+    });
+    const service = new ReleaseGateService({
+      normalization: { getBoard: () => ({ summary: board, persisted: [] }) },
+      runs: {
+        listRuns: () => [auditRun],
+        getPromptArtifact: () => ({ promptHash: 'prompt-hash' }),
+        listResponseArtifacts: () => [{ isValid: true }],
+        getReportByRun: () => ({ id: 'report-1' }),
+        getPaperDecisionByRun: () => ({
+          action: 'pass',
+          policyVersion: 'policy.v1',
+        }),
+      } as unknown as AnalysisRunRepository,
+      bets: {} as SimBetRepository,
+    });
+
+    const gate = service.get('lol', { board, runId: 'audit-run' });
+    expect(gate.currentSource.runId).toBe('audit-run');
+    expect(gate.currentSource.blockers.some((item) => item.startsWith('prompt:'))).toBe(false);
+  });
+
   it('requires Brier, CLV, and PnL from the linked bet itself', () => {
     const board = readyBoard('cs2', 'current-match', 'sha256:current');
     const currentRun = runRecord({ matchId: 'current-match', dataSnapshotHash: 'sha256:current' });
@@ -175,12 +243,19 @@ function readyBoard(
   };
 }
 
-function runRecord(overrides: { matchId: string; dataSnapshotHash: string }) {
+function runRecord(
+  overrides: Partial<{
+    runId: string;
+    matchId: string;
+    dataSnapshotHash: string;
+    marketId: string;
+  }> & { matchId: string; dataSnapshotHash: string },
+) {
   return {
-    runId: `run-${overrides.matchId}`,
+    runId: overrides.runId ?? `run-${overrides.matchId}`,
     game: 'cs2',
     matchId: overrides.matchId,
-    marketId: 'real-market-1',
+    marketId: overrides.marketId ?? 'real-market-1',
     marketKind: 'match_winner',
     contractVersion: 'analysis.v1',
     promptVersion: 'cs2.match_winner.v1.0.0',

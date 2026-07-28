@@ -68,11 +68,10 @@ describe('Layout: Sidebar uniqueness', () => {
     document.documentElement.className = '';
   });
 
-  it('renders exactly one sidebar <aside> plus one practice slip <aside>', () => {
+  it('renders only the navigation sidebar on the event lobby', () => {
     const { container } = renderAppLayout('/');
     const sidebars = container.querySelectorAll('aside');
-    // Left navigation sidebar + right practice slip panel
-    expect(sidebars.length).toBe(2);
+    expect(sidebars.length).toBe(1);
   });
 
   it('desktop sidebar wrapper has lg:block class', () => {
@@ -88,25 +87,34 @@ describe('Layout: Sidebar uniqueness', () => {
     expect(overlay).toBeNull();
   });
 
-  it('only renders the bet slip on event and match routes', () => {
+  it('only renders the bet slip on match routes', () => {
     const { queryByTestId } = renderAppLayout('/analysis/report');
     expect(queryByTestId('desktop-bet-slip')).toBeNull();
   });
 
-  it('hides the global bankroll summary inside the ledger workspace', () => {
-    const { queryByTestId } = renderAppLayout('/bankroll');
+  it('does not render the global bankroll summary bar', () => {
+    const { queryByTestId } = renderAppLayout('/');
     expect(queryByTestId('virtual-bankroll-bar')).toBeNull();
   });
 });
 
 describe('Layout: Top bar', () => {
-  it('renders a visible bottom separator', () => {
-    const { getByTestId } = renderAppLayout('/');
-    const topbar = getByTestId('app-topbar');
+  it('does not render a global topbar', () => {
+    const { queryByTestId } = renderAppLayout('/');
+    expect(queryByTestId('app-topbar')).toBeNull();
+  });
 
-    expect(topbar.className).toContain('border-b');
-    expect(topbar.className).toContain('border-solid');
-    expect(topbar.style.borderBottomColor).toContain('color-mix');
+  it('renders a window top border without restoring the topbar', () => {
+    const { getByTestId } = renderAppLayout('/');
+    const border = getByTestId('window-top-border');
+    expect(border.className).toContain('top-0');
+    expect(border.className).toContain('h-px');
+    expect(border.className).toContain('bg-border');
+  });
+
+  it('keeps the mobile menu entry available without a topbar', () => {
+    const { getByLabelText } = renderAppLayout('/');
+    expect(getByLabelText('Toggle menu')).toBeTruthy();
   });
 
   it('does not repeat the product mode in the global shell', () => {
@@ -115,22 +123,41 @@ describe('Layout: Top bar', () => {
     expect(queryByText('练习账户')).toBeNull();
     expect(queryByText('SQLite 已同步')).toBeNull();
   });
+
+  it('does not render a global search box', () => {
+    const { queryByRole } = renderAppLayout('/');
+    expect(queryByRole('button', { name: /全局搜索|Global search/i })).toBeNull();
+  });
 });
 
 // ============================================================
 // Layout: Sidebar Content
 // ============================================================
 describe('Layout: Sidebar content', () => {
-  it('renders 13 navigation links with one unified ledger entry and one settings entry', () => {
+  it('renders four primary modules with one bottom settings entry', () => {
     const { container } = renderAppLayout('/');
     const links = container.querySelectorAll('aside nav a');
-    expect(links.length).toBe(13);
-    expect(Array.from(links).filter((link) => link.getAttribute('href')?.includes('/settings')).length).toBe(1);
-    expect(Array.from(links).filter((link) => link.getAttribute('href')?.includes('/bankroll')).length).toBe(1);
-    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/analysis/report'))).toBe(true);
-    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/validation-lab'))).toBe(true);
-    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/review'))).toBe(false);
-    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/simulation'))).toBe(false);
+    expect(links.length).toBe(5);
+    const linkTexts = Array.from(links).map((link) => link.textContent?.trim());
+    expect(linkTexts).toEqual(['总览', '模拟盘', '巨鲸追踪', '日历', '设置']);
+    expect(
+      Array.from(links).filter((link) => link.getAttribute('href')?.includes('/settings')).length,
+    ).toBe(1);
+    expect(
+      Array.from(links).filter((link) => link.getAttribute('href')?.includes('/bankroll')).length,
+    ).toBe(1);
+    expect(
+      Array.from(links).some((link) => link.getAttribute('href')?.includes('/analysis/report')),
+    ).toBe(false);
+    expect(
+      Array.from(links).some((link) => link.getAttribute('href')?.includes('/validation-lab')),
+    ).toBe(false);
+    expect(Array.from(links).some((link) => link.getAttribute('href')?.includes('/review'))).toBe(
+      false,
+    );
+    expect(
+      Array.from(links).some((link) => link.getAttribute('href')?.includes('/simulation')),
+    ).toBe(false);
   });
 
   it('keeps appearance controls out of the sidebar', () => {
@@ -150,20 +177,19 @@ describe('Sidebar component', () => {
   it('renders a single <aside> element', () => {
     const { container } = render(
       <MemoryRouter>
-        <Sidebar collapsed={false} />
+        <Sidebar />
       </MemoryRouter>,
     );
     const sidebars = container.querySelectorAll('aside');
     expect(sidebars.length).toBe(1);
   });
 
-  it('does not render overlay when collapsed and no onToggle', () => {
+  it('does not render overlay without a mobile toggle', () => {
     const { container } = render(
       <MemoryRouter>
-        <Sidebar collapsed={true} />
+        <Sidebar />
       </MemoryRouter>,
     );
-    // No overlay div should be present (overlay only shows when !collapsed && onToggle)
     const overlay = container.querySelector('.fixed.inset-0.z-40');
     expect(overlay).toBeNull();
   });
@@ -171,11 +197,23 @@ describe('Sidebar component', () => {
   it('renders overlay when not collapsed and has onToggle', () => {
     const { container } = render(
       <MemoryRouter>
-        <Sidebar collapsed={false} onToggle={() => {}} />
+        <Sidebar onToggle={() => {}} />
       </MemoryRouter>,
     );
     const overlay = container.querySelector('.fixed.inset-0.z-40');
     expect(overlay).toBeTruthy();
+  });
+
+  it('renders one decorative icon for each navigation entry', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    const links = container.querySelectorAll('nav a');
+    expect(links).toHaveLength(5);
+    expect(container.querySelectorAll('nav svg[aria-hidden="true"]')).toHaveLength(5);
+    expect(Array.from(links).every((link) => Boolean(link.textContent?.trim()))).toBe(true);
   });
 });
 

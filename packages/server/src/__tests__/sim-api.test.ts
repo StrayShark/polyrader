@@ -124,13 +124,24 @@ describe('/api/sim/* integration', () => {
       .send({
         betType: 'single',
         stake: 100,
-        legs: [{ selection: 'Team A', odds: 2.0 }],
+        game: 'cs2',
+        marketKind: 'match_winner',
+        matchId: 'match-1',
+        marketId: 'market-1',
+        legs: [{ selection: 'Team A', odds: 2.0, matchId: 'match-1', marketId: 'market-1' }],
       })
       .expect(201);
 
     const res = await request(app).get('/api/sim/bets?status=open').expect(200);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].status).toBe('open');
+    expect(res.body.data[0].marketKind).toBe('match_winner');
+    expect(res.body.data[0].legs).toEqual([
+      expect.objectContaining({ selection: 'Team A', odds: 2, marketId: 'market-1' }),
+    ]);
+
+    const bankroll = await request(app).get('/api/sim/bankroll').expect(200);
+    expect(bankroll.body.data.openBets[0].legs[0].selection).toBe('Team A');
   });
 
   it('PATCH /api/sim/bets/:id/settle settles a bet', async () => {

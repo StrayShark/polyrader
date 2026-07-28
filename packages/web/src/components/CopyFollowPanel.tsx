@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Bell, Zap, Play, Loader2, Inbox, Users, ExternalLink, Trophy, Waves, ShieldCheck, Layers3 } from 'lucide-react';
+import { Star, Bell, Zap, Play, Inbox, Users, ExternalLink, Trophy, Waves, ShieldCheck, Layers3 } from 'lucide-react';
 import { useWalletFollowStore } from '../stores/wallet-follow-store';
 import { useI18n } from '../hooks/use-i18n';
 import { Badge, Button, Card, CardHeader, CardTitle, Input } from '@/components/ui';
 import { EmptyStateGuide } from './EmptyStateGuide';
 import { useToast } from './ToastProvider';
+import { LoadingSpinner } from './LoadingState';
 import type { FollowedWallet, WalletCopySignal } from '@polyrader/core/browser';
 import { COPY_STRATEGY_PRESETS, matchesCopyStrategyPreset } from '@polyrader/core/browser';
 
@@ -441,7 +442,7 @@ export function FollowWalletButton({ address }: { address: string }) {
       title={followed ? t('whales.unfollow') : t('whales.follow')}
     >
       {loading ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <LoadingSpinner className="h-3.5 w-3.5" size={14} />
       ) : (
         <Star className={`h-3.5 w-3.5 ${followed ? 'fill-primary text-primary' : ''}`} />
       )}

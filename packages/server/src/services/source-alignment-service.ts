@@ -421,8 +421,11 @@ export class SourceAlignmentService {
         mapsPlayed: current.mapsOnRecord || player.mapsPlayed,
       } : player;
     });
-    if (players.length === 0 && lineup) {
-      players = lineup.players.map((player) => ({
+    if (lineup) {
+      const knownPlayerIds = new Set(players.map((player) => player.playerId));
+      const missingLineupPlayers = lineup.players
+        .filter((player) => !knownPlayerIds.has(player.playerId))
+        .map((player) => ({
         playerId: player.playerId,
         name: '',
         nickname: player.nickname,
@@ -431,7 +434,8 @@ export class SourceAlignmentService {
         headshotPercent: 0,
         mapsPlayed: player.mapsOnRecord,
         role: player.role,
-      }));
+        }));
+      players = [...players, ...missingLineupPlayers];
     }
     const ratings = players.map((player) => player.rating).filter((rating) => rating > 0);
     return {

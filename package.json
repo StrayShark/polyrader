@@ -27,15 +27,18 @@
     "test:e2e:live": "npm run test:e2e:live --workspace=@polyrader/web",
     "test:tauri:smoke": "node scripts/tauri-smoke.mjs",
     "ops:current-source": "node scripts/game-current-source-ops.mjs",
+    "ops:current-source:all": "node scripts/current-source-smoke-all.mjs",
     "ops:cs2-sprint-i": "node scripts/game-current-source-ops.mjs cs2 --match-id 2396000",
     "ops:dota-d5": "node scripts/game-current-source-ops.mjs dota2",
     "ops:lol": "node scripts/game-current-source-ops.mjs lol",
     "ops:valorant": "node scripts/game-current-source-ops.mjs valorant",
+    "ops:p5-verify": "node scripts/complete-p5-gates.mjs",
     "clean": "turbo run clean",
     "format": "prettier --write \"packages/**/*.{ts,tsx,json,css}\"",
     "sync:env": "node scripts/sync-global-env.mjs"
   },
   "devDependencies": {
+    "chromium-bidi": "^0.5.8",
     "eslint": "^9.0.0",
     "knip": "^5.88.1",
     "prettier": "^3.4.0",

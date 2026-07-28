@@ -42,6 +42,25 @@ test.describe('Sidebar layout structure (desktop)', () => {
     expect(parseFloat(borderRightWidth)).toBeGreaterThan(0);
   });
 
+  test('window top area has a bottom separator line', async ({ page }) => {
+    await gotoWithSidebar(page);
+
+    const topBorder = page.getByTestId('window-top-border');
+    await expect(topBorder).toBeVisible();
+    const style = await topBorder.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const computed = getComputedStyle(el);
+      return {
+        top: rect.top,
+        height: rect.height,
+        backgroundColor: computed.backgroundColor,
+      };
+    });
+    expect(style.top).toBe(0);
+    expect(style.height).toBeGreaterThan(0);
+    expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  });
+
   test('sidebar width is 240px', async ({ page }) => {
     await gotoWithSidebar(page);
 
@@ -61,23 +80,39 @@ test.describe('Sidebar content visibility (desktop)', () => {
     await expect(page.getByTestId('app-sidebar').getByText('PolyRader', { exact: true })).toHaveCount(0);
   });
 
-  test('group labels are visible', async ({ page }) => {
+  test('does not render group labels', async ({ page }) => {
     await gotoWithSidebar(page);
-    // Group labels are in divs with tracking-wider class
     const groupLabels = page.getByTestId('app-sidebar').locator('div.tracking-wider');
-    await expect(groupLabels).toHaveCount(3);
-    const texts = await groupLabels.allTextContents();
-    expect(texts.map((t) => t.trim())).toEqual(['核心', '分析', '工具']);
+    await expect(groupLabels).toHaveCount(0);
+  });
+
+  test('navigation items have visible vertical spacing', async ({ page }) => {
+    await gotoWithSidebar(page);
+    const primaryLinks = page.getByTestId('app-sidebar').locator('nav[aria-label="Primary"] a');
+    await expect(primaryLinks).toHaveCount(4);
+    const gap = await primaryLinks.evaluateAll((links) => {
+      const first = links[0].getBoundingClientRect();
+      const second = links[1].getBoundingClientRect();
+      return second.top - first.bottom;
+    });
+    expect(gap).toBeGreaterThanOrEqual(4);
   });
 
   test('all navigation links have non-empty text', async ({ page }) => {
     await gotoWithSidebar(page);
     const navLinks = page.getByTestId('app-sidebar').locator('nav a');
     const texts = await navLinks.allTextContents();
-    expect(texts.length).toBeGreaterThanOrEqual(12);
+    expect(texts).toEqual(['总览', '模拟盘', '巨鲸追踪', '日历', '设置']);
     for (const text of texts) {
       expect(text.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  test('navigation modules render decorative icons with visible labels', async ({ page }) => {
+    await gotoWithSidebar(page);
+    const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.locator('nav a')).toHaveCount(5);
+    await expect(sidebar.locator('nav svg[aria-hidden="true"]')).toHaveCount(5);
   });
 
   test('pins settings at the bottom and removes duplicate settings controls', async ({ page }) => {
@@ -87,6 +122,11 @@ test.describe('Sidebar content visibility (desktop)', () => {
     await expect(sidebar.locator('a[href*="database"]')).toHaveCount(0);
     await expect(sidebar.locator('a[href*="ai/config"]')).toHaveCount(0);
     await expect(sidebar.locator('a[href*="bankroll"]')).toHaveCount(1);
+    await expect(sidebar.locator('a[href*="strategy"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="analysis/report"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="validation-lab"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="signals"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href*="ai/stats"]')).toHaveCount(0);
     await expect(sidebar.locator('a[href*="review"]')).toHaveCount(0);
     await expect(sidebar.locator('a[href*="simulation"]')).toHaveCount(0);
     await expect(sidebar.locator('button[title="Dark+"]')).toHaveCount(0);

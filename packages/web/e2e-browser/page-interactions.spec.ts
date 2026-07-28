@@ -27,6 +27,13 @@ async function mockMatchDetail(page: Page) {
         body: JSON.stringify({ data: { updated: true } }),
       });
     }
+    if (url.includes('/refresh-intelligence')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { refreshed: true } }),
+      });
+    }
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -174,6 +181,20 @@ test.describe('Match Detail page', () => {
     await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=IEM Cologne').first()).toBeVisible({ timeout: 5000 });
     await expect(page.locator('text=BO3').first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('provides back navigation and active HLTV intelligence fetch', async ({ page }) => {
+    await mockMatchDetail(page);
+    await page.goto('/#/match/local-hltv-spirit-vs-g2');
+    await page.waitForLoadState('domcontentloaded');
+
+    await expect(page.getByTestId('back-to-lobby')).toBeVisible();
+    await expect(page.getByTestId('match-intelligence-empty')).toBeVisible();
+    const refreshRequest = page.waitForRequest((request) =>
+      request.url().includes('/refresh-intelligence') && request.method() === 'POST',
+    );
+    await page.getByTestId('fetch-hltv-intelligence').click();
+    await refreshRequest;
   });
 
   test('shows order book data when available', async ({ page }) => {

@@ -254,7 +254,10 @@ export class CurrentSourceReleaseAuditService {
     }
 
     const gateStage = this.beginStage('gate_evaluate', stageTimings);
-    const gate = this.gates.get(game);
+    const gate = this.gates.get(game, {
+      board,
+      runId: analysis.status === 'completed' ? analysis.runId : undefined,
+    });
     gateStage.finish(
       gate.status === 'verified' ? 'passed' : 'blocked',
       gate.currentSource.blockers[0] ?? 'all current-source stages passed',

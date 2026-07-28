@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Clock, Database, ExternalLink, Link2, Loader2, RefreshCw, Save, ShieldCheck, Users } from 'lucide-react';
+import { Clock, Database, ExternalLink, Link2, RefreshCw, Save, ShieldCheck, Users } from 'lucide-react';
 import type { MatchLineups, TeamBrief } from '@polyrader/core/browser';
 import { Button, Badge, Card, CardHeader, CardTitle, Input, Skeleton } from '@/components/ui';
 import { api } from '../utils/api';
 import { cn } from '../utils/cn';
 import { useI18n } from '../hooks/use-i18n';
 import { useToast } from './ToastProvider';
+import { LoadingSpinner } from './LoadingState';
 
 type SourceName = 'polymarket' | 'hltv' | 'liquipedia' | 'grid' | 'cs_api' | 'manual';
 
@@ -113,7 +114,7 @@ export function MatchSourcePanel({
         <div className="flex items-center gap-2">
           <Badge variant={lineupState.variant} className="text-[10px]">{lineupState.label}</Badge>
           <Button variant="outline" size="sm" onClick={handleRefreshLineup} disabled={isRefreshingLineup}>
-            {isRefreshingLineup ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {isRefreshingLineup ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             {t('sourceAlignment.refreshLineup')}
           </Button>
         </div>
@@ -126,7 +127,7 @@ export function MatchSourcePanel({
           <div className="flex items-center justify-between">
             <div className="text-xs font-medium text-muted-foreground">{t('sourceAlignment.matchSources')}</div>
             <Button variant="ghost" size="sm" onClick={() => load()} disabled={isLoading} className="h-7 px-2">
-              {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             </Button>
           </div>
           {isLoading ? <SourceSkeleton /> : <SourceLinkList links={links} />}
@@ -322,11 +323,11 @@ function TeamSourceCard({ team }: { team: TeamBrief }) {
         />
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={saveAlias} disabled={isSaving || !sourceId.trim()}>
-            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {isSaving ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <Save className="h-3.5 w-3.5" />}
             {t('sourceAlignment.saveAlias')}
           </Button>
           <Button variant="outline" size="sm" onClick={syncLiquipedia} disabled={isSyncing}>
-            {isSyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {isSyncing ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             {t('sourceAlignment.syncLiquipedia')}
           </Button>
         </div>
@@ -371,7 +372,7 @@ export function SourceAlignmentSummary() {
           <CardTitle className="text-sm">{t('database.sourceAlignmentTitle')}</CardTitle>
         </div>
         <Button variant="outline" size="sm" onClick={() => load()} disabled={isLoading}>
-          {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </CardHeader>

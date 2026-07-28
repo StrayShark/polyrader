@@ -4,6 +4,7 @@ import { usePromptVariantStore } from '../stores/prompt-variant-store';
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { TableSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import { useI18n } from '../hooks/use-i18n';
 import type { PromptVariant } from '@polyrader/core/browser';
 import {
@@ -235,7 +236,7 @@ export function PromptVariantsPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => fetchVariants()} disabled={isLoading}>
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             {t('common.refresh')}
           </Button>
           <Button size="sm" onClick={openCreate}>

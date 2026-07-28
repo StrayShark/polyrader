@@ -4,6 +4,10 @@ Status: Current design contract
 Version: `analysis.v1`
 Last updated: 2026-07-21
 
+Settled simulated bets use the separate
+[`bet-review.v1`](./llm-bet-result-review-contract.md) contract. Post-result review
+must not mutate or reinterpret the original `analysis.v1` artifacts.
+
 ## 1. Objective
 
 Every LLM analysis must be reproducible, provider-neutral, schema-valid, and safe to

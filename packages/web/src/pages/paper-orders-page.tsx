@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { SimBet } from '@polyrader/core/browser';
+import type { SimBetRecord } from '@polyrader/core/browser';
+import { LoadingSpinner } from '../components/LoadingState';
 import {
   Badge,
   Button,
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui';
 import { api } from '../utils/api';
 import { useI18n } from '../hooks/use-i18n';
+import { SimBetMarketContext, SimBetMarketSummary } from '../components/SimBetMarketSummary';
 
 type StatusFilter = 'all' | 'open' | 'settled' | 'voided';
 
@@ -24,7 +26,7 @@ export function PaperOrdersPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const focusedBetId = searchParams.get('betId');
-  const [bets, setBets] = useState<SimBet[]>([]);
+  const [bets, setBets] = useState<SimBetRecord[]>([]);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function PaperOrdersPage({ embedded = false }: { embedded?: boolean }) {
     setError(null);
     try {
       const query = filter === 'all' ? '' : `?status=${filter}`;
-      const response = await api.get<{ data: SimBet[] }>(`/sim/bets${query}`);
+      const response = await api.get<{ data: SimBetRecord[] }>(`/sim/bets${query}`);
       setBets(response.data);
     } catch (err) {
       setError((err as Error).message);
@@ -61,11 +63,10 @@ export function PaperOrdersPage({ embedded = false }: { embedded?: boolean }) {
         {!embedded && (
           <div>
             <CardTitle className="text-base">{t('paperOrders.title')}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">{t('paperOrders.subtitle')}</p>
           </div>
         )}
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={loading ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
+          {loading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </CardHeader>
@@ -121,13 +122,13 @@ export function PaperOrdersPage({ embedded = false }: { embedded?: boolean }) {
                   className={focusedBetId === bet.id ? 'bg-accent/40' : undefined}
                 >
                   <TableCell>
-                    <div className="font-medium">{bet.matchId ?? '—'}</div>
+                    <SimBetMarketSummary bet={bet} showContext={false} />
                     <div className="font-mono text-xs text-muted-foreground">
                       {bet.id.slice(0, 18)}
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs uppercase text-muted-foreground">
-                    {bet.game ?? 'unknown'} · {(bet.marketKind ?? 'unknown').replaceAll('_', ' ')}
+                  <TableCell>
+                    <SimBetMarketContext bet={bet} />
                   </TableCell>
                   <TableCell>
                     <Badge

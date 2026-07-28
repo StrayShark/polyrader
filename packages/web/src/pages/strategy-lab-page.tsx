@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { FlaskConical, Activity, TrendingUp, BarChart3, Settings2, Save, RefreshCw, GitCompare } from 'lucide-react';
+import { Activity, TrendingUp, BarChart3, Settings2, Save, RefreshCw, GitCompare } from 'lucide-react';
 import { useI18n } from '../hooks/use-i18n';
 import { useMarketStore } from '../stores/market-store';
 import { useStrategyProfileStore } from '../stores/strategy-profile-store';
 import { api } from '../utils/api';
+import { LoadingSpinner } from '../components/LoadingState';
 import {
   Card,
   CardContent,
@@ -416,7 +417,7 @@ function SignalWeights() {
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">{t('strategy.weightsSubtitle')}</div>
         <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={isLoading}>
-          <RefreshCw className={`mr-1 h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="mr-1 h-3.5 w-3.5" size={14} /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>
@@ -588,12 +589,8 @@ export function StrategyLabPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <FlaskConical className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('strategy.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('strategy.subtitle')}</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">{t('strategy.title')}</h1>
       </div>
 
       <Tabs defaultValue="lab">

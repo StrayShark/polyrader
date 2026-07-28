@@ -4,6 +4,7 @@ import { useI18n } from '../hooks/use-i18n';
 import { useToast } from './ToastProvider';
 import { getBase } from '../utils/api';
 import { Button, Card, CardHeader, CardTitle, Badge } from '@/components/ui';
+import { LoadingSpinner } from './LoadingState';
 
 interface BackupInfo {
   fileSize: number;
@@ -88,7 +89,7 @@ export function BackupPanel() {
           <CardTitle className="text-sm">{t('backup.title')}</CardTitle>
         </div>
         <Button variant="ghost" size="sm" onClick={() => fetchInfo()} disabled={loading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
         </Button>
       </CardHeader>
       <div className="space-y-4 p-6">

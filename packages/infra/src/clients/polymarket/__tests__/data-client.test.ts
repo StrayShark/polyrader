@@ -79,6 +79,37 @@ describe('PolymarketDataClient public smart-wallet data', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('sortDirection=DESC');
   });
 
+  it('maps user trades with the market question for wallet detail views', async () => {
+    mockJson([
+      {
+        id: 'trade-1',
+        conditionId: 'condition-1',
+        asset: 'token-1',
+        title: 'CS2: Spirit vs G2 - Match Winner',
+        outcome: 'Spirit',
+        side: 'BUY',
+        price: 0.85,
+        size: 642.35,
+        value: 546,
+        timestamp: 1_785_040_000,
+        transactionHash: '0xtrade-1',
+      },
+    ]);
+
+    const client = new PolymarketDataClient('https://data.test');
+    const trades = await client.getTrades('0xleader', 20);
+
+    expect(trades[0]).toEqual(expect.objectContaining({
+      question: 'CS2: Spirit vs G2 - Match Winner',
+      outcome: 'Spirit',
+      side: 'buy',
+      value: 546,
+      txHash: '0xtrade-1',
+    }));
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/trades');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('user=0xleader');
+  });
+
   function mockJson(value: unknown): void {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(value), {
       status: 200,

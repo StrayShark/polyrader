@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { BookOpen, BarChart3, Tag, FileText, Filter, X, Lightbulb } from 'lucide-react';
+import { BarChart3, Tag, FileText, Filter, X, Lightbulb } from 'lucide-react';
 import { useI18n } from '../hooks/use-i18n';
 import {
   Card,
@@ -27,6 +27,7 @@ import { useDebounce } from '../hooks/use-debounce';
 import { cn } from '../utils/cn';
 import type { ReviewDetail, ReviewListFilters } from '@polyrader/core/browser';
 import { ReviewTimeline } from '../components/ReviewTimeline';
+import { BetResultAnalysisPanel } from '../components/BetResultAnalysisPanel';
 
 const ERROR_TAGS = [
   'overrated_favorite',
@@ -206,6 +207,8 @@ function ReviewDetailDialog({
           </div>
 
           <ReviewTimeline detail={detail} />
+
+          <BetResultAnalysisPanel betId={bet.id} />
 
           {/* Placement vs closing odds */}
           <div className="grid grid-cols-2 gap-3">
@@ -428,7 +431,6 @@ export function ReviewPage({ embedded = false }: { embedded?: boolean }) {
     <div className="space-y-4">
       {!embedded && (
         <div className="flex items-center gap-2">
-          <BookOpen className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-semibold tracking-tight">{t('review.title')}</h1>
         </div>
       )}
@@ -455,7 +457,7 @@ export function ReviewPage({ embedded = false }: { embedded?: boolean }) {
       {!isInitialLoading && (
         <>
       {summary && (
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 xl:grid-cols-4">
           <Card className="p-3 space-y-2" data-testid="review-tag-stats">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Tag className="h-4 w-4 text-muted-foreground" />
@@ -468,6 +470,31 @@ export function ReviewPage({ embedded = false }: { embedded?: boolean }) {
                 {summary.errorTagStats.slice(0, 6).map((stat) => (
                   <div key={stat.tag} className="flex items-center justify-between text-xs">
                     <span>{getTagLabel(stat.tag, t)}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {stat.count} · {formatCurrency(stat.totalPnl)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-3 space-y-2" data-testid="review-tag-trend">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+              {t('review.tagTrend')}
+            </div>
+            {summary.errorTagTrend.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('review.tagTrendEmpty')}</p>
+            ) : (
+              <div className="space-y-1">
+                {summary.errorTagTrend.slice(0, 6).map((stat) => (
+                  <div
+                    key={`${stat.periodStart}-${stat.tag}`}
+                    className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-2 text-xs"
+                  >
+                    <span className="font-mono text-[10px] text-muted-foreground">{stat.periodLabel}</span>
+                    <span className="min-w-0 truncate">{getTagLabel(stat.tag, t)}</span>
                     <span className="tabular-nums text-muted-foreground">
                       {stat.count} · {formatCurrency(stat.totalPnl)}
                     </span>

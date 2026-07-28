@@ -13,7 +13,7 @@ test.describe('Multi-market analysis and liquidity warnings', () => {
 
     const panel = page.getByTestId('multi-market-analysis');
     await expect(panel).toBeVisible();
-    await expect(panel.getByText(/让分盘|Handicap/).first()).toBeVisible();
+    await expect(panel.getByText(/让分|Handicap/).first()).toBeVisible();
     await expect(panel.getByText(/大小分|Totals/).first()).toBeVisible();
     await expect(panel.getByText(/存在模型偏差|Model Divergence/)).toBeVisible();
     await expect(panel.getByText(/仅观察|Observe Only/)).toBeVisible();
@@ -25,20 +25,20 @@ test.describe('Multi-market analysis and liquidity warnings', () => {
     expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   });
 
-  test('warns in the lobby when external market liquidity is below $1,000', async ({ page }) => {
+  test('filters low-liquidity markets out of the lobby', async ({ page }) => {
     await blockWs(page);
     await setupCommonMocks(page);
-    await page.route(/\/api\/markets(?:\?|$)/, (route) => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: [{ ...SAMPLE_MARKET, liquidity: 650 }], total: 1 }),
-    }));
+    await page.route(/\/api\/markets(?:\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ ...SAMPLE_MARKET, liquidity: 650 }], total: 1 }),
+      }),
+    );
 
     await page.goto('/#/');
 
-    const warning = page.getByTestId('low-liquidity-warning');
-    await expect(warning).toBeVisible();
-    await expect(warning).toContainText(/650/);
-    await expect(page.getByRole('button', { name: /Spirit \d/ })).toBeEnabled();
+    await expect(page.getByTestId('low-liquidity-warning')).toHaveCount(0);
+    await expect(page.getByText(/没有比赛|No matches/)).toBeVisible();
   });
 });

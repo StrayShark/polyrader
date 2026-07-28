@@ -36,6 +36,7 @@ import {
   calibrationParamsSchema,
   whaleQuerySchema,
   whaleLeaderboardQuerySchema,
+  whalePositionsQuerySchema,
   whaleParamsSchema,
   followWalletBodySchema,
   walletCopyConfigBodySchema,
@@ -64,6 +65,7 @@ import {
   settleSimBetBodySchema,
   captureClosingPriceBodySchema,
   createSimReviewBodySchema,
+  analyzeBetResultBodySchema,
   reviewListQuerySchema,
   placeMarketOrderBodySchema,
   cancelMarketOrderParamsSchema,
@@ -164,6 +166,10 @@ export function registerRoutes(app: Express): void {
   );
   app.get('/api/validation-lab/release-gates/:game', (req, res) =>
     validationLabCtrl.getReleaseGate(req, res),
+  );
+  app.post('/api/validation-lab/p5/verify', (req, res) => validationLabCtrl.verifyP5(req, res));
+  app.post('/api/validation-lab/current-source-smoke', (req, res) =>
+    void validationLabCtrl.runCurrentSourceSmoke(req, res),
   );
   app.post(
     '/api/validation-lab/release-audits/:game',
@@ -298,6 +304,12 @@ export function registerRoutes(app: Express): void {
     (req, res) => walletFollowCtrl.unfollow(req, res),
   );
 
+  app.get(
+    '/api/whales/:address/positions',
+    validate(whaleParamsSchema, 'params'),
+    validate(whalePositionsQuerySchema, 'query'),
+    (req, res) => whaleCtrl.getWhalePositions(req, res),
+  );
   app.get('/api/whales/:address', validate(whaleParamsSchema, 'params'), (req, res) =>
     whaleCtrl.getWhale(req, res),
   );
@@ -384,6 +396,11 @@ export function registerRoutes(app: Express): void {
     '/api/esports/matches/:matchId/refresh-lineup',
     validate(matchParamsSchema, 'params'),
     (req, res) => esportsCtrl.refreshMatchLineup(req, res),
+  );
+  app.post(
+    '/api/esports/matches/:matchId/refresh-intelligence',
+    validate(matchParamsSchema, 'params'),
+    (req, res) => esportsCtrl.refreshMatchIntelligence(req, res),
   );
   app.post(
     '/api/esports/matches/:matchId/reconcile',
@@ -543,6 +560,12 @@ export function registerRoutes(app: Express): void {
   app.get('/api/sim/bets/:id/review', (req, res) => simCtrl.getReview(req, res));
   app.post('/api/sim/bets/:id/review', validate(createSimReviewBodySchema), (req, res) =>
     simCtrl.createOrUpdateReview(req, res),
+  );
+  app.get('/api/sim/bets/:id/result-analysis', (req, res) =>
+    simCtrl.getBetResultAnalysis(req, res),
+  );
+  app.post('/api/sim/bets/:id/result-analysis', validate(analyzeBetResultBodySchema), (req, res) =>
+    void simCtrl.analyzeBetResult(req, res),
   );
   app.get('/api/sim/bets/:id/snapshots', (req, res) => simCtrl.getSnapshotsForBet(req, res));
 

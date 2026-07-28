@@ -1,9 +1,11 @@
 import type { BankrollSummary, EquityCurvePoint, SimAccount, RiskMetrics, SimBet, EquityCurveGranularity } from '@polyrader/core';
 import { SimAccountRepository, SimBetRepository } from '@polyrader/infra';
+import { SimBetService } from './sim-bet-service';
 
 export class BankrollService {
   private accountRepo = new SimAccountRepository();
   private betRepo = new SimBetRepository();
+  private betService = new SimBetService();
 
   getSummary(accountId = 'default', granularity: EquityCurveGranularity = 'day'): BankrollSummary {
     const account = accountId === 'default'
@@ -13,9 +15,9 @@ export class BankrollService {
     const todayPnl = this.betRepo.getTodayPnl(account.id);
     const openExposure = this.betRepo.getOpenBetsTotalExposure(account.id);
     const equityCurve = this.getEquityCurve(account.id, account.initialBankroll, granularity);
-    const openBetsWithLegs = this.betRepo.getBetsWithLegs(account.id, 'open');
-    const settledBetsWithLegs = this.betRepo.getBetsWithLegs(account.id, 'settled');
-    const voidedBetsWithLegs = this.betRepo.getBetsWithLegs(account.id, 'voided');
+    const openBets = this.betService.listBets(account.id, 'open');
+    const settledBets = this.betService.listBets(account.id, 'settled');
+    const voidedBets = this.betService.listBets(account.id, 'voided');
     const allBets = this.betRepo.getAllBets(account.id);
 
     return {
@@ -23,9 +25,9 @@ export class BankrollService {
       todayPnl,
       openExposure,
       equityCurve,
-      openBets: openBetsWithLegs.map((b) => b.bet),
-      settledBets: settledBetsWithLegs.map((b) => b.bet),
-      voidedBets: voidedBetsWithLegs.map((b) => b.bet),
+      openBets,
+      settledBets,
+      voidedBets,
       riskMetrics: this.computeRiskMetrics(allBets, account.initialBankroll),
     };
   }

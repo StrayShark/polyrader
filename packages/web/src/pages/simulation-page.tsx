@@ -94,7 +94,6 @@ export function SimulationPage({ embedded = false }: { embedded?: boolean }) {
         {!embedded && (
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">{t('simulation.title')}</h1>
-            <p className="text-sm text-muted-foreground">{t('simulation.subtitle')}</p>
           </div>
         )}
         <Button variant="outline" onClick={runBacktest} disabled={isLoading}>

@@ -3,6 +3,7 @@ import { Activity, TrendingUp, AlertTriangle, RefreshCw, GitCompare, BarChart3, 
 import { api } from '../utils/api';
 import { DataState } from '../components/DataState';
 import { StatsSkeleton, TableSkeleton } from '../components/Skeletons';
+import { LoadingSpinner } from '../components/LoadingState';
 import { AlertManager } from '../components/alert-manager';
 import {
   Card,
@@ -197,10 +198,9 @@ export function SignalsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('signals.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('signals.subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? <LoadingSpinner className="h-3.5 w-3.5" size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('common.refresh')}
         </Button>
       </div>

@@ -9,6 +9,7 @@ import {
   importDatabase,
 } from '../utils/api';
 import { useToast } from '../components/ToastProvider';
+import { LoadingSpinner } from '../components/LoadingState';
 import {
   Card,
   CardHeader,
@@ -153,7 +154,6 @@ export function DatabasePage({ embedded = false }: { embedded?: boolean }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
         <div className="flex shrink-0 items-center gap-2">
-          <Database className="h-6 w-6 text-primary" />
           {embedded ? (
             <h2 className="text-lg font-semibold">{t('database.title')}</h2>
           ) : (
@@ -162,7 +162,7 @@ export function DatabasePage({ embedded = false }: { embedded?: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => fetchInfo()} disabled={isLoading}>
-            <RefreshCw className={cn('mr-1 h-3.5 w-3.5', isLoading && 'animate-spin')} />
+            {isLoading ? <LoadingSpinner className="mr-1 h-3.5 w-3.5" size={14} /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             {t('common.refresh')}
           </Button>
           <Button
@@ -306,8 +306,4 @@ export function DatabasePage({ embedded = false }: { embedded?: boolean }) {
       <LocalDatabaseInspector tableNames={tableEntries.map(([name]) => name)} />
     </div>
   );
-}
-
-function cn(...classes: (string | false | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

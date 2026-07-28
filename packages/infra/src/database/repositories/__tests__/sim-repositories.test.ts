@@ -63,6 +63,7 @@ function setupTestDb() {
       status TEXT NOT NULL DEFAULT 'open',
       result TEXT,
       pnl REAL NOT NULL DEFAULT 0,
+      settlement_source TEXT,
       reasoning TEXT,
       match_format TEXT,
       match_tier TEXT,

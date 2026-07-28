@@ -37,7 +37,16 @@ await build({
   platform: 'node',
   format: 'esm',
   outfile: 'dist/polyrader-server.js',
-  external: ['better-sqlite3', 'bufferutil', 'utf-8-validate'],
+  external: [
+    'better-sqlite3',
+    'bufferutil',
+    'utf-8-validate',
+    'playwright',
+    'playwright-core',
+    'chromium-bidi/*',
+    'fsevents',
+    '*.node',
+  ],
   banner: { js: bannerJs },
 });
 
