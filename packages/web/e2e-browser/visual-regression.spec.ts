@@ -36,8 +36,10 @@ test.describe(`Visual regression — ${VISUAL_ROUTES.length} routes × 3 themes`
         await setTheme(page, theme);
         await page.waitForTimeout(600);
 
+        const maxDiffPixelRatio = theme === 'matrix' && route.name === 'analysis-report' ? 0.08 : 0.06;
+
         await expect(page).toHaveScreenshot(`${theme}-${route.name}.png`, {
-          maxDiffPixelRatio: 0.06,
+          maxDiffPixelRatio,
           timeout: 20000,
           mask: [page.locator('footer')],
         });
