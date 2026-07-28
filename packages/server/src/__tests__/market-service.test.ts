@@ -191,6 +191,8 @@ describe('MarketService', () => {
       vi.mocked(cacheGet).mockResolvedValue(null);
       marketRepo.findAll.mockReturnValue([]);
       marketRepo.upsert.mockReturnValue(undefined);
+      const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const later = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
 
       const makeMarket = (conditionId: string, question: string, endDate: string, volume24h = 1_000) => ({
         conditionId,
@@ -211,15 +213,15 @@ describe('MarketService', () => {
         makeMarket(
           `lol-future-${index}`,
           `Will Team ${index} win the LCK 2026 season playoffs?`,
-          '2026-12-31T00:00:00Z',
+          later,
           20_000 - index,
         ),
       );
       const recent = makeMarket(
         'lol-recent',
         'LoL: Team WE vs JD Gaming (BO3) - LPL Group Ascend',
-        '2026-07-25T12:00:00Z',
-        500,
+        soon,
+        1_500,
       );
       gammaClient.getMarketsForGame.mockImplementation((game: string) =>
         Promise.resolve(game === 'lol' ? [...futures, recent] : []),
