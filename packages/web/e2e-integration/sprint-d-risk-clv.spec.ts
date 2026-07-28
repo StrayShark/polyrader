@@ -23,22 +23,25 @@ test('Sprint D exposes risk usage and closes an auditable CLV loop', async ({ re
   expect(risk.data.limits.maxProviderExposure).toBeGreaterThan(0);
   expect(risk.data.limits.maxMarketKindExposure).toBeGreaterThan(0);
 
-  const beforeResponse = await request.get('/api/performance/summary');
+  const nonce = `${Date.now()}`;
+  const provider = `sprint-d-e2e-${nonce}`;
+  const matchId = `sprint-d-match-${nonce}`;
+  const marketId = `sprint-d-market-${nonce}`;
+  const summaryPath = `/api/performance/summary?game=cs2&provider=${provider}&marketKind=match_winner`;
+
+  const beforeResponse = await request.get(summaryPath);
   expect(beforeResponse.ok()).toBe(true);
   const before = (await beforeResponse.json()) as {
     data: { settledCount: number; clvSampleCount: number };
   };
 
-  const nonce = `${Date.now()}`;
-  const matchId = `sprint-d-e2e-${nonce}`;
-  const marketId = `sprint-d-market-${nonce}`;
   const placeResponse = await request.post('/api/sim/bets', {
     data: {
       betType: 'single',
       stake: 5,
       matchId,
       marketId,
-      provider: 'sprint-d-e2e',
+      provider,
       game: 'cs2',
       marketKind: 'match_winner',
       modelProbability: 0.6,
@@ -49,7 +52,7 @@ test('Sprint D exposes risk usage and closes an auditable CLV loop', async ({ re
           marketId,
           selection: 'Team A',
           odds: 2,
-          source: 'sprint-d-e2e',
+          source: provider,
         },
       ],
     },
@@ -69,11 +72,11 @@ test('Sprint D exposes risk usage and closes an auditable CLV loop', async ({ re
   expect(closing.data.clv).toBeCloseTo(0.1111, 3);
 
   const settleResponse = await request.patch(`/api/sim/bets/${placed.data.bet.id}/settle`, {
-    data: { result: 'won' },
+    data: { result: 'won', settlementSource: 'hltv' },
   });
   expect(settleResponse.ok()).toBe(true);
 
-  const afterResponse = await request.get('/api/performance/summary');
+  const afterResponse = await request.get(summaryPath);
   expect(afterResponse.ok()).toBe(true);
   const after = (await afterResponse.json()) as {
     data: { settledCount: number; clvSampleCount: number; avgClv?: number };

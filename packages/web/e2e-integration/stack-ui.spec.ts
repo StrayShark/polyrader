@@ -25,7 +25,7 @@ test.describe('Integration — UI against real backend proxy', () => {
     await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
     await expect(page.getByText(/纸面跟单|Paper Copy/i).first()).toBeVisible();
     await expect(
-      page.getByText(/不会向 Polymarket 发送真实订单|never sends real orders to Polymarket/i),
+      page.getByText(/不会真实下单|keeps paper mode/i),
     ).toBeVisible();
   });
 });
