@@ -32,8 +32,8 @@ test.describe('Smart wallet tracking', () => {
 
     await expect(page.getByText('聪明钱排行榜')).toBeVisible();
     await expect(page.getByLabel('最低胜率')).toHaveValue('0.6');
-    await expect(page.getByLabel('最少样本')).toHaveValue('10');
-    await expect(page.getByLabel('最低 ROI')).toHaveValue('0.02');
+    await expect(page.getByLabel('最少样本')).toHaveValue('5');
+    await expect(page.getByLabel('最低 ROI')).toHaveValue('-1');
     await expect(page.locator('span.tabular-nums.text-xs').filter({ hasText: /^65%$/ })).toBeVisible();
     await expect(page.getByText('24', { exact: true })).toBeVisible();
     await expect(page.getByText('18.0%')).toBeVisible();

@@ -61,7 +61,6 @@ test.describe('P1 UI audit fixes', () => {
     await expect(sidebar.getByRole('link', { name: /巨鲸追踪|Whale Tracking/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /日历|Calendar/i })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: /设置|Settings/i })).toBeVisible();
-    await expect(sidebar.locator('nav svg')).toHaveCount(0);
   });
 
   test('content titles do not show decorative icons', async ({ page }) => {

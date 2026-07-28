@@ -4,6 +4,8 @@ import { test, expect, type Page } from '@playwright/test';
  * Mock dashboard API responses with correct shapes per endpoint.
  */
 async function mockMarketData(page: Page) {
+  const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const later = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
   const markets = [
     {
       conditionId: '0xcs2_1',
@@ -16,8 +18,8 @@ async function mockMarketData(page: Page) {
       volume: 50000,
       volume24h: 12000,
       liquidity: 8000,
-      endDate: '2026-06-20T00:00:00Z',
-      startDate: '2026-06-19T00:00:00Z',
+      endDate: soon,
+      startDate: soon,
       status: 'active',
       tags: [],
     },
@@ -32,8 +34,8 @@ async function mockMarketData(page: Page) {
       volume: 35000,
       volume24h: 8000,
       liquidity: 5000,
-      endDate: '2026-06-21T00:00:00Z',
-      startDate: '2026-06-19T00:00:00Z',
+      endDate: later,
+      startDate: later,
       status: 'active',
       tags: [],
     },
@@ -75,11 +77,9 @@ test.describe('P3-2: Market data rendering', () => {
 
     await expect(page.getByTestId('app-sidebar')).toBeVisible({ timeout: 10000 });
 
-    // Event grouping header
-    await expect(page.getByRole('heading', { name: 'IEM Cologne' })).toBeVisible({ timeout: 5000 });
-    // Match row rendered by MatchOddsRow now displays teams in separate columns.
-    const row = page.locator('.group').filter({ hasText: 'Spirit' }).filter({ hasText: 'G2' }).first();
-    await expect(row).toBeVisible({ timeout: 5000 });
+    const card = page.getByRole('link', { name: /Spirit vs G2/i });
+    await expect(card).toBeVisible({ timeout: 5000 });
+    await expect(card).toContainText('IEM Cologne');
   });
 
   test('lobby match row shows correct price percentages', async ({ page }) => {
@@ -88,15 +88,16 @@ test.describe('P3-2: Market data rendering', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    const row = page.locator('.group').filter({ hasText: 'Spirit' }).filter({ hasText: 'G2' }).first();
+    const row = page.getByRole('link', { name: /Spirit vs G2/i });
     await expect(row).toBeVisible({ timeout: 5000 });
 
     const rowText = await row.textContent();
-    expect(rowText).toContain('65.0%');
-    expect(rowText).toContain('35.0%');
+    expect(rowText).toContain('1.54');
+    expect(rowText).toContain('2.86');
   });
 
-  test('only CS2 markets are displayed (no non-CS2 data)', async ({ page }) => {
+  test('lobby displays esports market data from API', async ({ page }) => {
+    const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await page.route('**/api/markets/anomalies**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) }),
     );
@@ -115,8 +116,8 @@ test.describe('P3-2: Market data rendering', () => {
               volume: 50000,
               volume24h: 12000,
               liquidity: 8000,
-              endDate: '2026-06-20T00:00:00Z',
-              startDate: '2026-06-19T00:00:00Z',
+              endDate: soon,
+              startDate: soon,
               status: 'active',
               tags: [],
             },

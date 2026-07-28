@@ -40,13 +40,8 @@ test.describe('Global search + notification center', () => {
     await page.waitForURL('**/#/esports**', { timeout: 10000 });
   });
 
-  test('header search button opens the palette', async ({ page }) => {
-    await page.getByRole('button', { name: '全局搜索' }).first().click();
-    await expect(page.getByRole('dialog', { name: '全局搜索' })).toBeVisible();
-  });
-
-  test('notification bell opens an (empty) notification center', async ({ page }) => {
-    await page.getByRole('button', { name: '通知中心' }).click();
-    await expect(page.getByText('暂无通知')).toBeVisible();
+  test('header no longer exposes search or notification controls', async ({ page }) => {
+    await expect(page.getByRole('button', { name: '全局搜索' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '通知中心' })).toHaveCount(0);
   });
 });

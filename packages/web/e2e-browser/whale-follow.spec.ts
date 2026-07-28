@@ -41,8 +41,14 @@ test.describe('Whale follow & copy trading', () => {
       page.waitForResponse((resp) => resp.url().includes('/api/whale-follow') && resp.request().method() === 'POST'),
       page.getByTitle(/关注|Follow/i).first().click(),
     ]);
-    await page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click();
-    await expect(page.getByText(/0xabc1\.\.\.f456/i).first()).toBeVisible({ timeout: 5000 });
+    await Promise.all([
+      page.waitForResponse((resp) => (
+        resp.url().match(/\/api\/whale-follow\/?(\?|$)/) !== null &&
+        resp.request().method() === 'GET'
+      )),
+      page.getByRole('tab', { name: /关注跟单|Follow & Copy/i }).click(),
+    ]);
+    await expect(page.getByText(/0xabc1\.\.\.abcd/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('copy signal execute adds paper trade row', async ({ page }) => {
