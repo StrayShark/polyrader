@@ -11,7 +11,7 @@ describe('QwenClient', () => {
     client = new QwenClient('test-key');
   });
 
-  it('在 analyze() 请求体中包含 enable_thinking: true', async () => {
+  it('在 analyze() 请求体中使用默认模型和基础参数', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,11 +23,12 @@ describe('QwenClient', () => {
     await client.analyze({ system: '系统提示', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.enable_thinking).toBe(true);
-    expect(body.model).toBe('qwen3.7-max');
+    expect(body.enable_thinking).toBeUndefined();
+    expect(body.model).toBe('qwen-max');
+    expect(body.temperature).toBe(0.3);
   });
 
-  it('在 complete() 请求体中包含 enable_thinking: true', async () => {
+  it('在 complete() 请求体中使用基础参数', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -39,10 +40,11 @@ describe('QwenClient', () => {
     await client.complete({ system: '系统', user: '用户' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.enable_thinking).toBe(true);
+    expect(body.enable_thinking).toBeUndefined();
+    expect(body.temperature).toBe(0.3);
   });
 
-  it('从 analyze() 响应中提取 reasoning_content 到 thinkingProcess', async () => {
+  it('从 analyze() 响应中提取 choices[0].message.content', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -52,7 +54,8 @@ describe('QwenClient', () => {
     });
 
     const result = await client.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
-    expect(result.thinkingProcess).toBe('深度思考过程');
+    expect(result.confidence).toBe(70);
+    expect(result.reasoning).toBe('测试');
   });
 
   it('API 错误时抛出异常', async () => {

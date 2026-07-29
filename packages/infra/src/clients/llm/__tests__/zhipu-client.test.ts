@@ -11,7 +11,7 @@ describe('ZhipuClient', () => {
     client = new ZhipuClient('test-key');
   });
 
-  it('在 analyze() 请求体中包含 enable_thinking: true 和 reasoning_effort: max', async () => {
+  it('在 analyze() 请求体中使用默认模型和基础参数', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,12 +23,13 @@ describe('ZhipuClient', () => {
     await client.analyze({ system: '系统提示', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.enable_thinking).toBe(true);
-    expect(body.reasoning_effort).toBe('max');
-    expect(body.model).toBe('glm-5.2');
+    expect(body.enable_thinking).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.model).toBe('glm-4-plus');
+    expect(body.temperature).toBe(0.3);
   });
 
-  it('在 complete() 请求体中包含 enable_thinking: true 和 reasoning_effort: max', async () => {
+  it('在 complete() 请求体中使用基础参数', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -40,11 +41,12 @@ describe('ZhipuClient', () => {
     await client.complete({ system: '系统', user: '用户' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.enable_thinking).toBe(true);
-    expect(body.reasoning_effort).toBe('max');
+    expect(body.enable_thinking).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.temperature).toBe(0.3);
   });
 
-  it('从 analyze() 响应中提取 reasoning_content 到 thinkingProcess', async () => {
+  it('从 analyze() 响应中提取 choices[0].message.content', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -54,7 +56,8 @@ describe('ZhipuClient', () => {
     });
 
     const result = await client.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
-    expect(result.thinkingProcess).toBe('深度思考过程');
+    expect(result.confidence).toBe(70);
+    expect(result.reasoning).toBe('测试');
   });
 
   it('API 错误时抛出异常', async () => {

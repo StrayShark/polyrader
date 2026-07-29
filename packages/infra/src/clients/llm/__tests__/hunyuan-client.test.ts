@@ -11,7 +11,7 @@ describe('HunyuanClient', () => {
     client = new HunyuanClient('test-key');
   });
 
-  it('默认模型为 hy3-preview（通过请求体验证）', async () => {
+  it('默认模型为 hunyuan-large（通过请求体验证）', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,10 +23,10 @@ describe('HunyuanClient', () => {
     await client.analyze({ system: '系统提示', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.model).toBe('hy3-preview');
+    expect(body.model).toBe('hunyuan-large');
   });
 
-  it('使用 TokenHub Base URL', async () => {
+  it('使用 Hunyuan Chat Completions Base URL', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -38,10 +38,10 @@ describe('HunyuanClient', () => {
     await client.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
 
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain('tokenhub.tencentmaas.com');
+    expect(url).toContain('api.hunyuan.cloud.tencent.com');
   });
 
-  it('从 analyze() 响应中提取 reasoning_content 到 thinkingProcess', async () => {
+  it('从 analyze() 响应中提取 choices[0].message.content', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -51,7 +51,8 @@ describe('HunyuanClient', () => {
     });
 
     const result = await client.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
-    expect(result.thinkingProcess).toBe('思考1思考2');
+    expect(result.confidence).toBe(70);
+    expect(result.reasoning).toBe('测试');
   });
 
   it('complete() 正常返回内容', async () => {

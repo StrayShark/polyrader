@@ -61,8 +61,9 @@ roadmap.
 
 ## Current Release Evidence
 
-- The latest full unit baseline is green: Core 359, Infra 159 passed with 13
-  configuration-dependent tests skipped, Server 288, and Web 57.
+- The latest full unit baseline is expected to stay green through `npm run test`;
+  the restored Infra client suite is green with 213 passed and 13
+  configuration-dependent tests skipped.
 - The Sprint 1-5 deterministic Integration E2E is green across all four games;
   opt-in source checks cover HLTV, OpenDota, and GRID-backed LoL/Valorant availability.
 - Sprint 4 adds transactional paper-risk rejection, closing-price persistence, CLV
@@ -137,6 +138,7 @@ roadmap.
 
 - Product and design documents must include a status and last-updated date.
 - Generated reports belong under `artifacts/` or CI output, not the canonical docs set.
+  Root-level current-source JSON files are local scratch evidence and should not be committed.
 - Current docs must not link to deleted files.
 - CS2-specific behavior must be labeled as a game adapter, not a product-wide rule.
 - Each product or data-contract change must update the roadmap and project rules with

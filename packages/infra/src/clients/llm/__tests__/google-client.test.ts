@@ -11,7 +11,7 @@ describe('GoogleClient', () => {
     client = new GoogleClient('test-key');
   });
 
-  it('在 analyze() 请求体中为 Gemini 3.5 添加 thinkingConfig', async () => {
+  it('在 analyze() 请求体中使用基础 generationConfig', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,14 +23,14 @@ describe('GoogleClient', () => {
     await client.analyze({ system: '系统提示', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'medium' });
+    expect(body.generationConfig.thinkingConfig).toBeUndefined();
     expect(body.generationConfig.temperature).toBe(0.3);
     // URL 应包含模型名和 generateContent
-    expect(mockFetch.mock.calls[0][0]).toContain('gemini-3.5-flash');
+    expect(mockFetch.mock.calls[0][0]).toContain('gemini-2.0-flash');
     expect(mockFetch.mock.calls[0][0]).toContain('generateContent');
   });
 
-  it('在 complete() 请求体中为 Gemini 3.5 添加 thinkingConfig', async () => {
+  it('在 complete() 请求体中使用基础 generationConfig', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -42,7 +42,7 @@ describe('GoogleClient', () => {
     await client.complete({ system: '系统', user: '用户' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'medium' });
+    expect(body.generationConfig.thinkingConfig).toBeUndefined();
   });
 
   it('非 Gemini 3.5 模型不添加 thinkingConfig', async () => {

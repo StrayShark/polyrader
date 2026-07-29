@@ -79,11 +79,12 @@ Core must not import filesystem, HTTP, database, Express, React, or Tauri code.
 | Server bundle | `npm run build:server` |
 | Lint | `npm run lint` |
 
-The current full-test baseline is green: Core 342, Infra 135 passed with 13
-configuration-dependent tests skipped, Server 233, and Web 52. Type checking also
-passes in all four workspaces. The deterministic browser baseline is also green with
-217 passed and 1 skipped. Integration, current real-source, and desktop E2E remain
-separate release evidence and must be run when the changed scope requires them.
+The current full-test baseline is expected to stay green through `npm run test`;
+the restored Infra client suite is green with 213 passed and 13
+configuration-dependent tests skipped. Type checking must pass in all four
+workspaces. Deterministic browser, Integration, current real-source, and desktop
+E2E remain separate release evidence and must be run when the changed scope
+requires them.
 
 ## Engineering Rules
 
@@ -161,6 +162,13 @@ being pushed. Prefer merging through a PR with a green CI run. If a direct
 `main` push is required, run the relevant local checks first, verify the previous
 remote `main` pipeline is green, push, then watch the new `main` CI run until it
 finishes successfully.
+
+Minimum direct-push checklist:
+
+1. Confirm the latest remote `main` pipeline is green before pushing.
+2. Run local tests and type checks that match the changed packages.
+3. Push only after local verification passes.
+4. Monitor the new `main` pipeline until it finishes green.
 
 Do not leave `main` after a failing push. If CI fails, treat the failure as the
 active task: inspect the failing job, fix the cause, run the matching local

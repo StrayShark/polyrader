@@ -1,18 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { fetchJsonWithBrowser } from '../../../crawlers/browser-fetch.js';
 import { PolymarketGammaClient } from '../gamma-client';
 
-// Mock global fetch — gamma-client uses fetchWithRetry which calls fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+vi.mock('../../../crawlers/browser-fetch.js', () => ({
+  fetchJsonWithBrowser: vi.fn(),
+}));
 
-function makeApiResponse(data: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => data,
-    text: async () => JSON.stringify(data),
-  };
-}
+const mockFetchJsonWithBrowser = vi.mocked(fetchJsonWithBrowser);
 
 // Factory: create a raw Gamma API market object
 function rawMarket(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
@@ -27,8 +21,8 @@ function rawMarket(overrides: Partial<Record<string, unknown>> = {}): Record<str
     volume: '10000',
     volume24hr: '5000',
     liquidity: '8000',
-    endDate: '2026-06-20T00:00:00Z',
-    startDate: '2026-06-19T00:00:00Z',
+    endDate: '2026-12-20T00:00:00Z',
+    startDate: '2026-12-19T00:00:00Z',
     closed: false,
     tags: [],
     ...overrides,
@@ -53,7 +47,7 @@ describe('PolymarketGammaClient', () => {
         rawMarket({ id: '0xcs2_3', question: 'CS2 Major Grand Final prediction' }),
         rawMarket({ id: '0xcsgo1', question: 'CSGO match tonight' }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const markets = await client.getMarkets(10);
 
@@ -76,7 +70,7 @@ describe('PolymarketGammaClient', () => {
           clobTokenIds: ['12345', '67890'],
         }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const markets = await client.getMarkets(10);
 
@@ -89,7 +83,7 @@ describe('PolymarketGammaClient', () => {
         rawMarket({ id: '0xnba1', question: 'Lakers vs Celtics' }),
         rawMarket({ id: '0xelec1', question: 'Election 2026' }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const markets = await client.getMarkets(10);
 
@@ -100,7 +94,7 @@ describe('PolymarketGammaClient', () => {
       const apiData = Array.from({ length: 20 }, (_, i) =>
         rawMarket({ id: `0xcs2_${i}`, question: `Counter-Strike: Match ${i}` }),
       );
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const markets = await client.getMarkets(5);
 
@@ -108,11 +102,11 @@ describe('PolymarketGammaClient', () => {
     });
 
     it('sends correct query parameters (no tag=cs2)', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([]));
+      mockFetchJsonWithBrowser.mockResolvedValue([]);
 
       await client.getMarkets(50, 0);
 
-      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      const calledUrl = mockFetchJsonWithBrowser.mock.calls[0][0] as string;
       expect(calledUrl).toContain('active=true');
       expect(calledUrl).toContain('closed=false');
       expect(calledUrl).toContain('order=volume24hr');
@@ -137,13 +131,13 @@ describe('PolymarketGammaClient', () => {
           volume: '50000',
           volume24hr: '12000',
           liquidity: '8000',
-          endDate: '2026-06-20T00:00:00Z',
-          startDate: '2026-06-19T00:00:00Z',
+          endDate: '2026-12-20T00:00:00Z',
+          startDate: '2026-12-19T00:00:00Z',
           closed: false,
           tags: [],
         }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const [market] = await client.getMarkets(10);
 
@@ -168,26 +162,25 @@ describe('PolymarketGammaClient', () => {
           clobTokenIds: undefined,
         }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const [market] = await client.getMarkets(10);
 
       expect(market.clobTokenIds).toBeUndefined();
     });
 
-    it('marks closed markets as closed status', async () => {
-      const apiData = [
+    it('maps closed markets as closed status on direct lookup', async () => {
+      mockFetchJsonWithBrowser.mockResolvedValue(
         rawMarket({
           id: '0xcs2_1',
           question: 'Counter-Strike: Closed Match',
           closed: true,
         }),
-      ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      );
 
-      const [market] = await client.getMarkets(10);
+      const market = await client.getMarket('0xcs2_1');
 
-      expect(market.status).toBe('closed');
+      expect(market?.status).toBe('closed');
     });
   });
 
@@ -198,7 +191,7 @@ describe('PolymarketGammaClient', () => {
         rawMarket({ id: '0x2', question: 'Counter-Strike: Vitality vs Falcons' }),
         rawMarket({ id: '0x3', question: 'Lakers vs Celtics' }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const results = await client.searchMarkets('spirit');
 
@@ -211,7 +204,7 @@ describe('PolymarketGammaClient', () => {
         rawMarket({ id: '0x1', question: 'Counter-Strike: Spirit vs G2' }),
         rawMarket({ id: '0x2', question: 'Spirit Airlines bankruptcy?' }),
       ];
-      mockFetch.mockResolvedValue(makeApiResponse(apiData));
+      mockFetchJsonWithBrowser.mockResolvedValue(apiData);
 
       const results = await client.searchMarkets('spirit');
 

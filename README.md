@@ -15,13 +15,11 @@ CS2 currently has the most complete event and analysis workflow. The other board
 
 | Area | Promise |
 | --- | --- |
-| **Four-Game Event Lobby** | Browse released CS2, LoL, Dota 2, and Valorant matches with explicit board readiness |
-| **Validation Lab** | Verify source sync, normalized facts, standard prompts, LLM responses, paper decisions, and settlement |
+| **总览 / Overview** | Browse released CS2, LoL, Dota 2, and Valorant matches with explicit board readiness |
 | **Practice Bet Slip** | Build single or parlay-style simulated bets with stake, implied probability, model probability, edge, and risk checks |
-| **Virtual Bankroll** | Track virtual cash, equity, exposure, PnL, ROI, drawdown, and bankroll discipline |
-| **Review Center** | Review settled simulated bets with odds snapshots, model signals, CLV, Brier Score, PnL, and mistake tags |
-| **Local Database** | Keep matches, markets, odds snapshots, simulated bets, reviews, and strategy runs in SQLite |
-| **Model Performance** | Compare provider, prompt, game, market, data-quality, calibration, and asset performance |
+| **模拟盘 / Simbook** | Track virtual cash, equity, exposure, PnL, ROI, drawdown, and bankroll discipline |
+| **巨鲸追踪 / Whale Tracking** | Inspect high-volume wallets, recent trades, positions, and esports market context |
+| **日历 / Calendar** | Review upcoming matches, source freshness, settlement windows, and scheduled checks |
 | **Read-only Market Sources** | Use Polymarket/Gamma/CLOB/Data API data only as observable market inputs by default |
 
 ## Safety Boundary
@@ -97,12 +95,11 @@ npm run tauri:build
 
 | Navigation | Job |
 | --- | --- |
-| Event Lobby | Browse matches and markets for boards that passed release gates |
-| Validation Lab | Run and inspect source-to-paper-order board verification |
-| Analysis Report | Inspect normalized report, prompt, response, and run timeline |
-| My Ledger | Track portfolio, paper orders, performance attribution, and review |
-| Strategy Lab | Tune deterministic paper policy and probability signals |
-| Settings | Configure local storage, LLM providers, and read-only data sources |
+| 总览 | Browse matches and markets for boards that passed release gates |
+| 模拟盘 | Track portfolio, paper orders, performance attribution, and review |
+| 巨鲸追踪 | Inspect wallet leaders, positions, trades, and market context |
+| 日历 | Plan upcoming matches, source checks, and settlement review windows |
+| 设置 | Configure local storage, LLM providers, odds display, and read-only data sources |
 
 ## Project Structure
 

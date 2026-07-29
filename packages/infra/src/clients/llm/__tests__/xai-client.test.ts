@@ -11,7 +11,7 @@ describe('XAIClient', () => {
     client = new XAIClient('test-key');
   });
 
-  it('在 analyze() 请求体中为 Grok 4.3 添加 reasoning_effort: medium', async () => {
+  it('在 analyze() 请求体中使用默认模型和基础参数', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,13 +23,13 @@ describe('XAIClient', () => {
     await client.analyze({ system: '系统提示', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.reasoning_effort).toBe('medium');
-    expect(body.model).toBe('grok-4.3');
-    // 不应使用 reasoning.effort 结构
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.model).toBe('grok-2');
     expect(body.reasoning).toBeUndefined();
+    expect(body.temperature).toBe(0.3);
   });
 
-  it('在 complete() 请求体中为 Grok 4.3 添加 reasoning_effort: medium', async () => {
+  it('在 complete() 请求体中使用基础参数', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -41,8 +41,9 @@ describe('XAIClient', () => {
     await client.complete({ system: '系统', user: '用户' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.reasoning_effort).toBe('medium');
+    expect(body.reasoning_effort).toBeUndefined();
     expect(body.reasoning).toBeUndefined();
+    expect(body.temperature).toBe(0.3);
   });
 
   it('非 Grok 4.3 模型不添加 reasoning_effort', async () => {

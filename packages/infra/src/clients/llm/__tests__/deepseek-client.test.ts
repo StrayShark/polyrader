@@ -11,7 +11,7 @@ describe('DeepSeekClient', () => {
     client = new DeepSeekClient('test-key');
   });
 
-  it('默认模型为 deepseek-v4-flash（通过请求体验证）', async () => {
+  it('默认模型为 deepseek-chat（通过请求体验证）', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,7 +23,7 @@ describe('DeepSeekClient', () => {
     await client.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.model).toBe('deepseek-v4-flash');
+    expect(body.model).toBe('deepseek-chat');
   });
 
   it('在 analyze() 请求体中无 reasoning 参数', async () => {
@@ -39,7 +39,7 @@ describe('DeepSeekClient', () => {
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.reasoning).toBeUndefined();
-    expect(body.model).toBe('deepseek-v4-flash');
+    expect(body.model).toBe('deepseek-chat');
     expect(body.temperature).toBe(0.3);
   });
 
@@ -56,7 +56,7 @@ describe('DeepSeekClient', () => {
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.reasoning).toBeUndefined();
-    expect(body.model).toBe('deepseek-v4-flash');
+    expect(body.model).toBe('deepseek-chat');
     expect(body.temperature).toBe(0.3);
   });
 

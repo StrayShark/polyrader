@@ -69,16 +69,17 @@ acceptance.
 
 | Area           | Responsibility                                        |
 | -------------- | ----------------------------------------------------- |
-| Event Lobby    | Four-game match and market discovery                  |
-| Validation Lab | Board release status and source-to-order test runs    |
-| My Ledger      | Equity, simulated orders, settlement, and review      |
-| Strategy Lab   | Deterministic policy and signal calibration           |
-| Settings       | LLM keys, data sources, database, theme, and language |
+| 总览          | Four-game match and market discovery                  |
+| 模拟盘        | Equity, simulated orders, settlement, and review      |
+| 巨鲸追踪      | Wallet leaders, positions, trades, and market context |
+| 日历          | Upcoming matches, source checks, and review windows   |
+| 设置          | LLM keys, data sources, database, odds display, theme |
 
-Advanced model evaluation is reached from the ledger and reports, not exposed as a
-large collection of unrelated primary-navigation pages.
+Validation, analysis reports, deterministic policy tuning, and local database
+inspection are reached from these four primary areas instead of being exposed as
+separate top-level pages.
 
-### My Ledger tabs
+### 模拟盘 tabs
 
 1. `Portfolio`: combined virtual account, equity curve, exposure, and cash ledger.
 2. `Paper Orders`: open, settled, rejected, and passed LLM decisions.

@@ -11,7 +11,7 @@ describe('AnthropicClient', () => {
     client = new AnthropicClient('test-key');
   });
 
-  it('默认模型为 claude-sonnet-4-6（通过请求体验证）', async () => {
+  it('默认模型为 claude-3-5-sonnet-20241022（通过请求体验证）', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -23,7 +23,7 @@ describe('AnthropicClient', () => {
     await client.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.model).toBe('claude-sonnet-4-6');
+    expect(body.model).toBe('claude-3-5-sonnet-20241022');
   });
 
   it('在 analyze() 请求体中设置 temperature 为 0.3 且无 reasoning 参数', async () => {
@@ -40,7 +40,7 @@ describe('AnthropicClient', () => {
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.temperature).toBe(0.3);
     expect(body.reasoning).toBeUndefined();
-    expect(body.model).toBe('claude-sonnet-4-6');
+    expect(body.model).toBe('claude-3-5-sonnet-20241022');
   });
 
   it('在 complete() 请求体中设置 temperature 为 0.3', async () => {
@@ -59,7 +59,7 @@ describe('AnthropicClient', () => {
     expect(body.reasoning).toBeUndefined();
   });
 
-  it('Opus 4.8 模型不发送 temperature', async () => {
+  it('自定义模型沿用基础请求参数', async () => {
     const opusClient = new AnthropicClient('test-key', 'claude-opus-4-8');
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -72,7 +72,7 @@ describe('AnthropicClient', () => {
     await opusClient.analyze({ system: '系统', context: '上下文', outputSchema: 'schema' });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.temperature).toBeUndefined();
+    expect(body.temperature).toBe(0.3);
     expect(body.model).toBe('claude-opus-4-8');
   });
 
